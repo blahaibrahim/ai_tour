@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/organic-4b7b55b2-2e95-48a5-b473-5160804014ae/styles.css">
+<script src="_ds/organic-4b7b55b2-2e95-48a5-b473-5160804014ae/_ds_bundle.js"></script>
+<style>
+html,body{margin:0;height:100%;}
+a{color:var(--color-accent);text-decoration:none;}
+a:hover{color:var(--color-accent-600);}
+@keyframes aitour-spin{to{transform:rotate(360deg)}}
+@keyframes aitour-pulse{0%,100%{opacity:.45;transform:scale(0.96)}50%{opacity:1;transform:scale(1.04)}}
+@keyframes aitour-fadeup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</helmet>
+<div style="min-height:100vh;width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;background:var(--color-neutral-200);padding:44px 20px;font-family:var(--font-body);color:var(--color-text);">
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="402px,874px">
+<div style="position:relative;height:100%;width:100%;background-color:var(--color-bg);display:flex;flex-direction:column;overflow:hidden;">
+
+<sc-if value="{{zelligeVisible}}" hint-placeholder-val="{{true}}">
+<div style="position:absolute;inset:0;background-image:url(data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2260%22%20height=%2260%22%3E%3Cpath%20d=%22M50%2030L37.4%2033.1L44.1%2044.1L33.1%2037.4L30%2050L26.9%2037.4L15.9%2044.1L22.6%2033.1L10%2030L22.6%2026.9L15.9%2015.9L26.9%2022.6L30%2010L33.1%2022.6L44.1%2015.9L37.4%2026.9Z%22%20fill=%22none%22%20stroke=%22%238c491a%22%20stroke-width=%221.5%22%20stroke-opacity=%220.17%22/%3E%3C/svg%3E);background-size:60px 60px;opacity:0.6;pointer-events:none;z-index:0;"></div>
+</sc-if>
+
+<div style="position:relative;z-index:1;height:100%;width:100%;display:flex;flex-direction:column;">
+
+<!-- ═══════════════ MAP SCREEN ═══════════════ -->
+<sc-if value="{{screenIsMap}}" hint-placeholder-val="{{true}}">
+<div style="height:100%;position:relative;overflow:hidden;">
+  <iframe src="https://www.google.com/maps?q=Algiers,Algeria&z=12&output=embed" style="position:absolute;inset:0;width:100%;height:100%;border:0;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+
+  <div style="position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);width:{{radiusCirclePx}}px;height:{{radiusCirclePx}}px;border-radius:50%;border:2px dashed var(--color-accent-700);background:color-mix(in srgb, var(--color-accent-100) 45%, transparent);pointer-events:none;"></div>
+  <div style="position:absolute;left:50%;top:38%;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;gap:2px;pointer-events:none;">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="var(--color-accent-700)" stroke="var(--color-accent-700)"><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z" stroke-width="0"/><circle cx="12" cy="9" r="2.6" fill="var(--color-bg)" stroke="none"/></svg>
+    <span style="font-size:10.5px;font-weight:600;color:var(--color-accent-800);background:var(--color-bg);padding:2px 8px;border-radius:8px;box-shadow:var(--shadow-sm);">Algiers</span>
+  </div>
+
+  <div style="position:absolute;top:56px;left:20px;font-family:var(--font-heading);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-accent-800);background:var(--color-bg);padding:6px 14px;border-radius:999px;box-shadow:var(--shadow-sm);">AI Tour</div>
+
+  <div style="position:absolute;left:0;right:0;bottom:0;max-height:64%;background:var(--color-bg);border-radius:26px 26px 0 0;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="flex:none;display:flex;justify-content:center;padding:10px 0 2px;">
+      <div style="width:38px;height:4px;border-radius:99px;background:var(--color-neutral-400);"></div>
+    </div>
+    <div style="flex:1;overflow:auto;padding:8px 20px 14px;display:flex;flex-direction:column;gap:16px;">
+      <div>
+        <h1 style="font-size:22px;margin:0 0 4px;">Where do you want to explore?</h1>
+        <p style="font-size:13px;opacity:0.7;margin:0;">Set a radius, tell us your vibe — we'll shortlist real places to swipe through.</p>
+      </div>
+
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+          <label style="font-size:12px;color:color-mix(in srgb, var(--color-text) 65%, transparent);">Search radius</label>
+          <span style="font-family:var(--font-heading);font-size:15px;color:var(--color-accent-700);">{{radiusLabel}}</span>
+        </div>
+        <input type="range" min="5" max="60" step="5" value="{{radiusKm}}" onChange="{{onChangeRadius}}" style="width:100%;accent-color:var(--color-accent);"/>
+      </div>
+
+      <div>
+        <label style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 55%, transparent);margin-bottom:8px;display:block;">Tell the AI what you're after</label>
+        <div style="position:relative;">
+          <textarea class="input" rows="2" placeholder="quiet Roman ruins, coastal viewpoints, family history…" value="{{prompt}}" onChange="{{onChangePrompt}}" style="width:100%;box-sizing:border-box;border-radius:18px;resize:none;padding:14px 46px 14px 16px;border:1.5px solid var(--color-divider);background:var(--color-surface);"></textarea>
+          <div style="position:absolute;right:9px;bottom:9px;width:30px;height:30px;border-radius:50%;background:var(--color-accent);display:flex;align-items:center;justify-content:center;pointer-events:none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="var(--color-bg)"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="flex:none;padding:6px 20px 26px;">
+      <button class="btn btn-primary btn-block" onClick="{{onGenerate}}" style="height:50px;font-size:15px;">Generate my route</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ═══════════════ THINKING SCREEN ═══════════════ -->
+<sc-if value="{{screenIsThinking}}" hint-placeholder-val="{{false}}">
+<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:0 36px;text-align:center;">
+  <div style="position:relative;width:96px;height:96px;">
+    <div style="position:absolute;inset:0;border-radius:50%;border:3px solid var(--color-accent-200);"></div>
+    <div style="position:absolute;inset:0;border-radius:50%;border:3px solid transparent;border-top-color:var(--color-accent);animation:aitour-spin 1.1s linear infinite;"></div>
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;animation:aitour-pulse 1.6s ease-in-out infinite;">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="var(--color-accent-700)"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/></svg>
+    </div>
+  </div>
+  <div style="font-family:var(--font-heading);font-size:18px;">Building your shortlist</div>
+  <div style="font-size:13.5px;opacity:0.75;min-height:34px;">{{thinkingMessage}}</div>
+</div>
+</sc-if>
+
+<!-- ═══════════════ SWIPE SCREEN ═══════════════ -->
+<sc-if value="{{screenIsSwipe}}" hint-placeholder-val="{{false}}">
+<div style="height:100%;display:flex;flex-direction:column;position:relative;">
+  <div style="flex:none;padding:58px 18px 10px;display:flex;align-items:center;justify-content:space-between;">
+    <button onClick="{{onBackToMap}}" style="width:40px;height:40px;border-radius:50%;border:none;background:var(--color-surface);box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-text)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+    </button>
+    <span style="font-size:12.5px;font-weight:600;color:color-mix(in srgb, var(--color-text) 65%, transparent);">{{swipeProgressLabel}}</span>
+    <div style="width:40px;"></div>
+  </div>
+
+  <div style="flex:1;position:relative;padding:6px 20px 10px;">
+    <sc-if value="{{hasNextCard}}" hint-placeholder-val="{{false}}">
+      <div style="position:absolute;inset:6px 20px 10px;border-radius:var(--radius-lg);box-shadow:var(--shadow-md);transform:scale(0.95) translateY(14px);overflow:hidden;">
+        <img src="{{nextLoc.photoUrl}}" alt="{{nextLoc.name}}" style="width:100%;height:100%;object-fit:cover;display:block;"/>
+      </div>
+    </sc-if>
+    <sc-if value="{{hasCurrentCard}}" hint-placeholder-val="{{false}}">
+      <div onPointerDown="{{onCardPointerDown}}" onPointerMove="{{onCardPointerMove}}" onPointerUp="{{onCardPointerUp}}" onPointerLeave="{{onCardPointerUp}}" onPointerCancel="{{onCardPointerUp}}" style="position:absolute;inset:6px 20px 10px;border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden;touch-action:none;cursor:grab;transform:{{cardTransform}};transition:{{cardTransition}};">
+        <img src="{{currentLoc.photoUrl}}" alt="{{currentLoc.name}}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"/>
+        <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(20,14,8,0.8) 0%, rgba(20,14,8,0.4) 32%, rgba(20,14,8,0) 58%);"></div>
+        <div style="position:absolute;top:16px;left:16px;padding:5px 12px;border-radius:999px;background:var(--color-bg);color:var(--color-accent-700);font-weight:700;font-size:13px;transform:rotate(-14deg);opacity:{{likeOpacity}};">LIKE</div>
+        <div style="position:absolute;top:16px;right:16px;padding:5px 12px;border-radius:999px;background:var(--color-bg);color:var(--color-neutral-700);font-weight:700;font-size:13px;transform:rotate(14deg);opacity:{{nopeOpacity}};">NOPE</div>
+        <div style="position:absolute;top:16px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;background:var(--color-bg);color:var(--color-accent-2-700);font-weight:700;font-size:12px;opacity:{{infoOpacity}};">MORE INFO ↓</div>
+        <div style="position:absolute;bottom:0;left:0;right:0;padding:18px 18px 22px;display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
+            <h3 style="margin:0;font-size:20px;color:#fff;">{{currentLoc.name}}</h3>
+            <span style="font-size:12px;color:rgba(255,255,255,0.8);white-space:nowrap;">{{currentLoc.distanceLabel}}</span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <span class="tag tag-accent-2">{{currentLoc.category}}</span>
+            <span class="tag tag-neutral">{{currentLoc.region}}</span>
+          </div>
+          <p style="font-size:13px;color:rgba(255,255,255,0.92);margin:4px 0 0;">{{currentLoc.blurb}}</p>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="flex:none;padding:8px 30px 30px;display:flex;align-items:center;justify-content:center;gap:22px;">
+    <button onClick="{{onBtnReject}}" style="width:58px;height:58px;border-radius:50%;border:none;background:var(--color-surface);box-shadow:var(--shadow-md);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-700)" stroke-width="2.75" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <button onClick="{{onBtnInfo}}" style="width:44px;height:44px;border-radius:50%;border:none;background:var(--color-surface);box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-700)" stroke-width="2.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.6" r="0.5" fill="var(--color-accent-2-700)"/></svg>
+    </button>
+    <button onClick="{{onBtnAccept}}" style="width:64px;height:64px;border-radius:50%;border:none;background:var(--color-accent);box-shadow:var(--shadow-md);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="var(--color-bg)"><path d="M12 21C7 17 3 13.5 3 9.5 3 6.5 5.4 4 8.3 4c1.8 0 3 1 3.7 2.2C12.7 5 13.9 4 15.7 4 18.6 4 21 6.5 21 9.5 21 13.5 17 17 12 21z"/></svg>
+    </button>
+  </div>
+
+  <sc-if value="{{detailOpen}}" hint-placeholder-val="{{false}}">
+    <div onClick="{{onCloseDetail}}" style="position:absolute;inset:0;background:color-mix(in srgb, var(--color-neutral-900) 55%, transparent);z-index:30;"></div>
+    <div style="position:absolute;left:0;right:0;bottom:0;height:82%;background:var(--color-bg);border-radius:28px 28px 0 0;box-shadow:var(--shadow-lg);z-index:31;display:flex;flex-direction:column;overflow:hidden;animation:aitour-fadeup 0.25s ease;">
+      <div style="flex:none;display:flex;justify-content:center;padding:10px 0 4px;">
+        <div style="width:40px;height:4px;border-radius:99px;background:var(--color-neutral-400);"></div>
+      </div>
+      <div style="flex:1;overflow:auto;padding:8px 22px 18px;display:flex;flex-direction:column;gap:12px;">
+        <div style="position:relative;border-radius:20px;overflow:hidden;height:200px;flex:none;">
+          <img src="{{detailLoc.photoUrl}}" alt="{{detailLoc.name}}" style="width:100%;height:100%;object-fit:cover;display:block;"/>
+          <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(20,14,8,0.78) 0%, rgba(20,14,8,0) 60%);"></div>
+          <div style="position:absolute;bottom:0;left:0;right:0;padding:16px;">
+            <h3 style="margin:0 0 6px;font-size:21px;color:#fff;">{{detailLoc.name}}</h3>
+            <div style="display:flex;gap:6px;">
+              <span class="tag tag-accent-2">{{detailLoc.category}}</span>
+              <span class="tag tag-neutral">{{detailLoc.region}}</span>
+            </div>
+          </div>
+        </div>
+        <p style="font-size:13.5px;opacity:0.85;margin:0;">{{detailLoc.blurb}}</p>
+        <div class="hr" style="margin:2px 0;"></div>
+        <div>
+          <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 55%, transparent);margin-bottom:8px;">Ask the AI</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-secondary" onClick="{{onAskBest}}" style="font-size:12.5px;">Best time to visit?</button>
+            <button class="btn btn-secondary" onClick="{{onAskTime}}" style="font-size:12.5px;">How long to explore?</button>
+          </div>
+          <sc-if value="{{detailAnswerVisible}}" hint-placeholder-val="{{false}}">
+            <div style="margin-top:10px;background:var(--color-surface);border-radius:var(--radius-md);padding:12px 14px;font-size:13px;display:flex;gap:8px;align-items:flex-start;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--color-accent-700)" style="flex:none;margin-top:2px;"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/></svg>
+              <span>{{detailAnswerText}}</span>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="flex:none;padding:12px 22px 24px;display:flex;gap:10px;">
+        <button class="btn btn-secondary" onClick="{{onDetailReject}}" style="flex:1;height:46px;">Skip this spot</button>
+        <button class="btn btn-primary" onClick="{{onDetailAccept}}" style="flex:1;height:46px;">Add to route</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<!-- ═══════════════ RESULT SCREEN ═══════════════ -->
+<sc-if value="{{screenIsResult}}" hint-placeholder-val="{{false}}">
+<div style="height:100%;display:flex;flex-direction:column;">
+  <div style="flex:1;overflow:auto;padding:60px 20px 20px;display:flex;flex-direction:column;gap:16px;">
+
+    <sc-if value="{{hasStops}}" hint-placeholder-val="{{true}}">
+      <div>
+        <h1 style="font-size:24px;margin:0 0 4px;">Your route</h1>
+        <p style="font-size:13px;opacity:0.75;margin:0;">{{stopsCountLabel}} · {{totalDistanceLabel}}</p>
+      </div>
+
+      <div style="position:relative;border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-md);">
+        <img src="{{trailerPhotoUrl}}" alt="Route highlight preview" style="width:100%;height:180px;object-fit:cover;display:block;"/>
+        <div onClick="{{onTogglePlay}}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+          <div style="width:56px;height:56px;border-radius:50%;background:color-mix(in srgb, var(--color-bg) 88%, transparent);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-md);">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="var(--color-accent-700)"><path d="M8 5l12 7-12 7V5z"/></svg>
+          </div>
+        </div>
+        <span style="position:absolute;bottom:10px;left:12px;font-size:11px;background:color-mix(in srgb, var(--color-neutral-900) 55%, transparent);color:#fff;padding:3px 10px;border-radius:999px;">{{playLabel}}</span>
+      </div>
+
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 55%, transparent);">Itinerary</span>
+          <button class="btn btn-ghost" onClick="{{onToggleModify}}" style="font-size:12.5px;">{{modifyLabel}}</button>
+        </div>
+        <div style="display:flex;flex-direction:column;">
+          <sc-for list="{{acceptedRows}}" as="row" hint-placeholder-count="4">
+            <div style="display:flex;gap:12px;">
+              <div style="display:flex;flex-direction:column;align-items:center;flex:none;">
+                <div style="width:26px;height:26px;border-radius:50%;background:var(--color-accent);color:var(--color-bg);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">{{row.number}}</div>
+                <div class="{{row.connectorClass}}" style="width:2px;flex:1;background:var(--color-accent-300);margin:2px 0;"></div>
+              </div>
+              <div style="flex:1;display:flex;gap:10px;padding-bottom:16px;align-items:center;">
+                <img src="{{row.loc.thumbUrl}}" alt="{{row.loc.name}}" style="width:52px;height:52px;flex:none;border-radius:12px;object-fit:cover;"/>
+                <div style="flex:1;">
+                  <div style="font-weight:600;font-size:14px;">{{row.loc.name}}</div>
+                  <div style="font-size:12px;opacity:0.65;">{{row.loc.region}}</div>
+                </div>
+                <sc-if value="{{modifyMode}}" hint-placeholder-val="{{false}}">
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <button onClick="{{row.onMoveUp}}" style="width:26px;height:22px;border:none;border-radius:6px;background:var(--color-surface);cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text)" stroke-width="3" stroke-linecap="round"><path d="M6 15l6-6 6 6"/></svg></button>
+                    <button onClick="{{row.onMoveDown}}" style="width:26px;height:22px;border:none;border-radius:6px;background:var(--color-surface);cursor:pointer;display:flex;align-items:center;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text)" stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></button>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div>
+        <button class="btn btn-ghost" onClick="{{onToggleAskPanel}}" style="font-size:12.5px;padding-inline:0;">{{askPanelLabel}}</button>
+        <sc-if value="{{askPanelOpen}}" hint-placeholder-val="{{false}}">
+          <div style="background:var(--color-surface);border-radius:var(--radius-md);padding:12px;display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+            <sc-for list="{{aiConversationRows}}" as="msg" hint-placeholder-count="0">
+              <div style="align-self:{{msg.align}};max-width:85%;background:{{msg.bg}};color:{{msg.color}};padding:8px 12px;border-radius:12px;font-size:12.5px;">{{msg.text}}</div>
+            </sc-for>
+            <div style="display:flex;gap:8px;">
+              <input class="input" placeholder="e.g. swap in a coastal stop" value="{{aiChangeText}}" onChange="{{onChangeAIText}}" style="flex:1;"/>
+              <button onClick="{{onSendAIChange}}" style="width:40px;height:36px;border:none;border-radius:999px;background:var(--color-accent);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-bg)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+              </button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{noStops}}" hint-placeholder-val="{{false}}">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:40px 10px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+        <h3 style="margin:0;">No stops selected</h3>
+        <p style="font-size:13px;opacity:0.75;margin:0;max-width:240px;">You passed on every suggestion. Try a wider radius or a new prompt.</p>
+        <button class="btn btn-primary" onClick="{{onRestartEmpty}}">Back to map</button>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{hasStops}}" hint-placeholder-val="{{true}}">
+    <div style="flex:none;padding:12px 20px 26px;">
+      <button class="btn btn-primary btn-block" onClick="{{onAcceptRoute}}" style="height:50px;font-size:15px;">Accept this route</button>
+    </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<!-- ═══════════════ OVERVIEW SCREEN ═══════════════ -->
+<sc-if value="{{screenIsOverview}}" hint-placeholder-val="{{false}}">
+<div style="height:100%;display:flex;flex-direction:column;">
+  <div style="flex:1;overflow:auto;padding:60px 20px 100px;display:flex;flex-direction:column;gap:18px;">
+
+    <sc-if value="{{hasRoute}}" hint-placeholder-val="{{false}}">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent-700);">Overview</div>
+          <h1 style="font-size:23px;margin:2px 0 0;">Next up</h1>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;background:var(--color-surface);padding:6px 12px;border-radius:999px;box-shadow:var(--shadow-sm);">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="var(--color-accent)"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.9-6.3 3.9 1.7-7L2 9.2l7.1-.6L12 2z"/></svg>
+          <span style="font-weight:700;font-size:13.5px;">{{pointsTotal}}</span>
+        </div>
+      </div>
+
+      <div style="position:relative;border-radius:var(--radius-lg);box-shadow:var(--shadow-md);overflow:hidden;height:190px;">
+        <img src="{{nextStop.photoUrl}}" alt="{{nextStop.name}}" style="width:100%;height:100%;object-fit:cover;display:block;"/>
+        <div style="position:absolute;inset:0;background:linear-gradient(to top, rgba(20,14,8,0.75) 0%, rgba(20,14,8,0) 55%);"></div>
+        <div style="position:absolute;bottom:0;left:0;right:0;padding:14px 16px;">
+          <h3 style="margin:0 0 4px;font-size:18px;color:#fff;">{{nextStop.name}}</h3>
+          <div style="display:flex;gap:8px;font-size:12px;color:rgba(255,255,255,0.85);">
+            <span>{{nextStop.region}}</span>
+            <span>·</span>
+            <span>{{nextStop.distanceLabel}}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="border-radius:var(--radius-lg);background:var(--color-accent-100);padding:16px;display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <sc-if value="{{taskKindIsScan}}" hint-placeholder-val="{{true}}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.5" stroke-linecap="round"><path d="M7 3H4v3M17 3h3v3M7 21H4v-3M17 21h3v-3"/></svg>
+          </sc-if>
+          <sc-if value="{{taskKindIsVideo}}" hint-placeholder-val="{{false}}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
+          </sc-if>
+          <span style="font-family:var(--font-heading);font-size:14px;color:var(--color-accent-800);">{{currentTaskKindLabel}} · +{{currentTaskPoints}} pts</span>
+        </div>
+        <div style="font-size:13.5px;">{{currentTaskLabel}}</div>
+
+        <sc-if value="{{taskPending}}" hint-placeholder-val="{{true}}">
+          <button class="btn btn-primary" onClick="{{onCompleteTask}}" style="align-self:flex-start;">{{currentTaskActionLabel}}</button>
+        </sc-if>
+        <sc-if value="{{taskDoneNow}}" hint-placeholder-val="{{false}}">
+          <div style="display:flex;align-items:center;gap:8px;color:var(--color-accent-2-700);font-weight:600;font-size:13.5px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-700)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4 10-10"/></svg>
+            Nice! +{{currentTaskPoints}} points banked
+          </div>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{canAdvance}}" hint-placeholder-val="{{false}}">
+        <button class="btn btn-secondary btn-block" onClick="{{onAdvanceStop}}">Mark as visited · continue to next stop</button>
+      </sc-if>
+      <sc-if value="{{tripComplete}}" hint-placeholder-val="{{false}}">
+        <div style="text-align:center;padding:10px 0;font-size:13.5px;opacity:0.8;">🏁 That's the whole route — safe travels!</div>
+      </sc-if>
+
+      <sc-if value="{{hasRemaining}}" hint-placeholder-val="{{false}}">
+        <div>
+          <div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:color-mix(in srgb, var(--color-text) 55%, transparent);margin-bottom:8px;">Coming up</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <sc-for list="{{remainingRows}}" as="row" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:10px;background:var(--color-surface);border-radius:var(--radius-md);padding:8px 12px;">
+                <div style="width:22px;height:22px;border-radius:50%;background:var(--color-neutral-300);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none;">{{row.number}}</div>
+                <span style="font-size:13px;flex:1;">{{row.loc.name}}</span>
+                <span style="font-size:11.5px;opacity:0.6;">{{row.loc.distanceLabel}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{noRoute}}" hint-placeholder-val="{{true}}">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:60px 20px 0;">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M15 9l-2 6-6 2 2-6 6-2z"/></svg>
+        <h3 style="margin:0;">No route yet</h3>
+        <p style="font-size:13px;opacity:0.75;margin:0;max-width:230px;">Plan a route to see your next stop and daily tasks here.</p>
+        <button class="btn btn-primary" onClick="{{onPlanRoute}}">Plan a route</button>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<!-- ═══════════════ AREAS MAP SCREEN ═══════════════ -->
+<sc-if value="{{screenIsAreasMap}}" hint-placeholder-val="{{false}}">
+<div style="height:100%;position:relative;overflow:hidden;">
+  <iframe src="https://www.google.com/maps?q=Algiers,Algeria&z=8&output=embed" style="position:absolute;inset:0;width:100%;height:100%;border:0;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+
+  <div style="position:absolute;top:56px;left:20px;font-family:var(--font-heading);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent-800);background:var(--color-bg);padding:6px 14px;border-radius:999px;box-shadow:var(--shadow-sm);">Your selected areas</div>
+
+  <sc-for list="{{areaPins}}" as="pin" hint-placeholder-count="4">
+    <div style="position:absolute;left:{{pin.leftPct}}%;top:{{pin.topPct}}%;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;gap:2px;">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="var(--color-accent-700)" stroke="var(--color-accent-700)"><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z" stroke-width="0"/><circle cx="12" cy="9" r="2.6" fill="var(--color-bg)" stroke="none"/></svg>
+      <span style="font-size:10.5px;font-weight:600;color:var(--color-accent-800);background:var(--color-bg);padding:2px 8px;border-radius:8px;box-shadow:var(--shadow-sm);white-space:nowrap;">{{pin.name}}</span>
+    </div>
+  </sc-for>
+
+  <sc-if value="{{noSelectedAreas}}" hint-placeholder-val="{{false}}">
+    <div style="position:absolute;left:0;right:0;bottom:0;padding:16px 20px 100px;">
+      <div style="background:var(--color-bg);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);padding:16px;text-align:center;">
+        <p style="font-size:13px;opacity:0.75;margin:0 0 10px;">No areas selected yet.</p>
+        <button class="btn btn-primary" onClick="{{onGoPlan}}">Plan a route</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<!-- ═══════════════ FOLDER SCREEN ═══════════════ -->
+<sc-if value="{{screenIsFolder}}" hint-placeholder-val="{{false}}">
+<div style="height:100%;display:flex;flex-direction:column;">
+  <div style="flex:1;overflow:auto;padding:60px 20px 100px;display:flex;flex-direction:column;gap:16px;">
+    <div>
+      <div style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-accent-700);">Folder</div>
+      <h1 style="font-size:23px;margin:2px 0 0;">Scanned artifacts</h1>
+    </div>
+    <div style="position:relative;">
+      <svg style="position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text)" stroke-opacity="0.5" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input class="input" placeholder="Search your scans" value="{{folderSearch}}" onChange="{{onChangeFolderSearch}}" style="width:100%;box-sizing:border-box;padding-left:40px;"/>
+    </div>
+
+    <sc-if value="{{hasArtifacts}}" hint-placeholder-val="{{false}}">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <sc-for list="{{artifactRows}}" as="art" hint-placeholder-count="4">
+          <div style="border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm);background:var(--color-surface);">
+            <div style="position:relative;height:120px;">
+              <img src="{{art.photoUrl}}" alt="{{art.name}}" style="width:100%;height:100%;object-fit:cover;display:block;"/>
+              <div style="position:absolute;top:8px;left:8px;padding:3px 10px;border-radius:999px;background:var(--color-bg);">
+                <span style="font-size:10.5px;font-weight:700;color:var(--color-accent-700);">{{art.kindLabel}}</span>
+              </div>
+            </div>
+            <div style="padding:10px 12px;">
+              <div style="font-weight:600;font-size:13px;">{{art.name}}</div>
+              <div style="font-size:11px;opacity:0.6;">{{art.region}}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{noArtifacts}}" hint-placeholder-val="{{true}}">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:50px 20px 0;">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        <h3 style="margin:0;">No scans yet</h3>
+        <p style="font-size:13px;opacity:0.7;margin:0;max-width:220px;">Complete scan and video tasks on your route to fill this folder.</p>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{navBarVisible}}" hint-placeholder-val="{{false}}">
+  <div style="position:absolute;left:0;right:0;bottom:22px;display:flex;justify-content:center;z-index:40;">
+    <div style="display:flex;align-items:center;gap:6px;background:var(--color-text);border-radius:999px;padding:6px;box-shadow:var(--shadow-lg);">
+      <button onClick="{{onNavMap}}" style="border:none;background:{{mapPillBg}};color:{{mapPillColor}};display:flex;align-items:center;gap:6px;padding:{{mapPillPad}};border-radius:999px;cursor:pointer;font-family:var(--font-heading);font-size:13px;white-space:nowrap;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{mapPillColor}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3L3 5v16l6-2 6 2 6-2V3l-6 2-6-2z"/><path d="M9 3v16M15 5v16"/></svg>
+        <sc-if value="{{navIsMap}}" hint-placeholder-val="{{false}}"><span>Map</span></sc-if>
+      </button>
+      <button onClick="{{onNavHome}}" style="border:none;background:{{homePillBg}};color:{{homePillColor}};display:flex;align-items:center;gap:6px;padding:{{homePillPad}};border-radius:999px;cursor:pointer;font-family:var(--font-heading);font-size:13px;white-space:nowrap;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{homePillColor}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/></svg>
+        <sc-if value="{{navIsHome}}" hint-placeholder-val="{{false}}"><span>Home</span></sc-if>
+      </button>
+      <button onClick="{{onNavFolder}}" style="border:none;background:{{folderPillBg}};color:{{folderPillColor}};display:flex;align-items:center;gap:6px;padding:{{folderPillPad}};border-radius:999px;cursor:pointer;font-family:var(--font-heading);font-size:13px;white-space:nowrap;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{folderPillColor}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h5l2 2h11v10a1 1 0 01-1 1H3z"/></svg>
+        <sc-if value="{{navIsFolder}}" hint-placeholder-val="{{false}}"><span>Folder</span></sc-if>
+      </button>
+    </div>
+  </div>
+</sc-if>
+
+</div>
+</div>
+</x-import>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const REGIONS = ["Algiers & the Casbah","Constantine","Djemila & Timgad","Tassili n'Ajjer / Sahara","Kabylie mountains & coast"];
+
+const LOCATIONS = [
+  {id:"casbah", name:"Casbah of Algiers", region:"Algiers & the Casbah", category:"Old town", distanceKm:2, blurb:"A UNESCO-listed maze of Ottoman-era alleys, tiled courtyards and sea views tumbling down the hillside.", task:{type:"scan", label:"Scan a blue-tiled doorway in the Casbah"}},
+  {id:"martyrs", name:"Maqam Echahid", region:"Algiers & the Casbah", category:"Monument", distanceKm:5, blurb:"Three palm-frond concrete shells rising over the bay, Algiers' memorial to independence.", task:{type:"video", label:"Film a slow pan across the three palm shells"}},
+  {id:"sidimcid", name:"Sidi M'Cid Bridge", region:"Constantine", category:"Bridge", distanceKm:14, blurb:"A suspension bridge slung 175m over the Rhumel gorge, the signature view of the City of Bridges.", task:{type:"video", label:"Capture a short clip crossing the bridge"}},
+  {id:"ahmedbey", name:"Ahmed Bey Palace", region:"Constantine", category:"Palace", distanceKm:15, blurb:"Marble courtyards and painted ceilings inside the last Ottoman bey's residence.", task:{type:"scan", label:"Scan the painted ceiling medallion"}},
+  {id:"djemila", name:"Djemila", region:"Djemila & Timgad", category:"Roman ruins", distanceKm:52, blurb:"A Roman market town scattered across a mountain ridge, its forum still catching the evening light.", task:{type:"scan", label:"Scan the forum's inscription stone"}},
+  {id:"timgad", name:"Timgad", region:"Djemila & Timgad", category:"Roman ruins", distanceKm:61, blurb:"A grid-planned Roman colony known as the Pompeii of Africa, arch and colonnade intact.", task:{type:"video", label:"Film Trajan's Arch from below"}},
+  {id:"tassili", name:"Tassili n'Ajjer", region:"Tassili n'Ajjer / Sahara", category:"Desert plateau", distanceKm:38, blurb:"Sandstone spires and 8,000-year-old rock art scattered across a Saharan plateau.", task:{type:"scan", label:"Scan a rock-art panel"}},
+  {id:"gouraya", name:"Yemma Gouraya", region:"Kabylie mountains & coast", category:"Coastal peak", distanceKm:29, blurb:"A clifftop shrine over the Bay of Bejaia, with the Kabylie coastline unrolling below.", task:{type:"video", label:"Film the coastline from the shrine"}}
+];
+
+const photoUrl = (id, w, h) => `https://picsum.photos/seed/${id}/${w}/${h}`;
+
+const EXAMPLE_ARTIFACTS = [
+  { id: "example-casbah", name: "Casbah doorway", region: "Algiers & the Casbah", kindLabel: "Scan" },
+  { id: "example-timgad", name: "Trajan's Arch", region: "Djemila & Timgad", kindLabel: "Video" },
+  { id: "example-tassili", name: "Rock-art panel", region: "Tassili n'Ajjer / Sahara", kindLabel: "Scan" },
+  { id: "example-gouraya", name: "Coastline view", region: "Kabylie mountains & coast", kindLabel: "Video" },
+];
+
+const THINKING_MESSAGES = [
+  "Reading your radius…",
+  "Checking the Casbah's alleys…",
+  "Cross-referencing Constantine's bridges…",
+  "Matching Djemila and Timgad's ruins…",
+  "Scanning the Tassili plateau…",
+  "Ranking spots against your prompt…"
+];
+
+class Component extends DCLogic {
+  state = {
+    screen: "map",
+    radiusKm: 25,
+    prompt: "",
+    selectedRegions: REGIONS.slice(),
+    thinkIdx: 0,
+    queue: [], currentIndex: 0, accepted: [], rejected: [],
+    dragX: 0, dragY: 0, dragActive: false, noTransition: true,
+    detailLoc: null, detailAnswer: null,
+    modifyMode: false, askPanelOpen: false, aiChangeText: "", aiConversation: [],
+    routeAccepted: false, tasks: [], currentStopIdx: 0, points: 0,
+    videoPlaying: false, folderSearch: "",
+  };
+
+  componentWillUnmount() {
+    clearInterval(this._thinkTimer);
+    clearTimeout(this._thinkTimeout);
+  }
+
+  fmtDistance = (km) => {
+    const mi = this.props.unit === "mi";
+    const v = mi ? km * 0.621371 : km;
+    return `${Math.round(v)} ${mi ? "mi" : "km"}`;
+  };
+
+  toggleChip = (name) => {
+    this.setState((s) => {
+      const has = s.selectedRegions.includes(name);
+      return { selectedRegions: has ? s.selectedRegions.filter((r) => r !== name) : [...s.selectedRegions, name] };
+    });
+  };
+
+  onChangeRadius = (e) => this.setState({ radiusKm: Number(e.target.value) });
+  onChangePrompt = (e) => this.setState({ prompt: e.target.value });
+
+  onGenerate = () => {
+    this.setState({ screen: "thinking", thinkIdx: 0 });
+    this._thinkTimer = setInterval(() => {
+      this.setState((s) => ({ thinkIdx: (s.thinkIdx + 1) % THINKING_MESSAGES.length }));
+    }, 850);
+    this._thinkTimeout = setTimeout(() => {
+      clearInterval(this._thinkTimer);
+      const regions = this.state.selectedRegions;
+      const filtered = regions && regions.length ? LOCATIONS.filter((l) => regions.includes(l.region)) : LOCATIONS.slice();
+      const list = filtered.length ? filtered : LOCATIONS.slice();
+      this.setState({ screen: "swipe", queue: list, currentIndex: 0, accepted: [], rejected: [], dragX: 0, dragY: 0, noTransition: true });
+    }, 3200);
+  };
+
+  onBackToMap = () => {
+    clearInterval(this._thinkTimer);
+    clearTimeout(this._thinkTimeout);
+    this.setState({ screen: "map" });
+  };
+
+  getCurrentLoc = () => this.state.queue[this.state.currentIndex];
+
+  onCardPointerDown = (e) => {
+    this._dragging = true;
+    this._startX = e.clientX; this._startY = e.clientY;
+    this.setState({ dragX: 0, dragY: 0, dragActive: true, noTransition: true });
+  };
+  onCardPointerMove = (e) => {
+    if (!this._dragging) return;
+    this.setState({ dragX: e.clientX - this._startX, dragY: e.clientY - this._startY, noTransition: true });
+  };
+  onCardPointerUp = () => {
+    if (!this._dragging) return;
+    this._dragging = false;
+    const { dragX, dragY } = this.state;
+    if (dragX > 110) { this.flingAndCommit("right"); return; }
+    if (dragX < -110) { this.flingAndCommit("left"); return; }
+    if (dragY > 110 && Math.abs(dragX) < 70) {
+      this.openDetail(this.getCurrentLoc());
+      this.setState({ dragX: 0, dragY: 0, noTransition: false, dragActive: false });
+      return;
+    }
+    this.setState({ dragX: 0, dragY: 0, noTransition: false, dragActive: false });
+  };
+
+  flingAndCommit = (dir) => {
+    const flyX = dir === "right" ? 700 : -700;
+    this.setState((s) => ({ dragX: flyX, dragY: s.dragY, noTransition: false, dragActive: false }));
+    setTimeout(() => this.commitSwipe(dir === "right"), 260);
+  };
+
+  commitSwipe = (isAccept) => {
+    const loc = this.getCurrentLoc();
+    if (!loc) return;
+    this.setState((s) => {
+      const accepted = isAccept ? [...s.accepted, loc] : s.accepted;
+      const rejected = !isAccept ? [...s.rejected, loc] : s.rejected;
+      const nextIndex = s.currentIndex + 1;
+      const done = nextIndex >= s.queue.length;
+      return { accepted, rejected, currentIndex: nextIndex, dragX: 0, dragY: 0, noTransition: true, dragActive: false, screen: done ? "result" : s.screen };
+    });
+  };
+
+  onBtnReject = () => { if (!this.state.dragActive) this.flingAndCommit("left"); };
+  onBtnAccept = () => { if (!this.state.dragActive) this.flingAndCommit("right"); };
+  onBtnInfo = () => this.openDetail(this.getCurrentLoc());
+
+  openDetail = (loc) => this.setState({ detailLoc: loc, detailAnswer: null });
+  closeDetail = () => this.setState({ detailLoc: null, detailAnswer: null });
+  onAskBest = () => this.setState({ detailAnswer: "Early morning or just before sunset — softer light, thinner crowds." });
+  onAskTime = () => this.setState({ detailAnswer: "Budget 2–3 hours to explore at an easy pace." });
+  onDetailAccept = () => { this.commitSwipe(true); this.closeDetail(); };
+  onDetailReject = () => { this.commitSwipe(false); this.closeDetail(); };
+
+  onToggleModify = () => this.setState((s) => ({ modifyMode: !s.modifyMode }));
+  onToggleAskPanel = () => this.setState((s) => ({ askPanelOpen: !s.askPanelOpen }));
+  onChangeAIText = (e) => this.setState({ aiChangeText: e.target.value });
+  onSendAIChange = () => {
+    const text = this.state.aiChangeText.trim();
+    if (!text) return;
+    const reply = "Noted — I'll weight the next suggestions toward that.";
+    this.setState((s) => ({ aiConversation: [...s.aiConversation, { role: "user", text }, { role: "ai", text: reply }], aiChangeText: "" }));
+  };
+  moveStop = (idx, dir) => {
+    this.setState((s) => {
+      const arr = [...s.accepted];
+      const j = idx + dir;
+      if (j < 0 || j >= arr.length) return null;
+      const tmp = arr[idx]; arr[idx] = arr[j]; arr[j] = tmp;
+      return { accepted: arr };
+    });
+  };
+  onTogglePlay = () => this.setState((s) => ({ videoPlaying: !s.videoPlaying }));
+  onRestartEmpty = () => this.setState({ screen: "map" });
+
+  onAcceptRoute = () => {
+    const pointsPerTask = this.props.pointsPerTask ?? 30;
+    const tasks = this.state.accepted.map((l) => ({
+      id: l.id, points: pointsPerTask, state: "pending",
+      type: l.task.type, label: l.task.label,
+    }));
+    this.setState({ screen: "overview", routeAccepted: true, tasks, currentStopIdx: 0 });
+  };
+  onPlanRoute = () => this.setState({ screen: "map" });
+  onCompleteTask = () => {
+    this.setState((s) => {
+      const idx = s.currentStopIdx;
+      const t = s.tasks[idx];
+      if (!t || t.state === "done") return null;
+      const tasks = [...s.tasks];
+      tasks[idx] = { ...t, state: "done" };
+      return { tasks, points: (s.points || 0) + t.points };
+    });
+  };
+  onAdvanceStop = () => {
+    this.setState((s) => {
+      const next = s.currentStopIdx + 1;
+      return next < s.accepted.length ? { currentStopIdx: next } : null;
+    });
+  };
+
+  onChangeFolderSearch = (e) => this.setState({ folderSearch: e.target.value });
+  onNavMap = () => this.setState({ screen: "areasMap" });
+  onNavHome = () => this.setState((s) => ({ screen: s.routeAccepted ? "overview" : "map" }));
+  onNavFolder = () => this.setState({ screen: "folder" });
+
+  renderVals() {
+    const s = this.state;
+    const screen = s.screen;
+
+    const chipRows = REGIONS.map((name) => ({
+      name,
+      pillClass: s.selectedRegions.includes(name) ? "tag tag-accent" : "tag tag-outline",
+      onToggle: () => this.toggleChip(name),
+    }));
+
+    const radiusCirclePx = Math.round(30 + s.radiusKm * 2.2);
+    const currentLoc = s.queue[s.currentIndex] || null;
+    const nextLoc = s.queue[s.currentIndex + 1] || null;
+
+    const dx = s.dragX || 0, dy = s.dragY || 0;
+    const cardTransform = `translate(${dx}px, ${dy}px) rotate(${dx / 14}deg)`;
+    const cardTransition = s.noTransition ? "none" : "transform 0.28s ease";
+    const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
+
+    const acceptedRows = s.accepted.map((loc, i) => ({
+      loc: { ...loc, thumbUrl: photoUrl(loc.id, 120, 120) }, number: i + 1,
+      connectorClass: i === s.accepted.length - 1 ? "last-connector" : "",
+      onMoveUp: () => this.moveStop(i, -1),
+      onMoveDown: () => this.moveStop(i, 1),
+    }));
+
+    const aiConversationRows = s.aiConversation.map((m) => ({
+      text: m.text,
+      align: m.role === "user" ? "flex-end" : "flex-start",
+      bg: m.role === "user" ? "var(--color-accent-200)" : "var(--color-neutral-100)",
+      color: "var(--color-text)",
+    }));
+
+    const totalKm = s.accepted.reduce((sum, l) => sum + l.distanceKm, 0);
+
+    const currentTask = s.tasks[s.currentStopIdx];
+    const nextStop = s.accepted[s.currentStopIdx];
+    const remainingRows = s.accepted.slice(s.currentStopIdx + 1).map((loc, i) => ({ loc, number: s.currentStopIdx + 2 + i }));
+
+    const doneArtifacts = s.tasks
+      .filter((t) => t.state === "done")
+      .map((t) => {
+        const loc = s.accepted.find((l) => l.id === t.id);
+        return {
+          id: t.id,
+          name: loc ? loc.name : t.id,
+          region: loc ? loc.region : "",
+          kindLabel: t.type === "video" ? "Video" : "Scan",
+          photoUrl: photoUrl(t.id + "-artifact", 300, 300),
+        };
+      });
+    const exampleArtifacts = EXAMPLE_ARTIFACTS.map((a) => ({ ...a, photoUrl: photoUrl(a.id, 300, 300) }));
+    const artifacts = [...doneArtifacts, ...exampleArtifacts];
+    const q = (s.folderSearch || "").toLowerCase();
+    const artifactRows = artifacts.filter((a) => a.name.toLowerCase().includes(q));
+    const navIsHome = screen === "overview";
+    const navIsFolder = screen === "folder";
+    const navIsMap = screen === "areasMap";
+    const mutedColor = "color-mix(in srgb, var(--color-bg) 60%, transparent)";
+    const areaPositions = [{left:30,top:35},{left:62,top:30},{left:45,top:58},{left:70,top:62},{left:25,top:70},{left:55,top:78},{left:38,top:22},{left:78,top:45}];
+    const areaPins = s.accepted.map((loc, i) => ({ name: loc.name, leftPct: areaPositions[i % areaPositions.length].left, topPct: areaPositions[i % areaPositions.length].top }));
+
+    return {
+      screenIsMap: screen === "map",
+      screenIsThinking: screen === "thinking",
+      screenIsSwipe: screen === "swipe",
+      screenIsResult: screen === "result",
+      screenIsOverview: screen === "overview",
+      screenIsFolder: screen === "folder",
+      screenIsAreasMap: screen === "areasMap",
+
+      zelligeVisible: this.props.zelligeVisible ?? true,
+
+      radiusKm: s.radiusKm,
+      radiusLabel: `${s.radiusKm} km`,
+      radiusCirclePx,
+      onChangeRadius: this.onChangeRadius,
+      prompt: s.prompt,
+      onChangePrompt: this.onChangePrompt,
+      chipRows,
+      onGenerate: this.onGenerate,
+
+      thinkingMessage: THINKING_MESSAGES[s.thinkIdx],
+
+      swipeProgressLabel: currentLoc ? `${s.currentIndex + 1} of ${s.queue.length}` : "",
+      hasCurrentCard: !!currentLoc,
+      hasNextCard: !!nextLoc,
+      currentLoc: currentLoc ? { ...currentLoc, distanceLabel: this.fmtDistance(currentLoc.distanceKm), photoUrl: photoUrl(currentLoc.id, 640, 900) } : {},
+      nextLoc: nextLoc ? { ...nextLoc, photoUrl: photoUrl(nextLoc.id, 640, 900) } : {},
+      cardTransform, cardTransition,
+      likeOpacity: clamp01(dx / 110),
+      nopeOpacity: clamp01(-dx / 110),
+      infoOpacity: clamp01(dy / 110) * (1 - Math.min(Math.abs(dx) / 70, 1)),
+      onCardPointerDown: this.onCardPointerDown,
+      onCardPointerMove: this.onCardPointerMove,
+      onCardPointerUp: this.onCardPointerUp,
+      onBackToMap: this.onBackToMap,
+      onBtnReject: this.onBtnReject,
+      onBtnAccept: this.onBtnAccept,
+      onBtnInfo: this.onBtnInfo,
+
+      detailOpen: !!s.detailLoc,
+      detailLoc: s.detailLoc ? { ...s.detailLoc, photoUrl: photoUrl(s.detailLoc.id, 640, 500) } : {},
+      detailAnswerVisible: !!s.detailAnswer,
+      detailAnswerText: s.detailAnswer || "",
+      onAskBest: this.onAskBest, onAskTime: this.onAskTime,
+      onDetailAccept: this.onDetailAccept, onDetailReject: this.onDetailReject,
+      onCloseDetail: this.closeDetail,
+
+      hasStops: s.accepted.length > 0,
+      noStops: s.accepted.length === 0,
+      stopsCountLabel: `${s.accepted.length} stop${s.accepted.length === 1 ? "" : "s"}`,
+      totalDistanceLabel: this.fmtDistance(totalKm),
+      acceptedRows,
+      modifyMode: s.modifyMode,
+      modifyLabel: s.modifyMode ? "Done" : "Modify manually",
+      onToggleModify: this.onToggleModify,
+      askPanelOpen: s.askPanelOpen,
+      askPanelLabel: s.askPanelOpen ? "Hide AI chat ▲" : "Ask AI for changes ▼",
+      onToggleAskPanel: this.onToggleAskPanel,
+      aiChangeText: s.aiChangeText,
+      onChangeAIText: this.onChangeAIText,
+      onSendAIChange: this.onSendAIChange,
+      aiConversationRows,
+      videoPlaying: s.videoPlaying,
+      onTogglePlay: this.onTogglePlay,
+      playLabel: s.videoPlaying ? "Playing preview…" : "Tap to preview",
+      onAcceptRoute: this.onAcceptRoute,
+      onRestartEmpty: this.onRestartEmpty,
+      trailerPhotoUrl: photoUrl("aitour-route-trailer", 720, 380),
+
+      hasRoute: s.routeAccepted,
+      noRoute: !s.routeAccepted,
+      pointsTotal: s.points || 0,
+      nextStop: nextStop ? { ...nextStop, distanceLabel: this.fmtDistance(nextStop.distanceKm), photoUrl: photoUrl(nextStop.id, 640, 420) } : {},
+      currentTaskPoints: currentTask ? currentTask.points : (this.props.pointsPerTask ?? 30),
+      currentTaskLabel: currentTask ? currentTask.label : "",
+      currentTaskKindLabel: currentTask && currentTask.type === "video" ? "Video task" : "Scan task",
+      currentTaskActionLabel: currentTask && currentTask.type === "video" ? "Record it" : "Scan it",
+      taskKindIsScan: !currentTask || currentTask.type !== "video",
+      taskKindIsVideo: !!currentTask && currentTask.type === "video",
+      taskPending: !!currentTask && currentTask.state === "pending",
+      taskDoneNow: !!currentTask && currentTask.state === "done",
+      onCompleteTask: this.onCompleteTask,
+      canAdvance: !!currentTask && currentTask.state === "done" && s.currentStopIdx < s.accepted.length - 1,
+      tripComplete: !!currentTask && currentTask.state === "done" && s.currentStopIdx === s.accepted.length - 1,
+      onAdvanceStop: this.onAdvanceStop,
+      hasRemaining: remainingRows.length > 0,
+      remainingRows,
+      onPlanRoute: this.onPlanRoute,
+
+      folderSearch: s.folderSearch,
+      onChangeFolderSearch: this.onChangeFolderSearch,
+      hasArtifacts: artifactRows.length > 0,
+      noArtifacts: artifactRows.length === 0,
+      artifactRows,
+
+      areaPins,
+      noSelectedAreas: s.accepted.length === 0,
+      onGoPlan: this.onPlanRoute,
+
+      navBarVisible: screen === "overview" || screen === "folder" || screen === "areasMap",
+      navMutedColor: mutedColor,
+      navIsHome, navIsFolder, navIsMap,
+      mapPillBg: navIsMap ? "var(--color-accent)" : "transparent",
+      mapPillColor: navIsMap ? "var(--color-bg)" : mutedColor,
+      mapPillPad: navIsMap ? "10px 16px" : "10px 14px",
+      homePillBg: navIsHome ? "var(--color-accent)" : "transparent",
+      homePillColor: navIsHome ? "var(--color-bg)" : mutedColor,
+      homePillPad: navIsHome ? "10px 16px" : "10px 14px",
+      folderPillBg: navIsFolder ? "var(--color-accent)" : "transparent",
+      folderPillColor: navIsFolder ? "var(--color-bg)" : mutedColor,
+      folderPillPad: navIsFolder ? "10px 16px" : "10px 14px",
+      onNavMap: this.onNavMap,
+      onNavHome: this.onNavHome,
+      onNavFolder: this.onNavFolder,
+    };
+  }
+}
+
+</script>
+</body>
+</html>
