@@ -3,10 +3,34 @@ import 'package:flutter/material.dart';
 import '../models/location.dart';
 import '../theme.dart';
 import 'cube3d.dart';
-import 'net_image.dart';
 
-/// A slowly auto-rotating 3D cube used as a folder-grid thumbnail — the
-/// artifact photo wraps the front/back faces, solid panels form the sides.
+/// Solid-color placeholder faces for an artifact cube — no photo texture.
+/// The cube is a stand-in for "something was captured here," shaded like a
+/// simple flat-design die (lighter top, mid front, darker sides/back) and
+/// colored by kind so scans and videos read apart at a glance.
+List<Widget> artifactCubeFaces(Artifact artifact, {double iconSize = 28}) {
+  final isVideo = artifact.kindLabel.toLowerCase() == 'video';
+  final base = isVideo ? AppTheme.teal : AppTheme.accent;
+  final icon = isVideo ? Icons.videocam_rounded : Icons.qr_code_scanner_rounded;
+
+  Color shade(double amount) {
+    if (amount >= 0) return Color.lerp(base, Colors.white, amount)!;
+    return Color.lerp(base, Colors.black, -amount)!;
+  }
+
+  Widget face(Color color, {Widget? child}) => ColoredBox(color: color, child: Center(child: child));
+
+  return [
+    face(base, child: Icon(icon, color: Colors.white.withOpacity(0.85), size: iconSize)), // front
+    face(shade(-0.28)), // back
+    face(shade(-0.16)), // left
+    face(shade(-0.16)), // right
+    face(shade(0.22)), // top
+    face(shade(-0.10)), // bottom
+  ];
+}
+
+/// A slowly auto-rotating 3D cube used as a folder-grid thumbnail.
 class ArtifactCubeThumbnail extends StatefulWidget {
   final Artifact artifact;
   final double size;
@@ -18,9 +42,8 @@ class ArtifactCubeThumbnail extends StatefulWidget {
 }
 
 class _ArtifactCubeThumbnailState extends State<ArtifactCubeThumbnail> with SingleTickerProviderStateMixin {
-  // A gentle side-to-side rock rather than a full spin, so the photo face
-  // stays mostly toward the viewer — a full 360 turn hides the photo behind
-  // solid side panels for most of the cycle, which reads poorly as a preview.
+  // A gentle side-to-side rock rather than a full spin, so the front face
+  // stays mostly toward the viewer.
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 7),
@@ -34,12 +57,7 @@ class _ArtifactCubeThumbnailState extends State<ArtifactCubeThumbnail> with Sing
 
   @override
   Widget build(BuildContext context) {
-    final image = NetImage(
-      url: widget.artifact.photoUrl,
-      isLocalFile: widget.artifact.isLocalFile,
-      fit: BoxFit.cover,
-    );
-    final edge = Container(color: AppTheme.tertiary);
+    final faces = artifactCubeFaces(widget.artifact);
 
     return AnimatedBuilder(
       animation: _controller,
@@ -49,12 +67,12 @@ class _ArtifactCubeThumbnailState extends State<ArtifactCubeThumbnail> with Sing
           size: widget.size,
           rotateX: -0.16 + math.sin(t * 0.5) * 0.03,
           rotateY: math.sin(t) * 0.5,
-          front: image,
-          back: image,
-          left: edge,
-          right: edge,
-          top: edge,
-          bottom: edge,
+          front: faces[0],
+          back: faces[1],
+          left: faces[2],
+          right: faces[3],
+          top: faces[4],
+          bottom: faces[5],
         );
       },
     );

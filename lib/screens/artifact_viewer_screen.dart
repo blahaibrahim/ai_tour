@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import '../models/location.dart';
 import '../theme.dart';
+import '../widgets/artifact_cube.dart';
 import '../widgets/cube3d.dart';
-import '../widgets/net_image.dart';
 import '../widgets/pressable_scale.dart';
 
 /// Full interactive 3D view of an artifact — drag to turn it around, pinch
@@ -69,8 +69,7 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen> with Single
   @override
   Widget build(BuildContext context) {
     final art = widget.artifact;
-    final image = NetImage(url: art.photoUrl, isLocalFile: art.isLocalFile, fit: BoxFit.cover);
-    final edge = Container(color: AppTheme.tertiary);
+    final faces = artifactCubeFaces(art, iconSize: 46);
     final cubeSize = MediaQuery.of(context).size.shortestSide * 0.62;
 
     return Scaffold(
@@ -131,12 +130,12 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen> with Single
                       size: cubeSize,
                       rotateX: _rotX,
                       rotateY: _rotY,
-                      front: image,
-                      back: image,
-                      left: edge,
-                      right: edge,
-                      top: edge,
-                      bottom: edge,
+                      front: faces[0],
+                      back: faces[1],
+                      left: faces[2],
+                      right: faces[3],
+                      top: faces[4],
+                      bottom: faces[5],
                     ),
                   ),
                 ),

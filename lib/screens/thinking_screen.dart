@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/app_backdrop.dart';
 
 class ThinkingScreen extends StatefulWidget {
   const ThinkingScreen({super.key});
@@ -40,40 +41,42 @@ class _ThinkingScreenState extends State<ThinkingScreen> with TickerProviderStat
     final state = context.watch<AppState>();
 
     return Scaffold(
-      body: Center(
+      body: AppBackdrop(child: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 36),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Spinning geometric square
+              // Spinning gradient ring
               SizedBox(
-                width: 56,
-                height: 56,
+                width: 64,
+                height: 64,
                 child: Stack(
+                  alignment: Alignment.center,
                   children: [
-                    // Rotating square
-                    Positioned.fill(
-                      child: RotationTransition(
-                        turns: Tween(begin: 0.0, end: 1.0).animate(_spinController),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: AppTheme.brLg,
-                            border: Border.all(color: AppTheme.accent, width: 2.5),
+                    RotationTransition(
+                      turns: Tween(begin: 0.0, end: 1.0).animate(_spinController),
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        padding: const EdgeInsets.all(9),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: SweepGradient(
+                            colors: [...AppTheme.heroGradient, AppTheme.duskDeep],
                           ),
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.bg),
                         ),
                       ),
                     ),
                     // Pulsing icon
-                    Positioned.fill(
-                      child: FadeTransition(
-                        opacity: Tween<double>(begin: 0.35, end: 1.0).animate(_pulseController),
-                        child: ScaleTransition(
-                          scale: Tween<double>(begin: 0.85, end: 1.05).animate(_pulseController),
-                          child: const Center(
-                            child: Icon(Icons.send, color: AppTheme.accent, size: 20),
-                          ),
-                        ),
+                    FadeTransition(
+                      opacity: Tween<double>(begin: 0.35, end: 1.0).animate(_pulseController),
+                      child: ScaleTransition(
+                        scale: Tween<double>(begin: 0.85, end: 1.05).animate(_pulseController),
+                        child: const Icon(Icons.send, color: AppTheme.accent, size: 22),
                       ),
                     ),
                   ],
@@ -110,7 +113,7 @@ class _ThinkingScreenState extends State<ThinkingScreen> with TickerProviderStat
             ],
           ),
         ),
-      ),
+      )),
     );
   }
 }

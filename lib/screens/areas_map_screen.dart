@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/glass_surface.dart';
 import '../widgets/staggered_entrance.dart';
 
 class AreasMapScreen extends StatelessWidget {
@@ -28,7 +29,7 @@ class AreasMapScreen extends StatelessWidget {
                     ? CameraFit.coordinates(
                         coordinates: points,
                         padding: const EdgeInsets.fromLTRB(50, 140, 50, 220),
-                        maxZoom: 11,
+                        maxZoom: 16,
                       )
                     : null,
                 interactionOptions: const InteractionOptions(
@@ -56,13 +57,10 @@ class AreasMapScreen extends StatelessWidget {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Container(
+                              GlassSurface(
+                                tint: GlassTint.dark,
+                                borderRadius: AppTheme.brPill,
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.tertiary,
-                                  borderRadius: AppTheme.brPill,
-                                  boxShadow: AppTheme.shadowSm,
-                                ),
                                 child: Text(
                                   state.accepted[i].name,
                                   maxLines: 1,
@@ -99,13 +97,10 @@ class AreasMapScreen extends StatelessWidget {
           Positioned(
             top: 56,
             left: 20,
-            child: Container(
+            child: GlassSurface(
+              tint: GlassTint.dark,
+              borderRadius: AppTheme.brPill,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-              decoration: BoxDecoration(
-                color: AppTheme.tertiary,
-                borderRadius: AppTheme.brPill,
-                boxShadow: AppTheme.shadowSm,
-              ),
               child: Text(
                 'YOUR SELECTED AREAS',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -124,13 +119,10 @@ class AreasMapScreen extends StatelessWidget {
               bottom: 0,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-                child: Container(
+                child: GlassSurface(
+                  borderRadius: AppTheme.brLg,
+                  boxShadow: AppTheme.shadowMd,
                   padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    borderRadius: AppTheme.brLg,
-                    boxShadow: AppTheme.shadowMd,
-                  ),
                   child: Column(
                     children: [
                       Text('No areas selected yet.', style: TextStyle(fontSize: 13, color: AppTheme.text.withOpacity(0.75))),

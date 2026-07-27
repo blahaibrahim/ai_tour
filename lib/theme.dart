@@ -23,6 +23,19 @@ class AppTheme {
   static const Color tealSoft = Color(0xFFDEEAE5); // soft teal tint bg
 
   static const Color success = Color(0xFF3F8F5F);
+  static const Color error = Color(0xFFD32F2F);
+
+  // "Dusk" — a desert-sunset gradient (deep night plum → brick → amber),
+  // used for hero surfaces so the app reads as a colored, considered canvas
+  // rather than a white page with color only on top.
+  static const Color duskDeep = Color(0xFF2F1B3D);
+  static const Color duskWine = Color(0xFF9B3A2E);
+  static const Color duskGold = Color(0xFFB9762E);
+  static const List<Color> heroGradient = [duskDeep, duskWine, duskGold];
+
+  // A barely-there warm gradient used as the whole-app page background,
+  // instead of a flat cream fill.
+  static const Color bgTop = Color(0xFFFCEEDE);
 
   // Legacy aliases (kept so existing call sites don't need renaming)
   static const Color primary = bg;

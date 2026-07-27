@@ -4,7 +4,9 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/glass_surface.dart';
 import '../widgets/pressable_scale.dart';
+import '../widgets/location_search_bar.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -15,10 +17,14 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   bool _entered = false;
+  final MapController _mapController = MapController();
+  LatLng? _lastCenter;
+  late final ValueNotifier<LatLng> _centerNotifier;
 
   @override
   void initState() {
     super.initState();
+    _centerNotifier = ValueNotifier(const LatLng(36.7538, 3.0588));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _entered = true);
     });
@@ -30,6 +36,17 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
 
+    // Update map if center changes from external search
+    if (_lastCenter != state.mapCenter && _entered) {
+      _lastCenter = state.mapCenter;
+      _centerNotifier.value = state.mapCenter;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _mapController.move(state.mapCenter, _mapController.camera.zoom);
+        }
+      });
+    }
+
     return Scaffold(
       body: Stack(
         children: [
@@ -37,12 +54,22 @@ class _MapScreenState extends State<MapScreen> {
           // the rest of the app. The radius circle and center pin are real
           // map layers anchored to Algiers' coordinates, so they pan and
           // zoom together with the map instead of floating fixed on screen.
-          Positioned.fill(
+          Positioned(
+            top: -300,
+            bottom: 0,
+            left: 0,
+            right: 0,
             child: FlutterMap(
-              options: const MapOptions(
-                initialCenter: _algiers,
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: state.mapCenter,
                 initialZoom: 12.0,
-                interactionOptions: InteractionOptions(
+                onPositionChanged: (position, hasGesture) {
+                  if (position.center != null) {
+                    _centerNotifier.value = position.center!;
+                  }
+                },
+                interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                 ),
               ),
@@ -57,71 +84,34 @@ class _MapScreenState extends State<MapScreen> {
                   duration: const Duration(milliseconds: 260),
                   curve: Curves.easeOut,
                   builder: (context, animatedRadiusKm, child) {
-                    return CircleLayer(
-                      circles: [
-                        CircleMarker(
-                          point: _algiers,
-                          radius: animatedRadiusKm * 1000,
-                          useRadiusInMeter: true,
-                          color: AppTheme.accent.withOpacity(0.12),
-                          borderColor: AppTheme.accent.withOpacity(0.85),
-                          borderStrokeWidth: 2,
-                        ),
-                      ],
+                    return ValueListenableBuilder<LatLng>(
+                      valueListenable: _centerNotifier,
+                      builder: (context, center, child) {
+                        return CircleLayer(
+                          circles: [
+                            CircleMarker(
+                              point: center,
+                              radius: animatedRadiusKm * 1000,
+                              useRadiusInMeter: true,
+                              color: AppTheme.accent.withOpacity(0.12),
+                              borderColor: AppTheme.accent.withOpacity(0.85),
+                              borderStrokeWidth: 2,
+                            ),
+                          ],
+                        );
+                      }
                     );
                   },
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _algiers,
-                      width: 100,
-                      height: 68,
-                      alignment: Alignment.topCenter,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppTheme.tertiary,
-                              borderRadius: AppTheme.brPill,
-                              boxShadow: AppTheme.shadowSm,
-                            ),
-                            child: const Text(
-                              'Algiers',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.primary,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: AppTheme.accent,
-                              shape: BoxShape.circle,
-                              boxShadow: AppTheme.shadowSm,
-                              border: Border.all(color: AppTheme.onAccent, width: 2.5),
-                            ),
-                            child: const Icon(Icons.location_on, color: AppTheme.onAccent, size: 17),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
 
-          // Floating Badge
+          // Search Bar (replaces the top-left Floating Badge)
           Positioned(
             top: 56,
-            left: 20,
+            left: 16,
+            right: 16,
             child: AnimatedSlide(
               offset: _entered ? Offset.zero : const Offset(0, -0.4),
               duration: const Duration(milliseconds: 420),
@@ -130,22 +120,7 @@ class _MapScreenState extends State<MapScreen> {
                 opacity: _entered ? 1 : 0,
                 duration: const Duration(milliseconds: 420),
                 curve: Curves.easeOut,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: AppTheme.tertiary,
-                    borderRadius: AppTheme.brPill,
-                    boxShadow: AppTheme.shadowSm,
-                  ),
-                  child: Text(
-                    'AI TOUR',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontSize: 11,
-                          letterSpacing: 1.2,
-                          color: AppTheme.primary,
-                        ),
-                  ),
-                ),
+                child: const LocationSearchBar(),
               ),
             ),
           ),
@@ -163,13 +138,9 @@ class _MapScreenState extends State<MapScreen> {
                 opacity: _entered ? 1 : 0,
                 duration: const Duration(milliseconds: 380),
                 curve: Curves.easeOut,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppTheme.bg,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
-                    boxShadow: AppTheme.shadowLg,
-                  ),
-                  clipBehavior: Clip.antiAlias,
+                child: GlassSurface(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
+                  boxShadow: AppTheme.shadowLg,
                   child: SafeArea(
                     top: false,
                     child: Padding(
@@ -178,18 +149,6 @@ class _MapScreenState extends State<MapScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Drag handle
-                          Center(
-                            child: Container(
-                              width: 36,
-                              height: 4,
-                              margin: const EdgeInsets.only(bottom: 14),
-                              decoration: BoxDecoration(
-                                color: AppTheme.divider,
-                                borderRadius: AppTheme.brPill,
-                              ),
-                            ),
-                          ),
                           Text(
                             'Where do you want to explore?',
                             style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 20, height: 1.1),
@@ -234,6 +193,40 @@ class _MapScreenState extends State<MapScreen> {
                             onChanged: state.setRadius,
                           ),
 
+                          const SizedBox(height: 16),
+                          // Wanted Visits Slider
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Number of visits wanted',
+                                style: TextStyle(fontSize: 11.5, color: AppTheme.text.withOpacity(0.65)),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.accentSoft,
+                                  borderRadius: AppTheme.brPill,
+                                ),
+                                child: Text(
+                                  '${state.wantedVisits}',
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.accentDark,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Slider(
+                            value: state.wantedVisits.toDouble(),
+                            min: 1,
+                            max: 20,
+                            divisions: 19,
+                            onChanged: state.setWantedVisits,
+                          ),
+
                           const SizedBox(height: 8),
                           Text(
                             "TELL THE AI WHAT YOU'RE AFTER",
@@ -252,38 +245,18 @@ class _MapScreenState extends State<MapScreen> {
                               color: AppTheme.surfaceAlt,
                               borderRadius: AppTheme.brMd,
                             ),
-                            child: Stack(
-                              children: [
-                                TextField(
-                                  maxLines: 2,
-                                  onChanged: state.setPrompt,
-                                  decoration: InputDecoration(
-                                    hintText: "quiet Roman ruins, coastal viewpoints...",
-                                    hintStyle: TextStyle(color: AppTheme.text.withOpacity(0.4), fontSize: 13),
-                                    filled: false,
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    contentPadding: const EdgeInsets.fromLTRB(16, 14, 50, 14),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 8,
-                                  bottom: 8,
-                                  child: PressableScale(
-                                    onTap: () => state.onGenerate(),
-                                    child: Container(
-                                      width: 30,
-                                      height: 30,
-                                      decoration: const BoxDecoration(
-                                        color: AppTheme.accent,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.arrow_upward_rounded, color: AppTheme.onAccent, size: 15),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            child: TextField(
+                              maxLines: 2,
+                              onChanged: state.setPrompt,
+                              decoration: InputDecoration(
+                                hintText: "quiet Roman ruins, coastal viewpoints...",
+                                hintStyle: TextStyle(color: AppTheme.text.withOpacity(0.4), fontSize: 13),
+                                filled: false,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                              ),
                             ),
                           ),
 

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'state/app_state.dart';
 import 'theme.dart';
+import 'widgets/glass_surface.dart';
 import 'widgets/pressable_scale.dart';
 import 'screens/map_screen.dart';
 import 'screens/thinking_screen.dart';
@@ -118,13 +119,10 @@ class AppShell extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
+                    GlassSurface(
+                      borderRadius: AppTheme.brPill,
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.tertiary,
-                        borderRadius: AppTheme.brPill,
-                        boxShadow: AppTheme.shadowLg,
-                      ),
+                      boxShadow: AppTheme.shadowLg,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -211,7 +209,7 @@ class _NavButton extends StatelessWidget {
               child: Icon(
                 icon,
                 size: 22,
-                color: isActive ? AppTheme.onAccent : AppTheme.bg.withOpacity(0.55),
+                color: isActive ? AppTheme.onAccent : AppTheme.ink.withOpacity(0.5),
               ),
             ),
             AnimatedSize(

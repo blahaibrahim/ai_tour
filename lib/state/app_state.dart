@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/location.dart';
 
 class ChatMessage {
@@ -10,7 +11,9 @@ class ChatMessage {
 
 class AppState extends ChangeNotifier {
   String screen = 'map';
-  double radiusKm = 25.0;
+  double radiusKm = 5.0;
+  int wantedVisits = 5;
+  LatLng mapCenter = const LatLng(36.7538, 3.0588);
   String prompt = '';
   List<String> selectedRegions = List.from(regions);
   int thinkIdx = 0;
@@ -20,7 +23,7 @@ class AppState extends ChangeNotifier {
   List<Location> rejected = [];
   
   Location? detailLoc;
-  String? detailAnswer;
+  List<ChatMessage> detailConversation = [];
 
   bool modifyMode = false;
   bool askPanelOpen = false;
@@ -30,11 +33,32 @@ class AppState extends ChangeNotifier {
   List<Task> tasks = [];
   int currentStopIdx = 0;
   int points = 0;
+  int taskRegenerationsLeft = 3;
 
   bool videoPlaying = false;
   String folderSearch = '';
 
   List<Artifact> capturedArtifacts = [];
+
+  Set<String> savedLocationIds = {};
+
+  DateTime? tripDate;
+  DateTime? tripEndDate;
+
+  void setTripDate(DateTime? start, [DateTime? end]) {
+    tripDate = start;
+    tripEndDate = end;
+    notifyListeners();
+  }
+
+  void toggleSavedLocation(String id) {
+    if (savedLocationIds.contains(id)) {
+      savedLocationIds.remove(id);
+    } else {
+      savedLocationIds.add(id);
+    }
+    notifyListeners();
+  }
 
   Timer? _thinkTimer;
 
@@ -63,6 +87,16 @@ class AppState extends ChangeNotifier {
 
   void setRadius(double val) {
     radiusKm = val;
+    notifyListeners();
+  }
+
+  void setWantedVisits(double val) {
+    wantedVisits = val.toInt();
+    notifyListeners();
+  }
+
+  void setMapCenter(LatLng center) {
+    mapCenter = center;
     notifyListeners();
   }
 
@@ -126,18 +160,20 @@ class AppState extends ChangeNotifier {
 
   void openDetail(Location loc) {
     detailLoc = loc;
-    detailAnswer = null;
+    detailConversation.clear();
     notifyListeners();
   }
 
   void closeDetail() {
     detailLoc = null;
-    detailAnswer = null;
+    detailConversation.clear();
     notifyListeners();
   }
 
-  void askQuestion(String answer) {
-    detailAnswer = answer;
+  void askQuestion(String question, String answer) {
+    if (question.trim().isEmpty) return;
+    detailConversation.add(ChatMessage('user', question));
+    detailConversation.add(ChatMessage('ai', answer));
     notifyListeners();
   }
 
@@ -177,6 +213,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void removeStop(int idx) {
+    if (idx < 0 || idx >= accepted.length) return;
+    accepted.removeAt(idx);
+    notifyListeners();
+  }
+
+  void reorderStops(int oldIndex, int newIndex) {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final item = accepted.removeAt(oldIndex);
+    accepted.insert(newIndex, item);
+    notifyListeners();
+  }
+
   void togglePlay() {
     videoPlaying = !videoPlaying;
     notifyListeners();
@@ -196,6 +247,33 @@ class AppState extends ChangeNotifier {
     if (t.state == 'done') return;
     t.state = 'done';
     points += t.points;
+    notifyListeners();
+  }
+
+  void onRegenerateTask() {
+    if (currentStopIdx >= tasks.length) return;
+    final t = tasks[currentStopIdx];
+    if (t.state != 'pending') return;
+    if (taskRegenerationsLeft <= 0) return;
+    
+    taskRegenerationsLeft--;
+
+    // Toggle between video and scan, and update label
+    if (t.type == 'video') {
+      tasks[currentStopIdx] = Task(
+        type: 'scan',
+        label: 'Scan the surrounding area to uncover a hidden historical detail.',
+        state: 'pending',
+        points: t.points,
+      );
+    } else {
+      tasks[currentStopIdx] = Task(
+        type: 'video',
+        label: 'Record a quick panoramic video of your surroundings.',
+        state: 'pending',
+        points: t.points,
+      );
+    }
     notifyListeners();
   }
 
@@ -239,5 +317,28 @@ class AppState extends ChangeNotifier {
     } else {
       notifyListeners();
     }
+  }
+
+  void leaveTour() {
+    screen = 'map';
+    prompt = '';
+    queue = [];
+    currentIndex = 0;
+    accepted = [];
+    rejected = [];
+    detailLoc = null;
+    detailConversation = [];
+    modifyMode = false;
+    askPanelOpen = false;
+    aiConversation = [];
+    routeAccepted = false;
+    tripDate = null;
+    tripEndDate = null;
+    tasks = [];
+    currentStopIdx = 0;
+    points = 0;
+    taskRegenerationsLeft = 3;
+    videoPlaying = false;
+    notifyListeners();
   }
 }

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:table_calendar/table_calendar.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/app_backdrop.dart';
+import '../widgets/glass_surface.dart';
 import '../widgets/net_image.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/staggered_entrance.dart';
@@ -16,6 +19,29 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   final TextEditingController _aiController = TextEditingController();
 
+  DateTime? _getEndDate(AppState state) {
+    if (state.tripDate == null) return null;
+    if (state.tripEndDate != null) return state.tripEndDate;
+    int days = (state.accepted.length / 2).ceil();
+    if (days < 1) days = 1;
+    return state.tripDate!.add(Duration(days: days - 1));
+  }
+
+  String _getDateText(AppState state) {
+    if (state.tripDate == null) {
+      int days = (state.accepted.length / 2).ceil();
+      if (days < 1) days = 1;
+      return '$days day${days > 1 ? 's' : ''}';
+    }
+    final start = state.tripDate!;
+    final end = _getEndDate(state)!;
+    
+    String startStr = '${start.month}/${start.day}';
+    if (isSameDay(start, end)) return startStr;
+    String endStr = '${end.month}/${end.day}';
+    return '$startStr - $endStr';
+  }
+
   @override
   void dispose() {
     _aiController.dispose();
@@ -29,14 +55,26 @@ class _ResultScreenState extends State<ResultScreen> {
 
     if (!hasStops) {
       return Scaffold(
-        body: Center(
+        body: AppBackdrop(child: Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.check_circle_outline, color: AppTheme.accent, size: 40),
-                const SizedBox(height: 14),
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: AppTheme.heroGradient,
+                    ),
+                  ),
+                  child: const Icon(Icons.check_circle_outline, color: AppTheme.onAccent, size: 34),
+                ),
+                const SizedBox(height: 16),
                 Text('No stops selected', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 24)),
                 const SizedBox(height: 8),
                 Text(
@@ -52,16 +90,15 @@ class _ResultScreenState extends State<ResultScreen> {
               ],
             ),
           ),
-        ),
+        )),
       );
     }
 
-    final totalKm = state.accepted.fold<int>(0, (sum, loc) => sum + loc.distanceKm);
-    final isMiles = false; // Add toggle if needed later
-    final distanceLabel = isMiles ? '${(totalKm * 0.621371).round()} mi' : '$totalKm km';
+
 
     return Scaffold(
-      body: Column(
+      body: AppBackdrop(
+      child: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
@@ -69,64 +106,192 @@ class _ResultScreenState extends State<ResultScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Title
-                  Text('Your route', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 24)),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${state.accepted.length} stops · $distanceLabel',
-                    style: TextStyle(fontSize: 13, color: AppTheme.text.withOpacity(0.75)),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Trailer video stub
-                  Container(
-                    height: 180,
-                    decoration: BoxDecoration(
-                      borderRadius: AppTheme.brLg,
-                      boxShadow: AppTheme.shadowMd,
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: NetImage(url: 'https://picsum.photos/seed/aitour-route-trailer/720/380', fit: BoxFit.cover),
+                  // Header
+                  Row(
+                    children: [
+                      PressableScale(
+                        onTap: () => state.setScreen('map'),
+                        child: GlassSurface(
+                          borderRadius: AppTheme.brPill,
+                          alignment: Alignment.center,
+                          child: const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Icon(Icons.arrow_back, size: 18),
+                          ),
                         ),
-                        Positioned.fill(
-                          child: Center(
-                            child: PressableScale(
-                              onTap: state.togglePlay,
-                              child: Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.bg.withOpacity(0.92),
-                                  shape: BoxShape.circle,
-                                  boxShadow: AppTheme.shadowMd,
+                      ),
+                      const SizedBox(width: 16),
+                      Text('Your route', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 24)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentSoft,
+                            borderRadius: AppTheme.brPill,
+                          ),
+                          child: Text(
+                            '${state.accepted.length} stops',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.accentDark),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surfaceAlt,
+                            borderRadius: AppTheme.brPill,
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_today, size: 12, color: AppTheme.text),
+                              const SizedBox(width: 6),
+                              Text(
+                                _getDateText(state),
+                                style: const TextStyle(
+                                  fontSize: 12.5, 
+                                  fontWeight: FontWeight.w700, 
+                                  color: AppTheme.text
                                 ),
-                                child: const Icon(Icons.play_arrow, color: AppTheme.text, size: 26),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (state.tripDate != null) ...[
+                          const SizedBox(width: 8),
+                          PressableScale(
+                            onTap: () => state.setTripDate(null, null),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: AppTheme.error.withOpacity(0.12),
+                                borderRadius: AppTheme.brPill,
+                              ),
+                              child: const Text(
+                                'Clear',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.error,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        Positioned(
-                          bottom: 10,
-                          left: 12,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppTheme.text.withOpacity(0.65),
-                              borderRadius: AppTheme.brPill,
-                            ),
-                            child: Text(
-                              state.videoPlaying ? 'Playing preview…' : 'Tap to preview',
-                              style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w500),
-                            ),
-                          ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceAlt,
+                      borderRadius: AppTheme.brMd,
+                    ),
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TableCalendar(
+                      firstDay: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+                      lastDay: DateTime.now().add(const Duration(days: 365 * 5)),
+                      focusedDay: state.tripDate != null && !state.tripDate!.isBefore(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)) 
+                          ? state.tripDate! 
+                          : DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+                      rangeStartDay: state.tripDate,
+                      rangeEndDay: _getEndDate(state),
+                      rangeSelectionMode: RangeSelectionMode.toggledOff,
+                      onDaySelected: (selectedDay, focusedDay) {
+                        final start = state.tripDate;
+                        final end = _getEndDate(state);
+                        
+                        if (start == null) {
+                          int recommendedDays = (state.accepted.length / 2).ceil();
+                          if (recommendedDays < 1) recommendedDays = 1;
+                          DateTime newEnd = selectedDay.add(Duration(days: recommendedDays - 1));
+                          state.setTripDate(selectedDay, newEnd);
+                        } else {
+                          if (isSameDay(selectedDay, start)) {
+                            if (end != null && isSameDay(start, end)) {
+                              state.setTripDate(null, null);
+                            } else {
+                              state.setTripDate(start, start);
+                            }
+                          } else if (end != null && isSameDay(selectedDay, end)) {
+                            int recommendedDays = (state.accepted.length / 2).ceil();
+                            if (recommendedDays < 1) recommendedDays = 1;
+                            DateTime newEnd = selectedDay.add(Duration(days: recommendedDays - 1));
+                            state.setTripDate(selectedDay, newEnd);
+                          } else {
+                            DateTime newStart = start;
+                            DateTime newEnd = selectedDay;
+                            if (newEnd.isBefore(newStart)) {
+                              newStart = selectedDay;
+                              newEnd = start;
+                            }
+                            state.setTripDate(newStart, newEnd);
+                          }
+                        }
+                      },
+                      headerStyle: const HeaderStyle(
+                        formatButtonVisible: false,
+                        titleCentered: true,
+                      ),
+                      calendarStyle: CalendarStyle(
+                        rangeHighlightColor: AppTheme.accent.withOpacity(0.2),
+                        rangeStartDecoration: const BoxDecoration(
+                          color: AppTheme.accent,
+                          shape: BoxShape.circle,
+                        ),
+                        rangeEndDecoration: const BoxDecoration(
+                          color: AppTheme.accent,
+                          shape: BoxShape.circle,
+                        ),
+                        todayDecoration: BoxDecoration(
+                          color: AppTheme.accentSoft,
+                          shape: BoxShape.circle,
+                        ),
+                        todayTextStyle: const TextStyle(color: AppTheme.accentDark),
+                      ),
+                    ),
+                  ),
+                  Builder(
+                    builder: (context) {
+                      bool isUnrealistic = false;
+                      if (state.tripDate != null) {
+                        final end = _getEndDate(state)!;
+                        int currentDays = end.difference(state.tripDate!).inDays + 1;
+                        isUnrealistic = (currentDays * 3) < state.accepted.length;
+                      }
+                      if (!isUnrealistic) return const SizedBox(height: 16);
+                      
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 16, bottom: 16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: AppTheme.error.withOpacity(0.15),
+                            borderRadius: AppTheme.brMd,
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 18),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'This might be too much for one day, try reducing the number of visits',
+                                  style: const TextStyle(fontSize: 12.5, color: AppTheme.error, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                  ),
 
                   // Itinerary header
                   Row(
@@ -145,59 +310,58 @@ class _ResultScreenState extends State<ResultScreen> {
                   const SizedBox(height: 8),
 
                   // Stops list
-                  ListView.builder(
+                  ReorderableListView.builder(
                     padding: EdgeInsets.zero,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: state.accepted.length,
+                    onReorder: state.reorderStops,
+                    buildDefaultDragHandles: false,
+                    proxyDecorator: (child, index, animation) {
+                      return Material(
+                        color: Colors.transparent,
+                        elevation: 0,
+                        child: child,
+                      );
+                    },
                     itemBuilder: (context, i) {
                       final loc = state.accepted[i];
-                      final isLast = i == state.accepted.length - 1;
                       return StaggeredEntrance(
+                        key: ValueKey(loc.id),
                         index: i,
                         child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Number and line
-                          Column(
-                            children: [
-                              Container(
-                                width: 26,
-                                height: 26,
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.tertiary,
-                                  shape: BoxShape.circle,
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  '${i + 1}',
-                                  style: const TextStyle(color: AppTheme.bg, fontSize: 12, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              if (!isLast)
-                                Container(
-                                  width: 2,
-                                  height: 48,
-                                  margin: const EdgeInsets.symmetric(vertical: 2),
-                                  color: AppTheme.secondary,
-                                ),
-                            ],
-                          ),
-                          const SizedBox(width: 12),
                           // Content
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.only(bottom: 16),
                               child: Row(
                                 children: [
+                                  if (state.modifyMode)
+                                    ReorderableDragStartListener(
+                                      index: i,
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(right: 14),
+                                        child: Container(
+                                          width: 36,
+                                          height: 36,
+                                          decoration: const BoxDecoration(
+                                            color: AppTheme.surfaceAlt,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(Icons.drag_indicator, size: 20, color: AppTheme.text),
+                                        ),
+                                      ),
+                                    ),
                                   NetImage(
                                     url: loc.thumbUrl,
-                                    width: 52,
-                                    height: 52,
+                                    width: 90,
+                                    height: 65,
                                     fit: BoxFit.cover,
                                     borderRadius: AppTheme.brMd,
                                   ),
-                                  const SizedBox(width: 10),
+                                  const SizedBox(width: 14),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,35 +381,23 @@ class _ResultScreenState extends State<ResultScreen> {
                                     curve: Curves.easeOut,
                                     alignment: Alignment.centerRight,
                                     child: !state.modifyMode
-                                        ? const SizedBox(height: 52)
+                                        ? const SizedBox(height: 65)
                                         : AnimatedOpacity(
                                             opacity: state.modifyMode ? 1 : 0,
                                             duration: const Duration(milliseconds: 220),
                                             child: Padding(
-                                              padding: const EdgeInsets.only(left: 8),
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  PressableScale(
-                                                    onTap: () => state.moveStop(i, -1),
-                                                    child: Container(
-                                                      width: 28,
-                                                      height: 24,
-                                                      margin: const EdgeInsets.only(bottom: 4),
-                                                      decoration: BoxDecoration(color: AppTheme.surfaceSky, borderRadius: AppTheme.brSm),
-                                                      child: const Icon(Icons.keyboard_arrow_up, size: 16, color: AppTheme.text),
-                                                    ),
+                                              padding: const EdgeInsets.only(left: 12),
+                                              child: PressableScale(
+                                                onTap: () => state.removeStop(i),
+                                                child: Container(
+                                                  width: 36,
+                                                  height: 36,
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.error.withOpacity(0.12),
+                                                    shape: BoxShape.circle,
                                                   ),
-                                                  PressableScale(
-                                                    onTap: () => state.moveStop(i, 1),
-                                                    child: Container(
-                                                      width: 28,
-                                                      height: 24,
-                                                      decoration: BoxDecoration(color: AppTheme.surfaceSky, borderRadius: AppTheme.brSm),
-                                                      child: const Icon(Icons.keyboard_arrow_down, size: 16, color: AppTheme.text),
-                                                    ),
-                                                  ),
-                                                ],
+                                                  child: const Icon(Icons.delete_outline, size: 20, color: AppTheme.error),
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -260,81 +412,63 @@ class _ResultScreenState extends State<ResultScreen> {
                     },
                   ),
 
-                  // AI Chat panel
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: state.toggleAskPanel,
-                    style: TextButton.styleFrom(alignment: Alignment.centerLeft, padding: EdgeInsets.zero),
-                    child: Text(
-                      state.askPanelOpen ? 'Hide AI chat ▲' : 'Ask AI for changes ▼',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+
+                ],
+              ),
+            ),
+          ),
+          
+          // Static Chat Prompt
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceAlt,
+                borderRadius: AppTheme.brMd,
+              ),
+              child: Stack(
+                children: [
+                  TextField(
+                    controller: _aiController,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (val) {
+                      if (val.trim().isNotEmpty) {
+                        state.setPrompt(val);
+                        state.onGenerate();
+                        _aiController.clear();
+                      }
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'e.g. swap in a coastal stop',
+                      hintStyle: TextStyle(color: AppTheme.text.withOpacity(0.4), fontSize: 13),
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.fromLTRB(16, 14, 50, 14),
                     ),
                   ),
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 260),
-                    curve: Curves.easeOut,
-                    alignment: Alignment.topCenter,
-                    child: !state.askPanelOpen
-                        ? const SizedBox.shrink()
-                        : Container(
-                      margin: const EdgeInsets.only(top: 6),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceAlt,
-                        borderRadius: AppTheme.brLg,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (state.aiConversation.isNotEmpty)
-                            ...state.aiConversation.map((msg) {
-                              final isUser = msg.role == 'user';
-                              return Align(
-                                alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: isUser ? AppTheme.accentSky : AppTheme.neutral100,
-                                    borderRadius: AppTheme.brMd,
-                                  ),
-                                  child: Text(msg.text, style: const TextStyle(fontSize: 12.5)),
-                                ),
-                              );
-                            }),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _aiController,
-                                  decoration: const InputDecoration(
-                                    hintText: 'e.g. swap in a coastal stop',
-                                    filled: true,
-                                    fillColor: AppTheme.bg,
-                                    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                  ),
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              PressableScale(
-                                onTap: () {
-                                  state.sendAIChange(_aiController.text);
-                                  _aiController.clear();
-                                },
-                                child: Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: const BoxDecoration(
-                                    color: AppTheme.tertiary,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.send, color: AppTheme.bg, size: 16),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: PressableScale(
+                      onTap: () {
+                        if (_aiController.text.trim().isNotEmpty) {
+                          state.setPrompt(_aiController.text);
+                          state.onGenerate();
+                          _aiController.clear();
+                        }
+                      },
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.accent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.arrow_upward_rounded, color: AppTheme.onAccent, size: 15),
                       ),
                     ),
                   ),
@@ -353,6 +487,7 @@ class _ResultScreenState extends State<ResultScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
