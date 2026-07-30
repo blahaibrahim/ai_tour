@@ -68,11 +68,16 @@ class ThinkTickEvent extends AppEvent {
 }
 
 class FinishThinkingEvent extends AppEvent {
-  const FinishThinkingEvent(this.filteredLocations);
+  const FinishThinkingEvent(this.filteredLocations, {this.isRefresh = false});
   final List<Location> filteredLocations;
+  final bool isRefresh;
 
   @override
-  List<Object?> get props => [filteredLocations];
+  List<Object?> get props => [filteredLocations, isRefresh];
+}
+
+class RefreshQueueEvent extends AppEvent {
+  const RefreshQueueEvent();
 }
 
 class BackToMapEvent extends AppEvent {

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'noise_texture.dart';
@@ -37,10 +38,10 @@ class AppBackdrop extends StatefulWidget {
 }
 
 class _AppBackdropState extends State<AppBackdrop>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// One full breath in, one out. Long on purpose — at anything brisker the
   /// page starts to shimmer under the content.
-  static const Duration _driftPeriod = Duration(seconds: 16);
+  static const Duration _driftPeriod = Duration(seconds: 10);
 
   /// Range the meeting point travels, as a fraction of page height.
   static const double _driftLow = 0.30;
@@ -51,9 +52,15 @@ class _AppBackdropState extends State<AppBackdrop>
     duration: _driftPeriod,
   )..repeat(reverse: true);
 
+  late final AnimationController _wave = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 6),
+  )..repeat();
+
   @override
   void dispose() {
     _drift.dispose();
+    _wave.dispose();
     super.dispose();
   }
 
@@ -84,15 +91,20 @@ class _AppBackdropState extends State<AppBackdrop>
         children: [
           Positioned.fill(
             child: AnimatedBuilder(
-              animation: _drift,
+              animation: Listenable.merge([_drift, _wave]),
               builder: (context, _) {
                 final t = Curves.easeInOut.transform(_drift.value);
                 final meeting = _driftLow + (_driftHigh - _driftLow) * t;
+                
+                // Sway the gradient side-to-side to create a wave-like shifting motion
+                // Increased amplitude so it's clearly visible
+                final sway = math.sin(_wave.value * 2 * math.pi) * 1.5;
+
                 return DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
+                      begin: Alignment(sway, 1.0),
+                      end: Alignment(-sway, -1.0),
                       colors: colors,
                       stops: [0.0, meeting, 1.0],
                     ),
@@ -121,3 +133,4 @@ class _AppBackdropState extends State<AppBackdrop>
     );
   }
 }
+

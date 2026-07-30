@@ -70,7 +70,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
 
   Widget _buildDetailPanel(Location loc, AppState state) {
     return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.88,
+      height: MediaQuery.of(context).size.height * 0.82,
       child: GlassSurface(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
         boxShadow: AppTheme.shadowLg,
@@ -95,7 +95,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     AspectRatio(
-                      aspectRatio: 1 / 1.45,
+                      aspectRatio: 1 / 1.25,
                       child: Container(
                         decoration: BoxDecoration(borderRadius: AppTheme.brLg),
                         clipBehavior: Clip.antiAlias,

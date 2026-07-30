@@ -35,7 +35,7 @@ class UpcomingStopsRow extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 100,
+          height: 180,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: upcoming.length,
@@ -47,7 +47,7 @@ class UpcomingStopsRow extends StatelessWidget {
                 child: PressableScale(
                   onTap: () => bloc.add(OpenDetailEvent(loc)),
                   child: SizedBox(
-                    width: 160,
+                    width: 220,
                     child: Container(
                       decoration: BoxDecoration(borderRadius: AppTheme.brLg, boxShadow: AppTheme.shadowSm),
                       clipBehavior: Clip.antiAlias,

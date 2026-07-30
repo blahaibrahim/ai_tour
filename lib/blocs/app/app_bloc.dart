@@ -21,6 +21,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<GenerateRouteEvent>(_onGenerateRoute);
     on<ThinkTickEvent>(_onThinkTick);
     on<FinishThinkingEvent>(_onFinishThinking);
+    on<RefreshQueueEvent>(_onRefreshQueue);
     on<BackToMapEvent>(_onBackToMap);
     on<CommitSwipeEvent>(_onCommitSwipe);
     on<OpenDetailEvent>(_onOpenDetail);
@@ -121,10 +122,37 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     emit(state.copyWith(
       queue: event.filteredLocations,
       currentIndex: 0,
-      accepted: const [],
-      rejected: const [],
+      accepted: event.isRefresh ? state.accepted : const [],
+      rejected: event.isRefresh ? state.rejected : const [],
       screen: 'swipe',
     ));
+  }
+
+  void _onRefreshQueue(RefreshQueueEvent event, Emitter<AppState> emit) {
+    _thinkTimer?.cancel();
+    emit(state.copyWith(screen: 'thinking', thinkIdx: 0));
+
+    _thinkTimer = Timer.periodic(const Duration(milliseconds: 850), (_) {
+      add(const ThinkTickEvent());
+    });
+
+    Timer(const Duration(milliseconds: 3200), () {
+      _thinkTimer?.cancel();
+      final filtered = state.selectedRegions.isNotEmpty
+          ? allLocations.where((l) => state.selectedRegions.contains(l.region)).toList()
+          : List<Location>.from(allLocations);
+      
+      final newQueue = filtered.where((l) => !state.accepted.contains(l)).toList();
+      if (newQueue.isEmpty) {
+        newQueue.addAll(allLocations.where((l) => !state.accepted.contains(l)));
+      }
+      if (newQueue.isEmpty) {
+        // Absolute fallback if they somehow accepted the entire database
+        newQueue.addAll(allLocations);
+      }
+      newQueue.shuffle();
+      add(FinishThinkingEvent(newQueue, isRefresh: true));
+    });
   }
 
   void _onBackToMap(BackToMapEvent event, Emitter<AppState> emit) {
@@ -136,26 +164,44 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   // Swipe screen
   // ---------------------------------------------------------------------------
 
-  void _onCommitSwipe(CommitSwipeEvent event, Emitter<AppState> emit) {
-    final loc = state.currentLoc;
-    if (loc == null) return;
-
-    final newAccepted = event.isAccept
-        ? [...state.accepted, loc]
-        : state.accepted;
-    final newRejected = !event.isAccept
-        ? [...state.rejected, loc]
-        : state.rejected;
-
-    final newIndex = state.currentIndex + 1;
-    final newScreen = newIndex >= state.queue.length ? 'result' : state.screen;
+  void _handleSwipeNext(int nextIndex, List<Location> newAccepted, List<Location> newRejected, Emitter<AppState> emit) {
+    if (nextIndex >= state.queue.length) {
+      final target = state.wantedVisits;
+      final canProceed = newAccepted.isNotEmpty && (target == null || newAccepted.length >= target);
+      if (!canProceed) {
+        emit(state.copyWith(
+          accepted: newAccepted,
+          rejected: newRejected,
+          currentIndex: nextIndex,
+        ));
+        add(const RefreshQueueEvent());
+        return;
+      } else {
+        emit(state.copyWith(
+          accepted: newAccepted,
+          rejected: newRejected,
+          currentIndex: nextIndex,
+          screen: 'result',
+        ));
+        return;
+      }
+    }
 
     emit(state.copyWith(
       accepted: newAccepted,
       rejected: newRejected,
-      currentIndex: newIndex,
-      screen: newScreen,
+      currentIndex: nextIndex,
     ));
+  }
+
+  void _onCommitSwipe(CommitSwipeEvent event, Emitter<AppState> emit) {
+    final loc = state.currentLoc;
+    if (loc == null) return;
+
+    final newAccepted = event.isAccept ? [...state.accepted, loc] : state.accepted;
+    final newRejected = !event.isAccept ? [...state.rejected, loc] : state.rejected;
+
+    _handleSwipeNext(state.currentIndex + 1, newAccepted, newRejected, emit);
   }
 
   // ---------------------------------------------------------------------------
@@ -188,36 +234,22 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   }
 
   void _onDetailAccept(OnDetailAcceptEvent event, Emitter<AppState> emit) {
-    // Commit the swipe as accept, then close the detail.
     final loc = state.currentLoc;
     if (loc == null) return;
 
-    final newIndex = state.currentIndex + 1;
-    final newScreen = newIndex >= state.queue.length ? 'result' : state.screen;
-
-    emit(state.copyWith(
-      accepted: [...state.accepted, loc],
-      currentIndex: newIndex,
-      screen: newScreen,
-      detailLoc: null,
-      detailConversation: const [],
-    ));
+    final newAccepted = [...state.accepted, loc];
+    // Need to hide detail immediately, but wait for _handleSwipeNext to emit the right screen
+    emit(state.copyWith(detailLoc: null, detailConversation: const []));
+    _handleSwipeNext(state.currentIndex + 1, newAccepted, state.rejected, emit);
   }
 
   void _onDetailReject(OnDetailRejectEvent event, Emitter<AppState> emit) {
     final loc = state.currentLoc;
     if (loc == null) return;
 
-    final newIndex = state.currentIndex + 1;
-    final newScreen = newIndex >= state.queue.length ? 'result' : state.screen;
-
-    emit(state.copyWith(
-      rejected: [...state.rejected, loc],
-      currentIndex: newIndex,
-      screen: newScreen,
-      detailLoc: null,
-      detailConversation: const [],
-    ));
+    final newRejected = [...state.rejected, loc];
+    emit(state.copyWith(detailLoc: null, detailConversation: const []));
+    _handleSwipeNext(state.currentIndex + 1, state.accepted, newRejected, emit);
   }
 
   // ---------------------------------------------------------------------------

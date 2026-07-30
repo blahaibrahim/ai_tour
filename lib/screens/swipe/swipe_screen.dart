@@ -133,7 +133,7 @@ class _SwipeScreenState extends State<SwipeScreen>
                       if (state.wantedVisits == null || state.accepted.length >= state.wantedVisits!)
                         Builder(builder: (context) {
                           final target = state.wantedVisits;
-                          final canProceed = target == null || state.accepted.length >= target;
+                          final canProceed = state.accepted.isNotEmpty && (target == null || state.accepted.length >= target);
                           final label = target == null
                               ? 'Proceed (${state.accepted.length})'
                               : 'Proceed (${state.accepted.length}/$target)';
