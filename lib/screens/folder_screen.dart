@@ -43,7 +43,11 @@ class _FolderScreenState extends State<FolderScreen> {
             id: state.accepted[i].id,
             name: state.accepted[i].name,
             region: state.accepted[i].region,
-            kindLabel: state.tasks[i].type == 'video' ? 'Video' : 'Scan',
+            kindLabel: switch (state.tasks[i].type) {
+              'video' => 'Video',
+              'mascot' => 'Fennec',
+              _ => 'Scan',
+            },
             photoUrl: state.accepted[i].artifactUrl,
           ),
     ];

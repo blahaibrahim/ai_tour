@@ -24,7 +24,10 @@ android {
         applicationId = "com.example.ai_tour"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // ar_flutter_plugin_2 (via sceneview/ARCore) requires API 28. That is
+        // also roughly the floor for ARCore-capable devices, so nothing that
+        // could run the mascot hunt is being excluded.
+        minSdk = maxOf(flutter.minSdkVersion, 28)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

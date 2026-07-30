@@ -1,8 +1,20 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
+
+    <!-- The mascot hunt runs on ARCore. ar_flutter_plugin_2 already merges in
+         `android.hardware.camera.ar` as required, which makes this an "AR
+         Required" app: Play only offers it to ARCore-certified devices, and in
+         exchange it installs Google Play Services for AR alongside the app.
+         That matters because the plugin has no ARCore availability check of
+         its own — on a device without it, the AR view would simply fail.
+         To support non-AR devices instead, switch this value to "optional",
+         add tools:replace to relax the plugin's uses-feature, and handle the
+         unsupported case before opening ArHuntScreen. -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="true"/>
     <application
         android:label="ai_tour"
         android:name="${applicationName}"
@@ -29,6 +41,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Required by ARCore so Google Play installs Play Services for AR
+             alongside the app. sceneview declares this "optional", which
+             contradicts the plugin's required uses-feature and would leave the
+             app device-filtered *and* without ARCore auto-install — so this
+             overrides it. Must stay in step with the uses-feature above. -->
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="required"
+            tools:replace="android:value" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -85,7 +85,8 @@ final List<Location> allLocations = [
       blurb:
           "A UNESCO-listed maze of Ottoman-era alleys, tiled courtyards and sea views tumbling down the hillside.",
       task: Task(
-          type: "scan", label: "Scan a blue-tiled doorway in the Casbah"),
+          type: "mascot",
+          label: "A fennec is hiding in one of these alleys — find it and photograph it"),
       lat: 36.7853,
       lng: 3.0608),
   Location(
@@ -151,7 +152,9 @@ final List<Location> allLocations = [
       distanceKm: 38,
       blurb:
           "Sandstone spires and 8,000-year-old rock art scattered across a Saharan plateau.",
-      task: Task(type: "scan", label: "Scan a rock-art panel"),
+      task: Task(
+          type: "mascot",
+          label: "A fennec is hiding on the plateau — find it and photograph it"),
       lat: 24.5544,
       lng: 9.4842),
   Location(

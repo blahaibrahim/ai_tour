@@ -258,22 +258,20 @@ class AppState extends ChangeNotifier {
     
     taskRegenerationsLeft--;
 
-    // Toggle between video and scan, and update label
-    if (t.type == 'video') {
-      tasks[currentStopIdx] = Task(
-        type: 'scan',
-        label: 'Scan the surrounding area to uncover a hidden historical detail.',
-        state: 'pending',
-        points: t.points,
-      );
-    } else {
-      tasks[currentStopIdx] = Task(
-        type: 'video',
-        label: 'Record a quick panoramic video of your surroundings.',
-        state: 'pending',
-        points: t.points,
-      );
-    }
+    // Cycle through the task types, swapping in a matching label.
+    const cycle = {'video': 'scan', 'scan': 'mascot', 'mascot': 'video'};
+    const labels = {
+      'video': 'Record a quick panoramic video of your surroundings.',
+      'scan': 'Scan the surrounding area to uncover a hidden historical detail.',
+      'mascot': 'A fennec is hiding somewhere here — find it and photograph it.',
+    };
+    final next = cycle[t.type] ?? 'video';
+    tasks[currentStopIdx] = Task(
+      type: next,
+      label: labels[next]!,
+      state: 'pending',
+      points: t.points,
+    );
     notifyListeners();
   }
 
@@ -306,7 +304,11 @@ class AppState extends ChangeNotifier {
         id: 'capture-${DateTime.now().millisecondsSinceEpoch}',
         name: currentLoc?.name ?? 'Your capture',
         region: currentLoc?.region ?? 'On the go',
-        kindLabel: currentTask?.type == 'video' ? 'Video' : 'Scan',
+        kindLabel: switch (currentTask?.type) {
+          'video' => 'Video',
+          'mascot' => 'Fennec',
+          _ => 'Scan',
+        },
         photoUrl: filePath,
         isLocalFile: true,
       ),

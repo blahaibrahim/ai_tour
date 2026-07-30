@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'ar_hunt_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/app_backdrop.dart';
 import '../widgets/glass_surface.dart';
@@ -10,6 +11,17 @@ import '../widgets/staggered_entrance.dart';
 
 class OverviewScreen extends StatelessWidget {
   const OverviewScreen({super.key});
+
+  /// Opens the AR mascot hunt for the current stop. The photo taken there is
+  /// filed through [AppState.addCapturedArtifact], which completes the task.
+  static void _openMascotHunt(BuildContext context, String stopName) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ArHuntScreen(stopName: stopName),
+        fullscreenDialog: true,
+      ),
+    );
+  }
 
   static String _greeting() {
     final h = DateTime.now().hour;
@@ -292,12 +304,21 @@ class OverviewScreen extends StatelessWidget {
                                   child: currentTask.state == 'pending'
                                       ? ElevatedButton(
                                           key: const ValueKey('pending'),
-                                          onPressed: state.onCompleteTask,
+                                          // A mascot task is played out in the
+                                          // AR view, which banks the points
+                                          // itself once the photo is taken.
+                                          onPressed: currentTask.type == 'mascot'
+                                              ? () => _openMascotHunt(context, nextStop.name)
+                                              : state.onCompleteTask,
                                           style: ElevatedButton.styleFrom(
                                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                             minimumSize: Size.zero,
                                           ),
-                                          child: Text(currentTask.type == 'video' ? 'Record' : 'Scan'),
+                                          child: Text(switch (currentTask.type) {
+                                            'video' => 'Record',
+                                            'mascot' => 'Hunt',
+                                            _ => 'Scan',
+                                          }),
                                         )
                                       : Container(
                                           key: const ValueKey('done'),
