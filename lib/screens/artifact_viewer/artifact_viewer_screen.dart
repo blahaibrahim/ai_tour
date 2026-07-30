@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import '../models/location.dart';
-import '../theme.dart';
-import '../widgets/artifact_cube.dart';
-import '../widgets/cube3d.dart';
-import '../widgets/pressable_scale.dart';
+import '../../models/location.dart';
+import '../../theme.dart';
+import '../../widgets/artifact_cube.dart';
+import '../../widgets/cube3d.dart';
+import '../../widgets/pressable_scale.dart';
 
 /// Full interactive 3D view of an artifact — drag to turn it around, pinch
 /// to zoom. Auto-rotates gently for show, and pauses the moment a finger

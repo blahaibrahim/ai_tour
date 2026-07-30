@@ -8,8 +8,10 @@ environment:
 
 dependencies:
   ar_flutter_plugin_2: ^0.0.3
+  equatable: ^2.1.0
   flutter:
     sdk: flutter
+  flutter_bloc: ^9.1.1
   flutter_map: ^8.3.1
   geolocator: ^14.0.3
   google_fonts: ^8.2.0

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:provider/provider.dart';
-import '../state/app_state.dart';
-import '../theme.dart';
-import '../widgets/glass_surface.dart';
-import '../widgets/staggered_entrance.dart';
+import '../../blocs/app/app_bloc.dart';
+import '../../blocs/app/app_event.dart';
+import '../../theme.dart';
+import '../../widgets/glass_surface.dart';
+import '../../widgets/staggered_entrance.dart';
 
 class AreasMapScreen extends StatelessWidget {
   const AreasMapScreen({super.key});
@@ -14,7 +15,7 @@ class AreasMapScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<AppBloc>().state;
     final points = state.accepted.map((l) => LatLng(l.lat, l.lng)).toList();
 
     return Scaffold(
@@ -42,8 +43,6 @@ class AreasMapScreen extends StatelessWidget {
                   subdomains: const ['a', 'b', 'c', 'd'],
                   userAgentPackageName: 'com.example.ai_tour',
                 ),
-                // Real geo-anchored markers — these pan and zoom together
-                // with the map instead of floating fixed on screen.
                 MarkerLayer(
                   markers: [
                     for (int i = 0; i < state.accepted.length; i++)
@@ -104,10 +103,10 @@ class AreasMapScreen extends StatelessWidget {
               child: Text(
                 'YOUR SELECTED AREAS',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontSize: 11,
-                      letterSpacing: 1.0,
-                      color: AppTheme.primary,
-                    ),
+                  fontSize: 11,
+                  letterSpacing: 1.0,
+                  color: AppTheme.primary,
+                ),
               ),
             ),
           ),
@@ -128,7 +127,7 @@ class AreasMapScreen extends StatelessWidget {
                       Text('No areas selected yet.', style: TextStyle(fontSize: 13, color: AppTheme.text.withOpacity(0.75))),
                       const SizedBox(height: 10),
                       ElevatedButton(
-                        onPressed: () => state.setScreen('map'),
+                        onPressed: () => context.read<AppBloc>().add(const SetScreenEvent('map')),
                         child: const Text('Plan a route'),
                       ),
                     ],

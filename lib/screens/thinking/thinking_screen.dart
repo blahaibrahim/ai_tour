@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../state/app_state.dart';
-import '../theme.dart';
-import '../widgets/app_backdrop.dart';
-import '../widgets/compass_spinner.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../blocs/app/app_bloc.dart';
+import '../../blocs/app/app_event.dart';
+import '../../blocs/app/app_state.dart';
+import '../../theme.dart';
+import '../../widgets/app_backdrop.dart';
+import '../../widgets/compass_spinner.dart';
 
 class ThinkingScreen extends StatelessWidget {
   const ThinkingScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<AppBloc>().state;
 
     return Scaffold(
       body: AppBackdrop(child: Center(
@@ -21,14 +23,12 @@ class ThinkingScreen extends StatelessWidget {
             children: [
               const CompassSpinner(size: 84),
               const SizedBox(height: 26),
-              
               Text(
                 'Building your shortlist',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 18),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              
               SizedBox(
                 height: 34,
                 child: AnimatedSwitcher(

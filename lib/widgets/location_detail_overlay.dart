@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../state/app_state.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../blocs/app/app_bloc.dart';
+import '../blocs/app/app_event.dart';
+import '../blocs/app/app_state.dart';
 import '../theme.dart';
 import '../models/location.dart';
 import 'glass_surface.dart';
@@ -26,7 +28,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
+    final state = context.watch<AppBloc>().state;
     final detailVisible = state.detailLoc != null;
     if (detailVisible) _lastDetailLoc = state.detailLoc;
     final loc = _lastDetailLoc;
@@ -41,7 +43,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOut,
               child: GestureDetector(
-                onTap: state.closeDetail,
+                onTap: () => context.read<AppBloc>().add(const CloseDetailEvent()),
                 child: Container(
                   color: AppTheme.text.withOpacity(0.65),
                 ),
@@ -82,10 +84,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                 margin: const EdgeInsets.only(top: 12, bottom: 4),
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.divider,
-                  borderRadius: AppTheme.brPill,
-                ),
+                decoration: BoxDecoration(color: AppTheme.divider, borderRadius: AppTheme.brPill),
               ),
             ),
 
@@ -147,6 +146,12 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                                 ],
                               ),
                             ),
+                            // Save button
+                            Positioned(
+                              top: 12,
+                              right: 12,
+                              child: _SaveButton(loc: loc, state: state),
+                            ),
                           ],
                         ),
                       ),
@@ -165,14 +170,14 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                       runSpacing: 8,
                       children: [
                         OutlinedButton(
-                          onPressed: () => state.askQuestion("Best time to visit?", "Early morning or just before sunset — softer light, thinner crowds."),
+                          onPressed: () => context.read<AppBloc>().add(const AskQuestionEvent("Best time to visit?", "Early morning or just before sunset — softer light, thinner crowds.")),
                           style: OutlinedButton.styleFrom(
                             textStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 12.5),
                           ),
                           child: const Text('Best time to visit?'),
                         ),
                         OutlinedButton(
-                          onPressed: () => state.askQuestion("How long to explore?", "Budget 2–3 hours to explore at an easy pace."),
+                          onPressed: () => context.read<AppBloc>().add(const AskQuestionEvent("How long to explore?", "Budget 2–3 hours to explore at an easy pace.")),
                           style: OutlinedButton.styleFrom(
                             textStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 12.5),
                           ),
@@ -223,14 +228,11 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
               ),
             ),
 
-            // Static Text Area for chat prompt
+            // Chat input
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 8, 22, 12),
               child: Container(
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceAlt,
-                  borderRadius: AppTheme.brMd,
-                ),
+                decoration: BoxDecoration(color: AppTheme.surfaceAlt, borderRadius: AppTheme.brMd),
                 child: Stack(
                   children: [
                     TextField(
@@ -240,7 +242,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                       textInputAction: TextInputAction.send,
                       onSubmitted: (val) {
                         if (val.trim().isNotEmpty) {
-                          state.askQuestion(val, "I'm a local AI guide. This place is amazing, you should definitely visit!");
+                          context.read<AppBloc>().add(AskQuestionEvent(val, "I'm a local AI guide. This place is amazing, you should definitely visit!"));
                           _chatController.clear();
                         }
                       },
@@ -260,17 +262,14 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                       child: PressableScale(
                         onTap: () {
                           if (_chatController.text.trim().isNotEmpty) {
-                            state.askQuestion(_chatController.text, "I'm a local AI guide. This place is amazing, you should definitely visit!");
+                            context.read<AppBloc>().add(AskQuestionEvent(_chatController.text, "I'm a local AI guide. This place is amazing, you should definitely visit!"));
                             _chatController.clear();
                           }
                         },
                         child: Container(
                           width: 30,
                           height: 30,
-                          decoration: const BoxDecoration(
-                            color: AppTheme.accent,
-                            shape: BoxShape.circle,
-                          ),
+                          decoration: const BoxDecoration(color: AppTheme.accent, shape: BoxShape.circle),
                           child: const Icon(Icons.arrow_upward_rounded, color: AppTheme.onAccent, size: 15),
                         ),
                       ),
@@ -287,21 +286,21 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                   if (state.screen == 'swipe') ...[
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: state.onDetailReject,
+                        onPressed: () => context.read<AppBloc>().add(const OnDetailRejectEvent()),
                         child: const Text('Skip this spot'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: state.onDetailAccept,
+                        onPressed: () => context.read<AppBloc>().add(const OnDetailAcceptEvent()),
                         child: const Text('Add to route'),
                       ),
                     ),
                   ] else ...[
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: state.closeDetail,
+                        onPressed: () => context.read<AppBloc>().add(const CloseDetailEvent()),
                         child: const Text('Close'),
                       ),
                     ),
@@ -310,6 +309,40 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SaveButton extends StatelessWidget {
+  const _SaveButton({required this.loc, required this.state});
+
+  final Location loc;
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSaved = state.savedLocationIds.contains(loc.id);
+    return PressableScale(
+      onTap: () => context.read<AppBloc>().add(ToggleSavedLocationEvent(loc.id)),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isSaved ? AppTheme.accent : AppTheme.photoScrim,
+          shape: BoxShape.circle,
+        ),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+          child: Icon(
+            isSaved ? Icons.bookmark : Icons.bookmark_border,
+            key: ValueKey(isSaved),
+            color: Colors.white,
+            size: 20,
+          ),
         ),
       ),
     );

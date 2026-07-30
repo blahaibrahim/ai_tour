@@ -16,16 +16,17 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 
-import '../ar/ar_session_host.dart';
-import '../ar/glb_bounds.dart';
-import '../ar/mascot_placement.dart';
-import '../state/app_state.dart';
-import '../theme.dart';
-import '../widgets/glass_surface.dart';
-import '../widgets/pressable_scale.dart';
+import '../../ar/ar_session_host.dart';
+import '../../ar/glb_bounds.dart';
+import '../../ar/mascot_placement.dart';
+import '../../blocs/app/app_bloc.dart';
+import '../../blocs/app/app_event.dart';
+import '../../theme.dart';
+import '../../widgets/glass_surface.dart';
+import '../../widgets/pressable_scale.dart';
 
 /// What the camera screen is for.
 enum ArCameraMode {
@@ -580,7 +581,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
-    final appState = context.read<AppState>();
+    final bloc = context.read<AppBloc>();
     final navigator = Navigator.of(context);
 
     try {
@@ -597,7 +598,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       );
       await file.writeAsBytes(image.bytes, flush: true);
 
-      appState.addCapturedArtifact(file.path);
+      bloc.add(AddCapturedArtifactEvent(file.path));
       navigator.pop();
       messenger.showSnackBar(SnackBar(
         content: Text(_hunting

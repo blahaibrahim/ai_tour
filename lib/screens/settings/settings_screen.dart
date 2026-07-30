@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../state/app_state.dart';
-import '../theme.dart';
-import '../widgets/app_backdrop.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../blocs/app/app_bloc.dart';
+import '../../blocs/app/app_event.dart';
+import '../../theme.dart';
+import '../../widgets/app_backdrop.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -31,7 +32,7 @@ class SettingsScreen extends StatelessWidget {
                   textColor: Colors.redAccent,
                   iconColor: Colors.redAccent,
                   onTap: () {
-                    context.read<AppState>().leaveTour();
+                    context.read<AppBloc>().add(const LeaveTourEvent());
                     Navigator.of(context).pop();
                   },
                 ),
@@ -92,10 +93,7 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
         Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceAlt,
-            borderRadius: AppTheme.brLg,
-          ),
+          decoration: BoxDecoration(color: AppTheme.surfaceAlt, borderRadius: AppTheme.brLg),
           child: Column(
             children: [
               for (int i = 0; i < children.length; i++) ...[

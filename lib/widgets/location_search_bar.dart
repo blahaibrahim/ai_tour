@@ -1,10 +1,11 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import '../state/app_state.dart';
+import '../blocs/app/app_bloc.dart';
+import '../blocs/app/app_event.dart';
 import '../theme.dart';
 
 class LocationSearchBar extends StatefulWidget {
@@ -16,12 +17,11 @@ class LocationSearchBar extends StatefulWidget {
 
 class _LocationSearchBarState extends State<LocationSearchBar> {
   final SearchController _searchController = SearchController();
-  String _lastQuery = '';
   List<Map<String, dynamic>> _lastResults = [];
 
   Future<void> _handleMyLocation(BuildContext context) async {
-    final state = context.read<AppState>();
-    
+    final bloc = context.read<AppBloc>();
+
     try {
       bool serviceEnabled;
       LocationPermission permission;
@@ -40,16 +40,16 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
           return;
         }
       }
-      
+
       if (permission == LocationPermission.deniedForever) {
         if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permissions permanently denied.')));
         return;
-      } 
+      }
 
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Locating...')));
 
       final position = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
-      state.setMapCenter(LatLng(position.latitude, position.longitude));
+      bloc.add(SetMapCenterEvent(LatLng(position.latitude, position.longitude)));
     } catch (e) {
       if (context.mounted) {
         if (e.toString().contains('MissingPluginException')) {
@@ -63,10 +63,10 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
 
   Future<List<Map<String, dynamic>>> _fetchPlaces(String query) async {
     if (query.trim().length < 2) return [];
-    
+
     // Simple debounce
     await Future.delayed(const Duration(milliseconds: 400));
-    if (_searchController.text != query) return _lastResults; // Query changed while waiting
+    if (_searchController.text != query) return _lastResults;
 
     final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&addressdetails=1&limit=5');
     final httpClient = HttpClient();
@@ -91,13 +91,13 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
   void _onSubmitted(String query) async {
     _searchController.closeView(query);
     if (query.trim().isEmpty) return;
-    
+
     final results = await _fetchPlaces(query);
     if (results.isNotEmpty && mounted) {
       final first = results.first;
       final lat = double.tryParse(first['lat'].toString()) ?? 0.0;
       final lon = double.tryParse(first['lon'].toString()) ?? 0.0;
-      context.read<AppState>().setMapCenter(LatLng(lat, lon));
+      context.read<AppBloc>().add(SetMapCenterEvent(LatLng(lat, lon)));
     }
   }
 
@@ -121,7 +121,7 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
       },
       suggestionsBuilder: (BuildContext context, SearchController controller) async {
         final query = controller.text;
-        
+
         List<Map<String, dynamic>> places = [];
         if (query.isNotEmpty) {
           places = await _fetchPlaces(query);
@@ -151,7 +151,7 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
                 controller.closeView(name.split(',').first);
                 final lat = double.tryParse(place['lat'].toString()) ?? 0.0;
                 final lon = double.tryParse(place['lon'].toString()) ?? 0.0;
-                context.read<AppState>().setMapCenter(LatLng(lat, lon));
+                context.read<AppBloc>().add(SetMapCenterEvent(LatLng(lat, lon)));
               },
             );
           }),
