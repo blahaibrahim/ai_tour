@@ -55,7 +55,7 @@ class _MapScreenState extends State<MapScreen> {
           // map layers anchored to Algiers' coordinates, so they pan and
           // zoom together with the map instead of floating fixed on screen.
           Positioned(
-            top: -300,
+            top: -250,
             bottom: 0,
             left: 0,
             right: 0,
@@ -141,26 +141,21 @@ class _MapScreenState extends State<MapScreen> {
                 child: GlassSurface(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(AppTheme.radiusXl)),
                   boxShadow: AppTheme.shadowLg,
-                  child: SafeArea(
+  child: SafeArea(
                     top: false,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
                             'Where do you want to explore?',
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 20, height: 1.1),
+                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 18, height: 1.1),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            "Set a radius, tell us your vibe.",
-                            style: TextStyle(fontSize: 12.5, color: AppTheme.text.withOpacity(0.7)),
-                          ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 10),
 
-                          // Radius Slider
+                          // Radius label + value
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -185,49 +180,27 @@ class _MapScreenState extends State<MapScreen> {
                               ),
                             ],
                           ),
-                          Slider(
-                            value: state.radiusKm,
-                            min: 5,
-                            max: 60,
-                            divisions: 11,
-                            onChanged: state.setRadius,
+
+                          // Radius slider
+                          SizedBox(
+                            height: 32,
+                            child: SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                trackHeight: 3,
+                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                              ),
+                              child: Slider(
+                                value: state.radiusKm,
+                                min: 5,
+                                max: 60,
+                                divisions: 11,
+                                onChanged: state.setRadius,
+                              ),
+                            ),
                           ),
 
-                          const SizedBox(height: 16),
-                          // Wanted Visits Slider
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Number of visits wanted',
-                                style: TextStyle(fontSize: 11.5, color: AppTheme.text.withOpacity(0.65)),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.accentSoft,
-                                  borderRadius: AppTheme.brPill,
-                                ),
-                                child: Text(
-                                  '${state.wantedVisits}',
-                                  style: const TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.accentDark,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Slider(
-                            value: state.wantedVisits.toDouble(),
-                            min: 1,
-                            max: 20,
-                            divisions: 19,
-                            onChanged: state.setWantedVisits,
-                          ),
-
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           Text(
                             "TELL THE AI WHAT YOU'RE AFTER",
                             style: TextStyle(
@@ -239,28 +212,54 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                           const SizedBox(height: 8),
 
-                          // Text Area
+                          // Text Area + Swipable Visits
                           Container(
                             decoration: BoxDecoration(
                               color: AppTheme.surfaceAlt,
                               borderRadius: AppTheme.brMd,
                             ),
-                            child: TextField(
-                              maxLines: 2,
-                              onChanged: state.setPrompt,
-                              decoration: InputDecoration(
-                                hintText: "quiet Roman ruins, coastal viewpoints...",
-                                hintStyle: TextStyle(color: AppTheme.text.withOpacity(0.4), fontSize: 13),
-                                filled: false,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                TextField(
+                                  maxLines: 2,
+                                  onChanged: state.setPrompt,
+                                  decoration: InputDecoration(
+                                    hintText: "quiet Roman ruins, coastal viewpoints...",
+                                    hintStyle: TextStyle(color: AppTheme.text.withOpacity(0.4), fontSize: 13),
+                                    filled: false,
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                                  ),
+                                ),
+                                SizedBox(
+                                  height: 32,
+                                  child: ListView(
+                                    scrollDirection: Axis.horizontal,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    children: [
+                                      _SwipableVisitChip(
+                                        label: 'Any',
+                                        isSelected: state.wantedVisits == null,
+                                        onTap: () => state.setWantedVisits(null),
+                                      ),
+                                      for (final v in [3, 5, 8, 10, 15, 20])
+                                        _SwipableVisitChip(
+                                          label: '$v stops',
+                                          isSelected: state.wantedVisits == v,
+                                          onTap: () => state.setWantedVisits(v),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
                             ),
                           ),
 
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           // Button
                           ElevatedButton(
                             onPressed: state.onGenerate,
@@ -278,6 +277,45 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SwipableVisitChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _SwipableVisitChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.accentSoft : Colors.transparent,
+          borderRadius: AppTheme.brPill,
+          border: Border.all(
+            color: isSelected ? AppTheme.accent : AppTheme.text.withOpacity(0.15),
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+            color: isSelected ? AppTheme.accentDark : AppTheme.text.withOpacity(0.65),
+          ),
+        ),
       ),
     );
   }

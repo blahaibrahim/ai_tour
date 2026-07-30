@@ -3,38 +3,10 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/app_backdrop.dart';
+import '../widgets/compass_spinner.dart';
 
-class ThinkingScreen extends StatefulWidget {
+class ThinkingScreen extends StatelessWidget {
   const ThinkingScreen({super.key});
-
-  @override
-  State<ThinkingScreen> createState() => _ThinkingScreenState();
-}
-
-class _ThinkingScreenState extends State<ThinkingScreen> with TickerProviderStateMixin {
-  late final AnimationController _spinController;
-  late final AnimationController _pulseController;
-
-  @override
-  void initState() {
-    super.initState();
-    _spinController = AnimationController(
-      duration: const Duration(milliseconds: 1100),
-      vsync: this,
-    )..repeat();
-
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _spinController.dispose();
-    _pulseController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,42 +19,8 @@ class _ThinkingScreenState extends State<ThinkingScreen> with TickerProviderStat
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Spinning gradient ring
-              SizedBox(
-                width: 64,
-                height: 64,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    RotationTransition(
-                      turns: Tween(begin: 0.0, end: 1.0).animate(_spinController),
-                      child: Container(
-                        width: 64,
-                        height: 64,
-                        padding: const EdgeInsets.all(9),
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: SweepGradient(
-                            colors: [...AppTheme.heroGradient, AppTheme.duskDeep],
-                          ),
-                        ),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.bg),
-                        ),
-                      ),
-                    ),
-                    // Pulsing icon
-                    FadeTransition(
-                      opacity: Tween<double>(begin: 0.35, end: 1.0).animate(_pulseController),
-                      child: ScaleTransition(
-                        scale: Tween<double>(begin: 0.85, end: 1.05).animate(_pulseController),
-                        child: const Icon(Icons.send, color: AppTheme.accent, size: 22),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 22),
+              const CompassSpinner(size: 84),
+              const SizedBox(height: 26),
               
               Text(
                 'Building your shortlist',

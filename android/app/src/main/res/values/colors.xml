@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#14254A</color>
+    <!-- Splash / window background: the navy field the app icon sits on. -->
+    <color name="splash_background">#14254A</color>
+</resources>

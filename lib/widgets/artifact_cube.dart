@@ -10,7 +10,7 @@ import 'cube3d.dart';
 /// colored by kind so scans and videos read apart at a glance.
 List<Widget> artifactCubeFaces(Artifact artifact, {double iconSize = 28}) {
   final isVideo = artifact.kindLabel.toLowerCase() == 'video';
-  final base = isVideo ? AppTheme.teal : AppTheme.accent;
+  final base = isVideo ? AppTheme.secondaryAccent : AppTheme.accent;
   final icon = isVideo ? Icons.videocam_rounded : Icons.qr_code_scanner_rounded;
 
   Color shade(double amount) {

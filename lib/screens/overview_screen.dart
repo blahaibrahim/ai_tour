@@ -8,6 +8,7 @@ import '../widgets/app_backdrop.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/net_image.dart';
 import '../widgets/staggered_entrance.dart';
+import '../widgets/pressable_scale.dart';
 
 class OverviewScreen extends StatelessWidget {
   const OverviewScreen({super.key});
@@ -49,14 +50,10 @@ class OverviewScreen extends StatelessWidget {
                     height: 84,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: AppTheme.heroGradient,
-                      ),
-                      boxShadow: [BoxShadow(color: Color(0x552F1B3D), blurRadius: 28, offset: Offset(0, 12))],
+                      color: AppTheme.deepNavy,
+                      boxShadow: [BoxShadow(color: Color(0x3314254A), blurRadius: 28, offset: Offset(0, 12))],
                     ),
-                    child: const Icon(Icons.map_outlined, color: AppTheme.onAccent, size: 34),
+                    child: const Icon(Icons.map_outlined, color: AppTheme.onNavy, size: 34),
                   ),
                   const SizedBox(height: 18),
                   Text('No route yet', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 23)),
@@ -120,7 +117,7 @@ class OverviewScreen extends StatelessWidget {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.star_rounded, color: AppTheme.duskGold, size: 15),
+                                  const Icon(Icons.star_rounded, color: AppTheme.sand, size: 15),
                                   const SizedBox(width: 5),
                                   AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 320),
@@ -154,12 +151,14 @@ class OverviewScreen extends StatelessWidget {
                     if (nextStop != null) ...[
                       const Text('CURRENT STOP', style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: Colors.white70, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 12),
-                      Container(
-                        height: 380,
-                        decoration: BoxDecoration(
-                          borderRadius: AppTheme.brLg,
-                          boxShadow: AppTheme.shadowMd,
-                        ),
+                      PressableScale(
+                        onTap: () => state.openDetail(nextStop),
+                        child: Container(
+                          height: 380,
+                          decoration: BoxDecoration(
+                            borderRadius: AppTheme.brLg,
+                            boxShadow: AppTheme.shadowMd,
+                          ),
                         clipBehavior: Clip.antiAlias,
                         child: Stack(
                           children: [
@@ -171,7 +170,7 @@ class OverviewScreen extends StatelessWidget {
                                 gradient: LinearGradient(
                                   begin: Alignment.bottomCenter,
                                   end: Alignment.topCenter,
-                                  colors: [Color(0xBF140E08), Colors.transparent],
+                                  colors: [AppTheme.photoScrim, AppTheme.photoScrimFade],
                                   stops: [0.0, 0.4],
                                 ),
                               ),
@@ -211,11 +210,11 @@ class OverviewScreen extends StatelessWidget {
                                   else
                                     Row(
                                       children: [
-                                        Icon(Icons.flag_outlined, size: 16, color: Colors.white.withOpacity(0.8)),
+                                        Icon(Icons.flag_outlined, size: 16, color: AppTheme.onNavy.withOpacity(0.8)),
                                         const SizedBox(width: 4),
                                         Text(
                                           "End of route",
-                                          style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.8), fontWeight: FontWeight.bold),
+                                          style: TextStyle(fontSize: 12, color: AppTheme.onNavy.withOpacity(0.8), fontWeight: FontWeight.bold),
                                         ),
                                       ],
                                     ),
@@ -226,8 +225,8 @@ class OverviewScreen extends StatelessWidget {
                               top: 12,
                               right: 12,
                               child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.3),
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.photoScrim,
                                   shape: BoxShape.circle,
                                 ),
                                 child: IconButton(
@@ -242,6 +241,7 @@ class OverviewScreen extends StatelessWidget {
                             ),
                           ],
                         ),
+                      ),
                       ),
                       const SizedBox(height: 24),
                       
@@ -291,7 +291,10 @@ class OverviewScreen extends StatelessWidget {
                                     children: [
                                       Text(
                                         '+${currentTask.points} pts',
-                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.accent),
+                                        // Points are the app's warm thread —
+                                        // cocoa is the icon's outline color,
+                                        // dark enough to read on cream.
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.cocoa),
                                       ),
                                       const SizedBox(height: 2),
                                       Text(currentTask.label, style: const TextStyle(fontSize: 13.5)),
@@ -356,20 +359,22 @@ class OverviewScreen extends StatelessWidget {
                       final number = state.currentStopIdx + 2 + index;
                       return StaggeredEntrance(
                         index: index,
-                        child: Container(
-                          width: 150,
-                          decoration: BoxDecoration(
-                            borderRadius: AppTheme.brMd,
-                            boxShadow: AppTheme.shadowSm,
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: Stack(
-                            children: [
-                              Positioned.fill(
-                                child: NetImage(
-                                  url: loc.overviewPhotoUrl,
-                                  fit: BoxFit.cover,
-                                ),
+                        child: PressableScale(
+                          onTap: () => state.openDetail(loc),
+                          child: Container(
+                            width: 150,
+                            decoration: BoxDecoration(
+                              borderRadius: AppTheme.brMd,
+                              boxShadow: AppTheme.shadowSm,
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: NetImage(
+                                    url: loc.overviewPhotoUrl,
+                                    fit: BoxFit.cover,
+                                  ),
                               ),
                               Container(
                                 decoration: const BoxDecoration(
@@ -377,8 +382,8 @@ class OverviewScreen extends StatelessWidget {
                                     begin: Alignment.bottomCenter,
                                     end: Alignment.topCenter,
                                     colors: [
-                                      Color(0xBF140E08),
-                                      Colors.transparent,
+                                      AppTheme.photoScrim,
+                                      AppTheme.photoScrimFade,
                                     ],
                                     stops: [0.0, 0.6],
                                   ),
@@ -394,7 +399,7 @@ class OverviewScreen extends StatelessWidget {
                                     Text(
                                       loc.name,
                                       style: const TextStyle(
-                                        color: Colors.white,
+                                        color: AppTheme.onNavy,
                                         fontSize: 12,
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -404,8 +409,8 @@ class OverviewScreen extends StatelessWidget {
                                     const SizedBox(height: 2),
                                     Text(
                                       loc.region,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
+                                      style: TextStyle(
+                                        color: AppTheme.onNavy.withOpacity(0.7),
                                         fontSize: 10,
                                       ),
                                       maxLines: 1,
@@ -416,6 +421,7 @@ class OverviewScreen extends StatelessWidget {
                               ),
                             ],
                           ),
+                        ),
                         ),
                       );
                     },

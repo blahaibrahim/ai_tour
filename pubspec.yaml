@@ -31,9 +31,22 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/3d/fennec.glb
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  # The App Store rejects icons with an alpha channel; the artwork is fully
+  # opaque anyway, so flattening it costs nothing.
+  remove_alpha_ios: true
+  image_path: "assets/icon/app-icon-blue.png"
+  adaptive_icon_background: "#14254A"
+  adaptive_icon_foreground: "assets/icon/app-icon-transparent.png"
+  min_sdk_android: 21

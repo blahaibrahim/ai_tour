@@ -1,58 +1,66 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// "Sahara Modern" — a warm, editorial palette built for a North-Africa
-/// travel app: sun-baked terracotta, warm paper neutrals, a muted teal for
-/// quiet accents. Rounded, soft-shadowed, restrained.
+/// "Fennec Compass" — the palette is lifted straight off the app icon
+/// (assets/icon/app-icon.png): the sleeping fennec's sand-and-cream fur, the
+/// brass compass with its deep blue face, and the navy field it sits on.
+/// Flat fills only — no gradients anywhere in the app's chrome.
 class AppTheme {
-  // Core palette
-  static const Color bg = Color(0xFFFAF6F0); // warm paper background
+  // ---------------------------------------------------------------------
+  // Raw colors sampled from the icon
+  // ---------------------------------------------------------------------
+  /// Compass face — the primary brand color.
+  static const Color compassBlue = Color(0xFF2F549A);
+
+  /// The navy field the icon sits on — dark surfaces and headers.
+  static const Color deepNavy = Color(0xFF14254A);
+
+  /// Fennec fur — the secondary brand color.
+  static const Color sand = Color(0xFFF8D59B);
+
+  /// Compass rim and needle — the warm accent.
+  static const Color amber = Color(0xFFEBA664);
+
+  /// Fur highlight / inner ear.
+  static const Color cream = Color(0xFFFBE7C4);
+
+  /// The icon's outline stroke.
+  static const Color cocoa = Color(0xFF783B1E);
+
+  // ---------------------------------------------------------------------
+  // Semantic tokens
+  // ---------------------------------------------------------------------
+  static const Color bg = Color(0xFFFCF6EC); // cream paper background
   static const Color surface = Color(0xFFFFFFFF); // card surface
-  static const Color surfaceAlt = Color(0xFFF2EBE0); // sunken fill (inputs, chips)
-  static const Color ink = Color(0xFF2B241E); // warm near-black
+  static const Color surfaceAlt = Color(0xFFF3ECDE); // sunken fill (inputs, chips)
+  static const Color ink = deepNavy; // near-black, on the blue side
   static const Color text = ink;
-  static const Color textSecondary = Color(0xFF8C8175); // warm grey
-  static const Color divider = Color(0xFFE8E0D2); // hairline border
+  static const Color textSecondary = Color(0xFF6E7A93); // navy-grey
+  static const Color divider = Color(0xFFE6DCC9); // hairline border
 
-  static const Color accent = Color(0xFFC1602C); // terracotta — primary CTA
-  static const Color accentDark = Color(0xFF9C4B21); // pressed state
-  static const Color accentSoft = Color(0xFFF3DCC5); // tint bg for chips/selection
-  static const Color onAccent = Color(0xFFFFF8F1); // text/icon on accent fill
+  static const Color accent = compassBlue; // primary CTA
+  static const Color accentDark = Color(0xFF22406F); // pressed state
+  static const Color accentSoft = Color(0xFFDEE6F4); // tint bg for chips/selection
+  static const Color onAccent = Color(0xFFFFFFFF); // text/icon on accent fill
 
-  static const Color teal = Color(0xFF3E6B62); // secondary accent, used sparingly
-  static const Color tealSoft = Color(0xFFDEEAE5); // soft teal tint bg
+  /// Secondary accent — used for rewards, highlights, warm emphasis.
+  static const Color secondaryAccent = amber;
+  static const Color secondarySoft = Color(0xFFFAEBD5); // soft sand tint bg
 
-  static const Color success = Color(0xFF3F8F5F);
-  static const Color error = Color(0xFFD32F2F);
+  /// Text/icon color on top of [deepNavy] panels.
+  static const Color onNavy = cream;
 
-  // "Dusk" — a desert-sunset gradient (deep night plum → brick → amber),
-  // used for hero surfaces so the app reads as a colored, considered canvas
-  // rather than a white page with color only on top.
-  static const Color duskDeep = Color(0xFF2F1B3D);
-  static const Color duskWine = Color(0xFF9B3A2E);
-  static const Color duskGold = Color(0xFFB9762E);
-  static const List<Color> heroGradient = [duskDeep, duskWine, duskGold];
+  static const Color success = Color(0xFF2F7D5B);
+  static const Color error = Color(0xFFC8452F);
 
-  // A barely-there warm gradient used as the whole-app page background,
-  // instead of a flat cream fill.
-  static const Color bgTop = Color(0xFFFCEEDE);
+  /// Scrim laid over photos so overlaid white text stays legible. Fades to
+  /// [photoScrimFade] — a transparent navy rather than transparent black, so
+  /// the midtones of the fade don't go grey.
+  static const Color photoScrim = Color(0xC714254A);
+  static const Color photoScrimFade = Color(0x0014254A);
 
-  // Legacy aliases (kept so existing call sites don't need renaming)
+  // Legacy alias (kept so existing call sites don't need renaming)
   static const Color primary = bg;
-  static const Color secondary = Color(0xFFD6CBBB); // muted line/rule color
-  static const Color tertiary = ink; // dark chip / nav background
-  static const Color neutral = accent;
-  static const Color surfaceSky = tealSoft;
-  static const Color accentSky = accentSoft;
-  static const Color steelGrey = Color(0xFF6B6055);
-  static const Color neutral100 = Color(0xFFF1EAE0);
-  static const Color neutral300 = Color(0xFFD8CFC1);
-  static const Color neutral400 = Color(0xFFB2A594);
-  static const Color neutral900 = Color(0xFF1C1712);
-  static const Color accent100 = accentSoft;
-  static const Color accent700 = accentDark;
-  static const Color accent800 = Color(0xFF7A3A19);
-  static const Color accent2700 = success;
 
   // Corner radii — the app's rounded, soft-edged shape language
   static const double radiusSm = 10;
@@ -67,7 +75,7 @@ class AppTheme {
   static BorderRadius get brXl => BorderRadius.circular(radiusXl);
   static BorderRadius get brPill => BorderRadius.circular(radiusPill);
 
-  // Soft, warm-tinted elevation — no hard black shadows
+  // Soft, navy-tinted elevation — no hard black shadows
   static List<BoxShadow> get shadowSm => [
         BoxShadow(color: ink.withOpacity(0.07), blurRadius: 10, offset: const Offset(0, 3)),
       ];
@@ -100,7 +108,7 @@ class AppTheme {
       ),
       bodyLarge: GoogleFonts.inter(color: text, fontWeight: FontWeight.w400),
       bodyMedium: GoogleFonts.inter(color: text, fontWeight: FontWeight.w400),
-      bodySmall: GoogleFonts.inter(color: steelGrey, fontWeight: FontWeight.w500, letterSpacing: 0.1),
+      bodySmall: GoogleFonts.inter(color: textSecondary, fontWeight: FontWeight.w500, letterSpacing: 0.1),
     );
 
     return ThemeData(
@@ -110,7 +118,7 @@ class AppTheme {
         seedColor: accent,
         brightness: Brightness.light,
         primary: accent,
-        secondary: teal,
+        secondary: secondaryAccent,
         surface: surface,
         background: bg,
         onBackground: text,
@@ -123,7 +131,7 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: accent,
           foregroundColor: onAccent,
-          disabledBackgroundColor: neutral300,
+          disabledBackgroundColor: divider,
           elevation: 0,
           textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
           shape: RoundedRectangleBorder(borderRadius: brLg),

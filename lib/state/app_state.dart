@@ -12,7 +12,7 @@ class ChatMessage {
 class AppState extends ChangeNotifier {
   String screen = 'map';
   double radiusKm = 5.0;
-  int wantedVisits = 5;
+  int? wantedVisits;
   LatLng mapCenter = const LatLng(36.7538, 3.0588);
   String prompt = '';
   List<String> selectedRegions = List.from(regions);
@@ -90,8 +90,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setWantedVisits(double val) {
-    wantedVisits = val.toInt();
+  void setWantedVisits(int? val) {
+    wantedVisits = val;
     notifyListeners();
   }
 

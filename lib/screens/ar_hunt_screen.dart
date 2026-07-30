@@ -27,6 +27,16 @@ import '../theme.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/pressable_scale.dart';
 
+/// What the camera screen is for.
+enum ArCameraMode {
+  /// Find the fennec hidden in the room, then photograph it.
+  hunt,
+
+  /// Plain capture: the same camera, chrome and shutter, no mascot. Used by
+  /// the camera button in the nav bar.
+  capture,
+}
+
 /// The camera half of the mascot hunt, on ARCore/ARKit world tracking.
 ///
 /// The session tracks the phone with six degrees of freedom, so the fennec is
@@ -36,14 +46,26 @@ import '../widgets/pressable_scale.dart';
 /// The mascot appears on its own at a fixed spot — no tapping to place it —
 /// because the real placement will come from the backend. [MascotSpot] is the
 /// seam that will take it.
+///
+/// In [ArCameraMode.capture] the whole mascot half sits out and this is simply
+/// the app's camera — same viewfinder and shutter, so a photo taken from the
+/// nav bar lands in the folder exactly like one taken on a hunt.
 class ArHuntScreen extends StatefulWidget {
-  const ArHuntScreen({super.key, this.stopName, this.spot = const MascotSpot()});
+  const ArHuntScreen({
+    super.key,
+    this.stopName,
+    this.spot = const MascotSpot(),
+    this.mode = ArCameraMode.hunt,
+  });
 
   /// Name of the stop being explored, shown in the header.
   final String? stopName;
 
   /// Where the mascot is hiding. Fixed for now; backend-supplied later.
   final MascotSpot spot;
+
+  /// Whether to run the hunt or just take a photo.
+  final ArCameraMode mode;
 
   @override
   State<ArHuntScreen> createState() => _ArHuntScreenState();
@@ -72,8 +94,29 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   static const double _mascotSize = 0.6;
 
   /// Give up waiting for a tracked plane after this and place the mascot at
-  /// the assumed floor height, so a dim or featureless room still gets a hunt.
-  static const Duration _scanPatience = Duration(seconds: 12);
+  /// the estimated floor height, so a dim or featureless room still gets a
+  /// hunt. Short, because the estimate below is good enough to start from —
+  /// the real floor height is folded in later by [_startFloorRefinement].
+  static const Duration _scanPatience = Duration(milliseconds: 1200);
+
+  /// How long to keep looking for the real floor after the mascot is already
+  /// out. Costs nothing visible, so it can afford to be patient.
+  static const Duration _refineWindow = Duration(seconds: 20);
+
+  /// Gap between background floor probes during that window.
+  static const Duration _refineInterval = Duration(milliseconds: 1500);
+
+  /// Fractions of the view height the floor probe fires at.
+  ///
+  /// The floor is below the horizon, so probing down the lower middle of the
+  /// frame finds it while the phone is held normally — no need to point the
+  /// camera at the ground. Kept clear of the header and footer chrome, which
+  /// would swallow the synthetic tap before it reached the AR view.
+  static const List<double> _probeHeights = [0.52, 0.62, 0.70];
+
+  /// Moving the mascot for anything less than this isn't worth the visible
+  /// jump once it is already standing there.
+  static const double _refineThreshold = 0.08;
 
   /// How wide the frame is, give or take, used to decide whether the mascot is
   /// on screen. Phone rear cameras sit around 65°; the arrow only has to be
@@ -96,8 +139,12 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
   Timer? _scanTimeout;
   Timer? _poseTimer;
+  Timer? _refineTimer;
   Completer<double?>? _floorProbe;
   int _probePointer = 0x51D0;
+
+  /// Floor height the mascot currently stands on, in world metres.
+  double? _floorY;
 
   /// Where the mascot ended up, in world metres. Null until it is placed.
   vm.Vector3? _mascotPosition;
@@ -105,16 +152,26 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   /// Live bearing to the mascot, for the on-screen hint.
   _MascotBearing? _bearing;
 
+  /// True while this screen is running the fennec hunt rather than acting as
+  /// a plain camera.
+  bool get _hunting => widget.mode == ArCameraMode.hunt;
+
+  /// Whether the shutter is live. Plain capture can shoot as soon as there is
+  /// a session to snapshot; a hunt only once the fennec has been caught.
+  bool get _canShoot =>
+      !_busy && _session != null && (!_hunting || _stage == _Stage.caught);
+
   @override
   void initState() {
     super.initState();
-    _loadBounds();
+    if (_hunting) _loadBounds();
   }
 
   @override
   void dispose() {
     _scanTimeout?.cancel();
     _poseTimer?.cancel();
+    _refineTimer?.cancel();
     _ar?.dispose();
     super.dispose();
   }
@@ -139,8 +196,9 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
     sessionManager.onInitialize(
       // Planes are shown while the room is being mapped, then hidden once the
-      // mascot is out — the glowing grid would give its position away.
-      showPlanes: true,
+      // mascot is out — the glowing grid would give its position away. Plain
+      // capture never shows them; they'd only end up in the photo.
+      showPlanes: _hunting,
       showFeaturePoints: false,
       showWorldOrigin: false,
       showAnimatedGuide: true,
@@ -158,6 +216,12 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     };
     objectManager.onNodeTap = (_) => _onMascotTapped();
 
+    // The shutter reads [_canShoot], which has just become true for plain
+    // capture; nothing else would rebuild to show it.
+    if (mounted) setState(() {});
+
+    if (!_hunting) return;
+
     // However the room turns out, the mascot gets placed.
     _scanTimeout = Timer(_scanPatience, () {
       if (_stage == _Stage.scanning) _placeMascot();
@@ -165,7 +229,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   }
 
   void _onPlaneDetected(int planeCount) {
-    if (!mounted || planeCount <= 0) return;
+    if (!mounted || !_hunting || planeCount <= 0) return;
     if (_stage == _Stage.scanning) _placeMascot();
   }
 
@@ -245,13 +309,14 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       _busy = true;
     });
 
-    final measured = await _measureFloorHeight();
+    // One quick sweep, then place regardless. Anything the sweep misses is
+    // picked up by [_startFloorRefinement] while the visitor is already
+    // looking around, so nobody waits on it.
+    final measured = await _probeFloor();
     if (!mounted) return;
 
-    // Without a measurement, fall back to where the floor usually is relative
-    // to a phone being held up. The mascot may then stand a hand's width off
-    // the ground, which is better than not appearing at all.
-    final floorY = measured ?? -kAssumedPhoneHeight;
+    final floorY = measured ?? await _estimateFloorFromPose();
+    if (!mounted) return;
 
     final anchor = ARPlaneAnchor(
       transformation: widget.spot.anchorTransform(
@@ -275,11 +340,13 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
         // Aim the hint at its body rather than its feet.
         _mascotPosition = widget.spot.floorPosition(floorY) +
             vm.Vector3(0, bounds.heightRatio * _mascotSize / 2, 0);
+        _floorY = floorY;
         _floorMeasured = measured != null;
         _stage = _Stage.placed;
         _busy = false;
       });
       _startTrackingBearing();
+      if (measured == null) _startFloorRefinement();
       HapticFeedback.mediumImpact();
     } catch (_) {
       if (!mounted) return;
@@ -291,51 +358,133 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     }
   }
 
-  /// Finds the real floor height by hit-testing the middle of the view.
+  /// Where the floor is when nothing trackable has been found yet.
+  ///
+  /// Both runtimes put Y along gravity, so the floor is simply a person's
+  /// phone-holding height below the camera. Sampling the live pose rather
+  /// than the session origin means this still holds after the visitor has
+  /// walked, crouched or raised the phone since the session started — and it
+  /// needs the camera to be pointing nowhere in particular.
+  Future<double> _estimateFloorFromPose() async {
+    final pose = await _ar?.cameraPose();
+    return (pose?.position.y ?? 0) - kAssumedPhoneHeight;
+  }
+
+  /// Looks for the real floor height by hit-testing down the lower half of
+  /// the view.
   ///
   /// The plugin only surfaces hit tests through its tap callback, so the probe
   /// below drives that path with a synthetic tap rather than waiting for the
   /// visitor to press the floor themselves. Replace this with a direct call
   /// if the plugin ever exposes a hit test of its own.
   ///
-  /// Returns null when nothing trackable is under the middle of the screen,
-  /// which is common while the camera is still pointed across a room.
-  Future<double?> _measureFloorHeight() async {
-    for (var attempt = 0; attempt < 6 && mounted; attempt++) {
+  /// Returns null when none of the probed points land on a tracked plane.
+  Future<double?> _probeFloor() async {
+    for (final height in _probeHeights) {
+      if (!mounted) return null;
+
       final probe = Completer<double?>();
       _floorProbe = probe;
-      await _probeCentre();
+      await _probeAt(height);
 
       // Android only confirms a single tap after the double-tap window has
-      // passed, so the result comes back a few hundred milliseconds later.
+      // passed, so the result comes back a couple of hundred ms later.
       final hit = await probe.future.timeout(
-        const Duration(milliseconds: 800),
+        const Duration(milliseconds: 320),
         onTimeout: () => null,
       );
       _floorProbe = null;
       if (hit != null) return hit;
-
-      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
     return null;
   }
 
-  /// Sends a synthetic tap through the middle of the AR view.
+  /// Keeps hunting for the real floor after the mascot is already out, and
+  /// settles it onto the floor the moment one is found.
+  ///
+  /// This is what makes the calibration automatic: the visitor never has to
+  /// aim at the ground, they just have to walk around normally, and sooner or
+  /// later a plane passes under one of the probe points.
+  void _startFloorRefinement() {
+    _refineTimer?.cancel();
+    final deadline = DateTime.now().add(_refineWindow);
+
+    _refineTimer = Timer.periodic(_refineInterval, (timer) async {
+      if (!mounted || _stage != _Stage.placed || _floorMeasured) {
+        timer.cancel();
+        return;
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        timer.cancel();
+        return;
+      }
+      final measured = await _probeFloor();
+      if (measured != null && mounted) await _settleOnFloor(measured);
+    });
+  }
+
+  /// Re-anchors the mascot at a newly measured [floorY].
+  ///
+  /// Skips imperceptible corrections, because re-anchoring means removing and
+  /// re-adding the node — cheap, but visible as a blink if done for a
+  /// centimetre.
+  Future<void> _settleOnFloor(double floorY) async {
+    final bounds = _bounds;
+    final anchors = _anchors;
+    final objects = _objects;
+    final previous = _floorY;
+    if (bounds == null || anchors == null || objects == null || _busy) return;
+    if (_stage != _Stage.placed) return;
+    if (previous != null && (previous - floorY).abs() < _refineThreshold) {
+      setState(() => _floorMeasured = true);
+      return;
+    }
+
+    final anchor = ARPlaneAnchor(
+      transformation: widget.spot.anchorTransform(
+        floorY: floorY,
+        baseOffset: bounds.baseOffsetRatio * _mascotSize,
+      ),
+    );
+    if (await anchors.addAnchor(anchor) != true) return;
+
+    final node = await _attachMascot(objects, anchor);
+    if (node == null || !mounted) return;
+
+    final oldNode = _node;
+    final oldAnchor = _anchor;
+    if (oldNode != null) objects.removeNode(oldNode);
+    if (oldAnchor != null) anchors.removeAnchor(oldAnchor);
+
+    setState(() {
+      _anchor = anchor;
+      _node = node;
+      _mascotPosition = widget.spot.floorPosition(floorY) +
+          vm.Vector3(0, bounds.heightRatio * _mascotSize / 2, 0);
+      _floorY = floorY;
+      _floorMeasured = true;
+    });
+  }
+
+  /// Sends a synthetic tap through the AR view at [heightFraction] down the
+  /// screen, on the vertical centre line.
   ///
   /// Flutter forwards pointer events over a platform view down to the native
   /// view, so a tap injected here reaches the AR session's gesture detector
   /// exactly as a real one would.
-  Future<void> _probeCentre() async {
+  Future<void> _probeAt(double heightFraction) async {
     final box = context.findRenderObject();
     if (box is! RenderBox || !box.hasSize) return;
 
-    final centre = box.localToGlobal(box.size.center(Offset.zero));
+    final point = box.localToGlobal(
+      Offset(box.size.width / 2, box.size.height * heightFraction),
+    );
     final pointer = _probePointer++;
     final binding = GestureBinding.instance;
 
     binding.handlePointerEvent(PointerDownEvent(
       pointer: pointer,
-      position: centre,
+      position: point,
       kind: PointerDeviceKind.touch,
     ));
     // A press and release in the same instant doesn't always survive the
@@ -343,7 +492,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 40));
     binding.handlePointerEvent(PointerUpEvent(
       pointer: pointer,
-      position: centre,
+      position: point,
       kind: PointerDeviceKind.touch,
     ));
   }
@@ -450,9 +599,11 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
       appState.addCapturedArtifact(file.path);
       navigator.pop();
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Fennec caught — saved to your folder')),
-      );
+      messenger.showSnackBar(SnackBar(
+        content: Text(_hunting
+            ? 'Fennec caught — saved to your folder'
+            : 'Added to your folder'),
+      ));
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -470,6 +621,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     if (node != null) _objects?.removeNode(node);
     if (anchor != null) _anchors?.removeAnchor(anchor);
     _poseTimer?.cancel();
+    _refineTimer?.cancel();
     _session?.showPlanes(true);
     if (!mounted) return;
     setState(() {
@@ -477,6 +629,8 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       _node = null;
       _mascotPosition = null;
       _bearing = null;
+      _floorY = null;
+      _floorMeasured = false;
       _stage = _Stage.scanning;
     });
     _placeMascot();
@@ -489,7 +643,8 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   @override
   Widget build(BuildContext context) {
     final bearing = _bearing;
-    final hunting = _stage == _Stage.placed || _stage == _Stage.caught;
+    final hunting = _hunting &&
+        (_stage == _Stage.placed || _stage == _Stage.caught);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -523,10 +678,12 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
               const Icon(Icons.no_photography_outlined,
                   color: Colors.white54, size: 34),
               const SizedBox(height: 14),
-              const Text(
-                'The hunt needs the camera to see the room around you.',
+              Text(
+                _hunting
+                    ? 'The hunt needs the camera to see the room around you.'
+                    : 'Taking a photo needs the camera.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: 14),
+                style: const TextStyle(color: Colors.white, fontSize: 14),
               ),
               const SizedBox(height: 20),
               ElevatedButton(
@@ -569,16 +726,19 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          'Find the fennec',
-                          style: TextStyle(
+                        Text(
+                          _hunting ? 'Find the fennec' : 'Take a photo',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         Text(
-                          widget.stopName ?? 'Somewhere around you',
+                          widget.stopName ??
+                              (_hunting
+                                  ? 'Somewhere around you'
+                                  : 'It goes straight to your folder'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -588,7 +748,8 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                     ),
                   ),
                 ),
-                if (_stage == _Stage.placed || _stage == _Stage.caught) ...[
+                if (_hunting &&
+                    (_stage == _Stage.placed || _stage == _Stage.caught)) ...[
                   const SizedBox(width: 12),
                   PressableScale(
                     onTap: _reset,
@@ -613,26 +774,28 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
   Widget _buildFooter() {
     final bearing = _bearing;
-    final (label, hint) = switch (_stage) {
-      _Stage.scanning => (
-          'Reading the room',
-          'Point the camera at the floor and move the phone slowly',
-        ),
-      _Stage.placing => (
-          'Letting the fennec out',
-          'Hold steady for a second',
-        ),
-      _Stage.placed => (
-          bearing?.onScreen ?? false
-              ? 'There it is — tap it'
-              : 'It is out there — follow the arrow',
-          'Walk around it to see it from any side',
-        ),
-      _Stage.caught => (
-          'Found it',
-          'Frame the shot and take your photo',
-        ),
-    };
+    final (label, hint) = !_hunting
+        ? ('Camera', 'Frame the shot and tap the shutter')
+        : switch (_stage) {
+            _Stage.scanning => (
+                'Reading the room',
+                'Hold the phone up and move it slowly',
+              ),
+            _Stage.placing => (
+                'Letting the fennec out',
+                'Hold steady for a second',
+              ),
+            _Stage.placed => (
+                bearing?.onScreen ?? false
+                    ? 'There it is — tap it'
+                    : 'It is out there — follow the arrow',
+                'Walk around it to see it from any side',
+              ),
+            _Stage.caught => (
+                'Found it',
+                'Frame the shot and take your photo',
+              ),
+          };
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
@@ -660,7 +823,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
-                if (bearing != null && _stage == _Stage.placed) ...[
+                if (_hunting && bearing != null && _stage == _Stage.placed) ...[
                   const SizedBox(height: 4),
                   Text(
                     '${bearing.distance.toStringAsFixed(1)} m away',
@@ -671,10 +834,10 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                     ),
                   ),
                 ],
-                if (_stage == _Stage.placed && !_floorMeasured) ...[
+                if (_hunting && _stage == _Stage.placed && !_floorMeasured) ...[
                   const SizedBox(height: 4),
                   const Text(
-                    'Floor estimated — scan the ground and tap refresh to place it properly',
+                    'Floor estimated — it settles itself as the room is mapped',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppTheme.accentSoft,
@@ -686,10 +849,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          _ShutterButton(
-            enabled: _stage == _Stage.caught && !_busy,
-            onTap: _capture,
-          ),
+          _ShutterButton(enabled: _canShoot, onTap: _capture),
         ],
       ),
     );

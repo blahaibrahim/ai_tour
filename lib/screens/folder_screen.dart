@@ -84,8 +84,8 @@ class _FolderScreenState extends State<FolderScreen> {
                     Text('Saved & Scanned', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 23, color: Colors.white)),
                     const SizedBox(height: 24),
                     const TabBar(
-                      indicatorColor: Colors.white,
-                      labelColor: Colors.white,
+                      indicatorColor: AppTheme.sand,
+                      labelColor: AppTheme.sand,
                       unselectedLabelColor: Colors.white70,
                       dividerColor: Colors.transparent,
                       tabs: [
@@ -158,6 +158,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       child: GlassSurface(
                         borderRadius: AppTheme.brLg,
                         child: ListTile(
+                          onTap: () => context.read<AppState>().openDetail(loc),
                           contentPadding: const EdgeInsets.all(12),
                           leading: ClipRRect(
                             borderRadius: AppTheme.brMd,
@@ -211,13 +212,9 @@ class _FolderScreenState extends State<FolderScreen> {
                         height: 76,
                         decoration: const BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: AppTheme.heroGradient,
-                          ),
+                          color: AppTheme.deepNavy,
                         ),
-                        child: const Icon(Icons.photo_library_outlined, color: AppTheme.onAccent, size: 32),
+                        child: const Icon(Icons.photo_library_outlined, color: AppTheme.onNavy, size: 32),
                       ),
                       const SizedBox(height: 16),
                       Text('No scans yet', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 18)),

@@ -18,13 +18,11 @@ class ResultScreen extends StatefulWidget {
 
 class _ResultScreenState extends State<ResultScreen> {
   final TextEditingController _aiController = TextEditingController();
+  bool _showCalendar = false;
 
   DateTime? _getEndDate(AppState state) {
     if (state.tripDate == null) return null;
-    if (state.tripEndDate != null) return state.tripEndDate;
-    int days = (state.accepted.length / 2).ceil();
-    if (days < 1) days = 1;
-    return state.tripDate!.add(Duration(days: days - 1));
+    return state.tripEndDate ?? state.tripDate;
   }
 
   String _getDateText(AppState state) {
@@ -66,13 +64,9 @@ class _ResultScreenState extends State<ResultScreen> {
                   height: 80,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: AppTheme.heroGradient,
-                    ),
+                    color: AppTheme.deepNavy,
                   ),
-                  child: const Icon(Icons.check_circle_outline, color: AppTheme.onAccent, size: 34),
+                  child: const Icon(Icons.check_circle_outline, color: AppTheme.onNavy, size: 34),
                 ),
                 const SizedBox(height: 16),
                 Text('No stops selected', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 24)),
@@ -143,25 +137,36 @@ class _ResultScreenState extends State<ResultScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surfaceAlt,
-                            borderRadius: AppTheme.brPill,
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.calendar_today, size: 12, color: AppTheme.text),
-                              const SizedBox(width: 6),
-                              Text(
-                                _getDateText(state),
-                                style: const TextStyle(
-                                  fontSize: 12.5, 
-                                  fontWeight: FontWeight.w700, 
-                                  color: AppTheme.text
-                                ),
+                        PressableScale(
+                          onTap: () {
+                            setState(() {
+                              _showCalendar = !_showCalendar;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: _showCalendar ? AppTheme.accentSoft : AppTheme.surfaceAlt,
+                              borderRadius: AppTheme.brPill,
+                              border: Border.all(
+                                color: _showCalendar ? AppTheme.accent.withOpacity(0.5) : Colors.transparent,
+                                width: 1,
                               ),
-                            ],
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.calendar_today, size: 12, color: _showCalendar ? AppTheme.accentDark : AppTheme.text),
+                                const SizedBox(width: 6),
+                                Text(
+                                  state.tripDate == null ? 'Schedule trip' : _getDateText(state),
+                                  style: TextStyle(
+                                    fontSize: 12.5, 
+                                    fontWeight: FontWeight.w700, 
+                                    color: _showCalendar ? AppTheme.accentDark : AppTheme.text
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         if (state.tripDate != null) ...[
@@ -188,82 +193,56 @@ class _ResultScreenState extends State<ResultScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceAlt,
-                      borderRadius: AppTheme.brMd,
-                    ),
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: TableCalendar(
-                      firstDay: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
-                      lastDay: DateTime.now().add(const Duration(days: 365 * 5)),
-                      focusedDay: state.tripDate != null && !state.tripDate!.isBefore(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)) 
-                          ? state.tripDate! 
-                          : DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
-                      rangeStartDay: state.tripDate,
-                      rangeEndDay: _getEndDate(state),
-                      rangeSelectionMode: RangeSelectionMode.toggledOff,
-                      onDaySelected: (selectedDay, focusedDay) {
-                        final start = state.tripDate;
-                        final end = _getEndDate(state);
-                        
-                        if (start == null) {
-                          int recommendedDays = (state.accepted.length / 2).ceil();
-                          if (recommendedDays < 1) recommendedDays = 1;
-                          DateTime newEnd = selectedDay.add(Duration(days: recommendedDays - 1));
-                          state.setTripDate(selectedDay, newEnd);
-                        } else {
-                          if (isSameDay(selectedDay, start)) {
-                            if (end != null && isSameDay(start, end)) {
-                              state.setTripDate(null, null);
-                            } else {
-                              state.setTripDate(start, start);
-                            }
-                          } else if (end != null && isSameDay(selectedDay, end)) {
-                            int recommendedDays = (state.accepted.length / 2).ceil();
-                            if (recommendedDays < 1) recommendedDays = 1;
-                            DateTime newEnd = selectedDay.add(Duration(days: recommendedDays - 1));
-                            state.setTripDate(selectedDay, newEnd);
-                          } else {
-                            DateTime newStart = start;
-                            DateTime newEnd = selectedDay;
-                            if (newEnd.isBefore(newStart)) {
-                              newStart = selectedDay;
-                              newEnd = start;
-                            }
-                            state.setTripDate(newStart, newEnd);
-                          }
-                        }
-                      },
-                      headerStyle: const HeaderStyle(
-                        formatButtonVisible: false,
-                        titleCentered: true,
+                  if (_showCalendar) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceAlt,
+                        borderRadius: AppTheme.brMd,
                       ),
-                      calendarStyle: CalendarStyle(
-                        rangeHighlightColor: AppTheme.accent.withOpacity(0.2),
-                        rangeStartDecoration: const BoxDecoration(
-                          color: AppTheme.accent,
-                          shape: BoxShape.circle,
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: TableCalendar(
+                        firstDay: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+                        lastDay: DateTime.now().add(const Duration(days: 365 * 5)),
+                        focusedDay: state.tripDate != null && !state.tripDate!.isBefore(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)) 
+                            ? state.tripDate! 
+                            : DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+                        rangeStartDay: state.tripDate,
+                        rangeEndDay: state.tripEndDate,
+                        rangeSelectionMode: RangeSelectionMode.toggledOn,
+                        onRangeSelected: (start, end, focusedDay) {
+                          state.setTripDate(start, end);
+                        },
+                        headerStyle: const HeaderStyle(
+                          formatButtonVisible: false,
+                          titleCentered: true,
                         ),
-                        rangeEndDecoration: const BoxDecoration(
-                          color: AppTheme.accent,
-                          shape: BoxShape.circle,
+                        calendarStyle: CalendarStyle(
+                          rangeHighlightColor: AppTheme.accent.withOpacity(0.2),
+                          rangeStartDecoration: const BoxDecoration(
+                            color: AppTheme.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          rangeEndDecoration: const BoxDecoration(
+                            color: AppTheme.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          todayDecoration: BoxDecoration(
+                            color: AppTheme.accentSoft,
+                            shape: BoxShape.circle,
+                          ),
+                          todayTextStyle: const TextStyle(color: AppTheme.accentDark),
                         ),
-                        todayDecoration: BoxDecoration(
-                          color: AppTheme.accentSoft,
-                          shape: BoxShape.circle,
-                        ),
-                        todayTextStyle: const TextStyle(color: AppTheme.accentDark),
                       ),
                     ),
-                  ),
+                  ],
                   Builder(
                     builder: (context) {
                       bool isUnrealistic = false;
+                      int currentDays = 1;
                       if (state.tripDate != null) {
                         final end = _getEndDate(state)!;
-                        int currentDays = end.difference(state.tripDate!).inDays + 1;
+                        currentDays = end.difference(state.tripDate!).inDays + 1;
                         isUnrealistic = (currentDays * 3) < state.accepted.length;
                       }
                       if (!isUnrealistic) return const SizedBox(height: 16);
@@ -282,7 +261,9 @@ class _ResultScreenState extends State<ResultScreen> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'This might be too much for one day, try reducing the number of visits',
+                                  currentDays == 1 
+                                      ? 'This might be too packed for 1 day. Try extending the trip or removing stops.'
+                                      : 'This might be too packed for a $currentDays-day trip. Try extending the trip or removing stops.',
                                   style: const TextStyle(fontSize: 12.5, color: AppTheme.error, fontWeight: FontWeight.w600),
                                 ),
                               ),
@@ -334,9 +315,11 @@ class _ResultScreenState extends State<ResultScreen> {
                         children: [
                           // Content
                           Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: Row(
+                            child: PressableScale(
+                              onTap: () => state.openDetail(loc),
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: Row(
                                 children: [
                                   if (state.modifyMode)
                                     ReorderableDragStartListener(
@@ -405,6 +388,7 @@ class _ResultScreenState extends State<ResultScreen> {
                                 ],
                               ),
                             ),
+                          ),
                           ),
                         ],
                         ),
