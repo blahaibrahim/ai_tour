@@ -4,7 +4,7 @@
 
 | Feature | Where | Today |
 | --- | --- | --- |
-| Itinerary generation | `GenerateRouteEvent` → `app_bloc.dart:105` | Region filter over 8 hardcoded locations |
+| Itinerary generation | `GenerateRouteEvent` → `app_bloc.dart:105` | Region filter over 8 hardcoded locations. Target: maps API fetch → deterministic scoring → LLM selection, see [12](12-poi-sources-and-ingestion.md) |
 | "Ask about this place" | `AskQuestionEvent` (`app_event.dart:107`) | Caller passes both question *and* answer |
 | "Modify my route" | `SendAIChangeEvent` (`app_event.dart:139`) | Canned response |
 | Task generation | `RegenerateTaskEvent` | Cycles a fixed list |
@@ -27,9 +27,18 @@ App ──► Supabase Edge Function ──► LLM provider
 One function, `ai-chat`, with a `mode` parameter (`itinerary` | `place` |
 `modify` | `task`), rather than four near-identical functions.
 
+`mode: itinerary` is the one exception to "just call the LLM": it first calls
+`nearby_locations` (which itself may trigger `ingest-pois` on a cold tile, see
+[12](12-poi-sources-and-ingestion.md)) to build the candidate set, *then*
+calls the model. The other three modes go straight to the provider.
+
 Streaming is worth the effort for the chat surfaces. Edge Functions can return
 a `ReadableStream`; the app renders tokens as they arrive. A response that
-starts in 300 ms feels faster than one that completes in 2 s.
+starts in 300 ms feels faster than one that completes in 2 s. Itinerary
+generation can't stream the candidate-fetch step, but it can stream the
+model's response once candidates are in hand — pair that with the thinking
+screen's staged copy so "Reading your radius…" corresponds to the real fetch,
+not a fake delay.
 
 ---
 
@@ -79,22 +88,44 @@ whereas the free tiers are free. Keep it as the escape hatch, not the plan.
 
 ## Feature 1 — Itinerary generation
 
+**This is a four-stage pipeline, and the LLM owns exactly one of the four
+stages.** Full detail on stages 1–2 is in
+[12](12-poi-sources-and-ingestion.md); this section covers stage 3, where this
+document's concerns — prompting, schemas, cost — actually apply.
+
+```
+1. Maps API   Overpass/Geoapify → raw tourism POIs near the user     (12)
+2. Score      Deterministic ranking — is this worth visiting at all? (12)
+3. LLM        Given the top-scored candidates + user prompt + dates
+              → a selected, reasoned subset                          (here)
+4. Geometry   Route ordering — never the model's job                 (below)
+```
+
 **The most important design decision in this document: the LLM must not invent
-places.** A tourist sent to a monument that doesn't exist is a product failure
-and a safety problem. The database is the source of truth; the model only
-selects and orders.
+places, and it must not be asked to judge quality from nothing.** A tourist
+sent to a monument that doesn't exist is a product failure and a safety
+problem — that's what step 1's grounding in a real maps provider prevents. A
+tourist sent to a technically-real but uninteresting POI (a parking lot with a
+`tourism` tag) is a quieter failure — that's what step 2's scoring prevents by
+never presenting it as a candidate. The model's job is narrower than either:
+**given a set that's already been vetted for existing and for being worth a
+visit, pick the subset that fits this traveller's prompt.**
 
-```
-1. Postgres:  nearby_locations(lat, lng, radius, regions)  → 40 candidates
-2. LLM:       given candidates + user prompt + dates       → ranked subset with reasons
-3. Validate:  every returned id ∈ candidate set            → drop anything else
-4. Postgres:  hydrate full rows, compute route order
+```sql
+select * from public.nearby_locations(
+  p_lat => :lat, p_lng => :lng, p_radius_km => :radius,
+  p_categories => :categories, p_min_score => 25, p_limit => 50
+);
 ```
 
-Step 3 is not optional. Constrain the output with a JSON schema (Gemini's
-structured output / `response_mime_type: application/json`) and then *still*
-validate the ids server-side. Structured output makes malformed responses rare,
-not impossible.
+That's the candidate set — up to 50 rows, each already carrying
+`interest_score`, `heritage_status`, and a real blurb. Nothing reaches the
+model that hasn't cleared the quality floor.
+
+Constrain the output with a JSON schema (Gemini's structured output /
+`response_mime_type: application/json`) and then *still* validate the ids
+server-side against that exact candidate set. Structured output makes
+malformed responses rare, not impossible.
 
 ```typescript
 const schema = {
@@ -131,11 +162,23 @@ Dates: {start} to {end} ({n} days)
 They want about {wanted_visits} stops.
 
 Choose ONLY from these locations. Never invent a location.
-{candidates as id | name | category | region | distance_km | blurb}
+Every one of them has already been verified to exist and to be worth
+visiting — your job is fit to the traveller's request, not quality.
+A high interest_score is a weak default preference, not a requirement:
+"somewhere quiet, away from crowds" should favour a lower-traffic pick
+over the single highest-scored option.
+
+{candidates as id | name | category | distance_km | heritage_status | interest_score | blurb}
 
 Order them to minimise backtracking. Prefer variety of category.
 Reply with JSON matching the schema.
 ```
+
+That instruction about `interest_score` matters: without it, the model
+defaults to picking the highest-scored candidates every time, which turns
+"pick what fits my prompt" back into "pick what's most famous" — exactly the
+generic-itinerary failure mode the scoring stage was supposed to let the model
+avoid, not reproduce.
 
 ### Route ordering
 
@@ -143,10 +186,20 @@ Don't ask the LLM for optimal travel order — it's bad at geometry and you have
 real coordinates. Solve it properly:
 
 - ≤ 10 stops: brute-force or nearest-neighbour + 2-opt in Dart, milliseconds
-- More: **OSRM** (free public demo server, or self-hosted) for the real road
-  matrix, or **Valhalla**. Both are open source and free.
+- More: **OSRM**, **Valhalla**, **OpenRouteService**, or **GraphHopper** — see
+  the routing options in [12](12-poi-sources-and-ingestion.md#routing).
 
 Let the model choose *which* places and *why*; let geometry choose the order.
+
+### Cost note
+
+Because stage 2 already did the hard filtering, the LLM call here is cheap and
+low-stakes: 50 short candidate rows in, a small JSON object out. The expensive
+part of itinerary generation is the maps ingestion and enrichment in
+[12](12-poi-sources-and-ingestion.md), which is amortized across every user
+who ever queries that tile — not the LLM call, which is per-request. Don't
+over-invest in LLM cost controls here at the expense of the tile cache; the
+tile cache is where the real savings are.
 
 ---
 
@@ -205,6 +258,15 @@ The prompt bar (`lib/screens/result/widgets/ai_prompt_bar.dart`) invites
 free-text intent like "somewhere quiet with old architecture". Keyword matching
 can't serve that; embeddings can.
 
+This slots in as a **third ranking signal alongside distance and
+`interest_score`**, not a replacement for either. `nearby_locations` already
+caps candidates at `p_limit` (default 50); the itinerary LLM call in Feature 1
+handles up to that many rows comfortably. Semantic ranking earns its keep once
+a popular tile has hundreds of scored POIs and you need to cut that down to 50
+*before* it reaches the LLM — cosine similarity against the prompt is a much
+better pre-filter than "top 50 by score", which would silently exclude
+anything niche the user actually asked for.
+
 ```sql
 alter table public.locations add column embedding vector(384);
 create index on public.locations using hnsw (embedding vector_cosine_ops);
@@ -222,9 +284,15 @@ Free embedding models:
 Multilingual matters: a French-speaking user typing "vieille ville tranquille"
 must match an English blurb. A monolingual model fails that silently.
 
-Embed once at seed time (8 locations — do it in a migration), then filter by
-radius in PostGIS and rank by cosine similarity. Hybrid retrieval — geography
-narrows, semantics ranks — is the right shape.
+Embed each location **once, at ingestion time** — as the last step of the
+per-tile pipeline in [12](12-poi-sources-and-ingestion.md), right after
+scoring, using the English blurb (translate-then-embed, or use a multilingual
+model on the source text directly). Never embed at request time; it's slow and
+you'd pay for it on every search instead of once per place. Then filter by
+radius in PostGIS, blend `interest_score` and cosine similarity into a single
+ranking, and cap at `p_limit` before the LLM ever sees the set. Hybrid
+retrieval — geography narrows, score and semantics together rank — is the
+right shape.
 
 ---
 
@@ -292,8 +360,11 @@ features grow.
 ## Testing checklist
 
 - [ ] LLM returns a location id not in the candidate set → dropped, not shown
+- [ ] LLM never receives a candidate below the score floor (verify the query, not just the prompt)
+- [ ] A low-`interest_score` candidate that matches the prompt semantically can still be selected — the model isn't just picking the top-scored rows
 - [ ] Provider returns 429 → failover to the second provider, user sees no error
 - [ ] Both providers down → graceful "suggestions unavailable", app still usable with the plain radius query
+- [ ] Maps/POI provider down and tile cache cold → falls back to curated locations only (see 12)
 - [ ] Prompt containing injection text → system instructions hold, no invented places
 - [ ] Arabic prompt → Arabic response, correct RTL rendering
 - [ ] Generated task validates against the `task_type` enum

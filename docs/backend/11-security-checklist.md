@@ -51,20 +51,33 @@ required. Highest probability, highest immediate cost.
 generations. Costs money at a slower rate; erodes any paid tier.
 → [01](01-auth-and-accounts.md), [07](07-securing-the-3d-endpoint.md)
 
-**3. Cross-user data access.** A missing or wrong RLS policy lets one user read
+**3. POI ingestion abuse.** Someone scripts requests for `nearby_locations` (or
+directly hits `ingest-pois`) across thousands of far-flung, never-revisited
+coordinates. Each cold tile triggers a real Overpass query, a Wikidata SPARQL
+call, and Wikipedia/Commons lookups — none of them free of rate limits, and
+some of them shared public infrastructure that gets your app's `User-Agent`
+blocked for every user if you exceed fair use. This is a newer, quieter cousin
+of #1: instead of burning GPU seconds directly, it burns third-party API
+goodwill and Supabase database writes. No credential needed, just varied
+coordinates.
+→ [12](12-poi-sources-and-ingestion.md)
+
+**4. Cross-user data access.** A missing or wrong RLS policy lets one user read
 another's captures and trips. Low probability if RLS is done properly, high
 impact — this is the one that ends up in the press.
 → [02](02-cloud-database-schema.md), [05](05-storage-and-media.md)
 
-**4. Malicious upload.** Decompression bomb, malformed image targeting native
+**5. Malicious upload.** Decompression bomb, malformed image targeting native
 decoders, or illegal content stored in your bucket.
 → [07](07-securing-the-3d-endpoint.md)
 
-**5. Prompt injection.** Steering the LLM through crafted input. Low impact
-here because model output only selects from server-supplied ids.
+**6. Prompt injection.** Steering the LLM through crafted input. Low impact
+here because model output only selects from server-supplied ids, which are
+themselves drawn only from scored, provider-sourced candidates — see
+[12](12-poi-sources-and-ingestion.md).
 → [08](08-llm-and-ai-features.md)
 
-**6. Device compromise.** A stolen phone or a rooted device with a readable
+**7. Device compromise.** A stolen phone or a rooted device with a readable
 session token.
 → [01](01-auth-and-accounts.md), [03](03-local-database-schema.md)
 
@@ -127,13 +140,24 @@ try to read B's rows directly against the REST API with `curl`.
 - [ ] NSFW screening runs before generation
 - [ ] Failed jobs refund credits; user-error failures do not
 
+### POI ingestion
+
+- [ ] The app has no direct path to Overpass, Geoapify, Wikidata, or any other maps provider — every call goes through `ingest-pois` ([12](12-poi-sources-and-ingestion.md))
+- [ ] Ingestion is keyed by tile, not by raw `(lat, lng)` — repeated nearby requests hit the cache, not the provider
+- [ ] Per-user rate limit on distinct-tile requests per hour (reuses `check_rate_limit` from [07](07-securing-the-3d-endpoint.md))
+- [ ] `radius_km` is capped server-side before it's used to compute covering tiles
+- [ ] A cold-tile request degrades to curated fallback locations if the provider is unreachable, rather than blocking or erroring
+- [ ] Provider `User-Agent` headers carry real contact information
+- [ ] Ingestion failures are logged with tile id, not with the requesting user's coordinates history (privacy — see below)
+
 ### Input validation
 
 - [ ] Bucket-level size limits and MIME allowlists set
-- [ ] `p_limit` capped inside `nearby_locations`
+- [ ] `p_limit` and `p_min_score` bounds enforced inside `nearby_locations`
 - [ ] Enum values validated server-side before insert
 - [ ] Free-text length capped before it enters a prompt
 - [ ] LLM-returned ids validated against the candidate set
+- [ ] LLM candidate set itself is validated as score-floor-compliant before the prompt is built (defense if the RPC is ever called incorrectly)
 
 ### Client
 
@@ -150,13 +174,17 @@ try to read B's rows directly against the REST API with `curl`.
 - [ ] Privacy policy exists and the settings link resolves (`settings_screen.dart:63` currently goes nowhere)
 - [ ] Data export available on request
 - [ ] Anonymous account retention documented
-- [ ] Third-party data flows disclosed: Supabase, Modal, the chosen LLM provider, OSM/Nominatim, CartoDB
+- [ ] Third-party data flows disclosed: Supabase, Modal, the chosen LLM provider, OSM/Nominatim, CartoDB, Wikidata/Wikipedia/Commons, and any commercial maps API in use
 
 ### Third-party compliance
 
-- [ ] OpenStreetMap attribution displayed on the map
+- [ ] OpenStreetMap attribution displayed on the map and for POI data sourced from it ([12](12-poi-sources-and-ingestion.md))
 - [ ] CartoDB attribution displayed (`map_screen.dart:73`)
 - [ ] Nominatim `User-Agent` includes a contact address, and requests are ≤ 1/sec
+- [ ] Overpass/Geoapify `User-Agent` includes a contact address; ingestion respects the provider's fair-use rate limits
+- [ ] Every displayed Commons photo carries its required attribution and licence — stored per-row in `locations.photo_attribution` / `photo_license` ([12](12-poi-sources-and-ingestion.md)), not assumed
+- [ ] Wikipedia-derived text usage complies with CC BY-SA (verbatim extracts attributed; LLM-rewritten summaries still credit the source article)
+- [ ] If Google Places (or any provider with caching restrictions) is used for enrichment, verify content is fetched live rather than persisted — see the Google Places note in [12](12-poi-sources-and-ingestion.md)
 - [ ] Hunyuan3D 2.1 licence terms reviewed against commercial use — see [06](06-3d-generation-pipeline.md)
 - [ ] LLM provider terms permit your use case
 
@@ -181,6 +209,9 @@ You cannot respond to what you can't see.
 | Job failure rate | > 20% | Broken pipeline, refunds owed |
 | Edge Function 5xx rate | > 1% | Provider outage or a bug |
 | Storage growth per day | > 100 MB | Retention policy not working |
+| Distinct POI tiles requested per user per hour | > 20× baseline | Ingestion-endpoint abuse ([12](12-poi-sources-and-ingestion.md)) |
+| Overpass/Geoapify error or throttle rate | > 5% | Approaching a fair-use limit — switch provider or self-host before it becomes a block |
+| POI cache hit rate (`FetchedAreas` / total requests) | Trending down | Tile TTL too short, or genuinely new geography — check which before tuning |
 
 Add Sentry (free tier) for client crashes and Edge Function errors. Do not log
 JWTs, storage paths with user ids, prompts, or image bytes.

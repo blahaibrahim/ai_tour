@@ -4,6 +4,12 @@ Every table below maps to something that exists in
 `lib/blocs/app/app_state.dart` or `lib/models/location.dart` today. Nothing
 here is speculative.
 
+> **Read [12](12-poi-sources-and-ingestion.md) first.** `locations` is not a
+> curated catalogue — it's a deduplicated, scored cache of POI data fetched
+> from a maps API, with the original 8 hand-written entries retained as
+> curated fallbacks. That document defines the ingestion pipeline, the tile
+> cache, and the scoring columns referenced below.
+
 ## Extensions
 
 ```sql
@@ -50,23 +56,63 @@ Display names live in `region_translations` — see
 [09](09-internationalization.md). The hardcoded `regions` list in
 `lib/models/location_data.dart:4` becomes the seed for this table.
 
+**Regions are now optional.** They were a property of the hand-curated set and
+don't survive arbitrary geography — a POI fetched 40 km outside Constantine
+belongs to no region in that list. Keep the table for the curated 8 and for
+editorial grouping, but the primary filter axis becomes `category` (derived
+from OSM tags) plus the radius. `locations.region_id` is therefore nullable.
+
 ### `locations`
 
 ```sql
 create table public.locations (
-  id            text primary key,        -- 'casbah', matches Location.id today
-  region_id     text not null references public.regions(id),
-  category      text not null,           -- 'Old town', 'Roman ruins'
+  id            text primary key,        -- 'casbah' (curated) or 'osm-node-123456'
+  region_id     text references public.regions(id),   -- nullable, see above
+  category      text not null,           -- normalized from OSM tags
   geog          geography(Point, 4326) not null,
-  photo_url     text,                    -- null → fall back to the picsum seed
+  photo_url     text,
   is_active     boolean not null default true,
   created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  updated_at    timestamptz not null default now(),
+
+  -- provenance & scoring (see 12)
+  interest_score  numeric(6,2) not null default 0,
+  score_breakdown jsonb,
+  wikidata_qid    text,
+  wikipedia_title text,
+  pageviews_30d   integer,
+  heritage_status text,
+  source_count    smallint not null default 1,
+  is_curated      boolean not null default false,
+
+  -- photo licensing (Commons images require attribution)
+  photo_attribution text,
+  photo_license     text,
+  photo_source_url  text
 );
 
-create index locations_geog_idx   on public.locations using gist (geog);
-create index locations_region_idx on public.locations (region_id) where is_active;
+create index locations_geog_idx  on public.locations using gist (geog);
+create index locations_score_idx on public.locations (interest_score desc)
+  where is_active;
+create index locations_qid_idx   on public.locations (wikidata_qid)
+  where wikidata_qid is not null;
+create index locations_cat_idx   on public.locations (category) where is_active;
 ```
+
+`is_curated` marks the original 8 hand-verified entries. They bypass the score
+threshold, are always eligible, and act as the floor when every provider is
+down. **Do not delete them** — they're also the regression baseline for tuning
+the scorer.
+
+### `poi_tiles` and `poi_source_links`
+
+Two more catalogue tables come from the ingestion pipeline — the tile cache
+that tracks which geography has been fetched and when, and the provenance
+links that make deduplication reversible. Both are defined in
+[12](12-poi-sources-and-ingestion.md) rather than repeated here.
+
+Neither is client-readable. They're ingestion machinery; the app only ever
+sees `locations` through the RPC below.
 
 `Location.lat` / `Location.lng` collapse into `geog`. Keep them as generated
 columns if the Dart model is easier to leave alone:
@@ -411,44 +457,33 @@ column revoke; it fails safe.
 
 ## The radius query
 
-This is the query the app has been faking. As an RPC so the client sends
-parameters, never SQL:
+This is the query the app has been faking. It now filters on `interest_score`
+as well as geography — the full definition and rationale live in
+[12](12-poi-sources-and-ingestion.md#updated-nearby_locations), since the
+score column is ingestion machinery. Summary:
 
 ```sql
 create or replace function public.nearby_locations(
-  p_lat        double precision,
-  p_lng        double precision,
-  p_radius_km  double precision,
-  p_regions    text[] default null,
-  p_locale     text default 'en',
-  p_limit      integer default 40
+  p_lat double precision, p_lng double precision, p_radius_km double precision,
+  p_categories text[] default null,
+  p_min_score numeric default 25,
+  p_locale text default 'en',
+  p_limit integer default 50
 )
 returns table (
-  id          text,
-  name        text,
-  blurb       text,
-  region_id   text,
-  category    text,
-  lat         double precision,
-  lng         double precision,
-  distance_km double precision,
-  photo_url   text
+  id text, name text, blurb text, category text,
+  lat double precision, lng double precision,
+  distance_km double precision, interest_score numeric,
+  heritage_status text, photo_url text
 )
-language sql
-stable
-security invoker
+language sql stable security invoker
 set search_path = public, extensions
 as $$
   select
-    l.id,
-    coalesce(t.name, ten.name)   as name,
-    coalesce(t.blurb, ten.blurb) as blurb,
-    l.region_id,
-    l.category,
-    st_y(l.geog::geometry),
-    st_x(l.geog::geometry),
+    l.id, coalesce(t.name, ten.name), coalesce(t.blurb, ten.blurb), l.category,
+    st_y(l.geog::geometry), st_x(l.geog::geometry),
     st_distance(l.geog, st_makepoint(p_lng, p_lat)::geography) / 1000.0,
-    l.photo_url
+    l.interest_score, l.heritage_status, l.photo_url
   from public.locations l
   left join public.location_translations t
          on t.location_id = l.id and t.locale = p_locale
@@ -456,8 +491,10 @@ as $$
          on ten.location_id = l.id and ten.locale = 'en'
   where l.is_active
     and st_dwithin(l.geog, st_makepoint(p_lng, p_lat)::geography, p_radius_km * 1000)
-    and (p_regions is null or l.region_id = any(p_regions))
-  order by l.geog <-> st_makepoint(p_lng, p_lat)::geography
+    and (l.is_curated or l.interest_score >= p_min_score)
+    and (p_categories is null or l.category = any(p_categories))
+  order by l.interest_score desc,
+           l.geog <-> st_makepoint(p_lng, p_lat)::geography
   limit least(p_limit, 100);
 $$;
 
@@ -470,13 +507,19 @@ Notes:
   metres on the spheroid. Do not use `st_distance(...) < x` in the `WHERE`
   clause — that can't use the index.
 - The `<->` operator in `ORDER BY` is an index-assisted nearest-neighbour
-  sort.
+  sort, used here as the tiebreaker after score.
 - `least(p_limit, 100)` caps what a caller can ask for. Without it, a client
   passes `p_limit = 10000000` and you've built a denial-of-service endpoint.
+- `l.is_curated or l.interest_score >= p_min_score` is the quality floor —
+  it's what keeps a car park with a `tourism` tag out of the results. See
+  [12](12-poi-sources-and-ingestion.md) for how the score is computed.
 - The double left join gives English fallback when a translation is missing —
   cleaner than making the client handle nulls.
 - `security invoker` keeps RLS applied. Only use `security definer` when you
   deliberately need to bypass it, and then always set `search_path`.
+- `p_regions` from the original design is gone — regions were a property of
+  the hand-curated set and don't generalize to arbitrary POI geography.
+  `p_categories`, derived from OSM tags, is the replacement filter axis.
 
 Client side:
 
@@ -485,13 +528,23 @@ final rows = await supabase.rpc('nearby_locations', params: {
   'p_lat': center.latitude,
   'p_lng': center.longitude,
   'p_radius_km': state.radiusKm,
-  'p_regions': state.selectedRegions.isEmpty ? null : state.selectedRegions,
+  'p_categories': state.selectedCategories.isEmpty ? null : state.selectedCategories,
   'p_locale': locale.languageCode,
 });
 ```
 
 This replaces the region-only filter at `app_bloc.dart:105` and makes the
-radius slider mean something.
+radius slider mean something. `AppState.selectedRegions` becomes
+`selectedCategories` — the region chips in the map UI become category chips
+(Old town / Roman ruins / Museum / Viewpoint / …), or are dropped in favour of
+the radius control that now actually works.
+
+Before this query can return anything beyond the 8 curated rows, the
+ingestion pipeline in [12](12-poi-sources-and-ingestion.md) has to have
+populated the tile the user is standing in. On a cold tile, the client calls
+`ingest-pois` first (or `nearby_locations` triggers it server-side) — see that
+document's "Ingestion Edge Function" section for the fetch-then-serve
+sequencing.
 
 ---
 
@@ -548,21 +601,27 @@ supabase/
   migrations/
     20260801000000_extensions.sql
     20260801000100_catalogue.sql
+    20260801000150_poi_ingestion.sql   -- poi_tiles, poi_source_links, see 12
     20260801000200_profiles_and_auth.sql
     20260801000300_trips.sql
     20260801000400_artifacts_and_jobs.sql
     20260801000500_rls.sql
     20260801000600_functions.sql
-  seed.sql        -- the 8 locations from lib/models/location_data.dart
+  seed.sql        -- the 8 curated locations from lib/models/location_data.dart
 ```
 
-`seed.sql` is a straight port of `allLocations`. Once it exists, delete the
-Dart list — two sources of truth for the catalogue will drift within a week.
+`seed.sql` is a straight port of `allLocations`, inserted with `is_curated =
+true`. Once it exists, delete the Dart list — two sources of truth for the
+catalogue will drift within a week. Everything else in `locations` is
+populated by the ingestion pipeline in [12](12-poi-sources-and-ingestion.md),
+not by a migration.
 
 ## Verification
 
 - [ ] `nearby_locations` returns different results for radius 5 vs. 50 (it must; the map slider spans that range)
 - [ ] `explain analyze` on the radius query shows a GiST index scan, not a seq scan
+- [ ] All 8 curated locations pass the `is_curated or interest_score >= p_min_score` filter regardless of tuning changes
+- [ ] A low-score POI (e.g. an OSM `tourism=information` sign) never appears in results
 - [ ] User A's JWT cannot select, update, or delete any of user B's artifacts, trips, or jobs
 - [ ] `insert into artifacts` with a forged `user_id` is rejected by `with check`
 - [ ] `update profiles set model_credits = 9999` is rejected

@@ -134,15 +134,50 @@ second is simpler and adequate here.
 
 ### Catalogue refresh
 
-The catalogue is small and changes rarely. Poll on app start and at most once
-per hour, gated by ETag:
+This section originally assumed the catalogue was the 8 hand-written
+locations — small, whole-table, rarely changing, fetchable with one ETag
+check. **That no longer holds.** Locations now come from live POI ingestion
+scoped to wherever the user's map viewport happens to be
+([12](12-poi-sources-and-ingestion.md)), so there is no single "catalogue
+version" to poll — the dataset is unbounded and only ever partially relevant
+to any one device.
+
+Pull model instead: **fetch by viewport, not by whole-table version.**
 
 ```dart
-final res = await supabase.rpc('catalogue_version');   // max(updated_at) as text
-if (res == cachedVersion) return;                      // nothing to do
+Future<void> ensureLocationsLoaded(LatLng center, double radiusKm) async {
+  if (await _local.hasFetchedArea(center, radiusKm)) return;   // FetchedAreas, see 03
+
+  final rows = await supabase.rpc('nearby_locations', params: {
+    'p_lat': center.latitude, 'p_lng': center.longitude,
+    'p_radius_km': radiusKm, 'p_locale': locale.languageCode,
+  });
+  await _local.upsertLocations(rows);
+  await _local.recordFetchedArea(center, radiusKm, ttl: const Duration(days: 60));
+}
 ```
 
-One cheap round trip replaces a full download in the common case.
+This is a straight upsert-on-read, not an outbox item — `locations` is
+server-authoritative and read-only to the client (RLS grants `select` only, see
+[02](02-cloud-database-schema.md)), so there's no push direction to reconcile.
+`FetchedAreas` ([03](03-local-database-schema.md)) is purely a local
+optimization to avoid re-issuing the same RPC as the user pans a few hundred
+metres.
+
+Two things follow from moving to a viewport model:
+
+- **The "thinking screen" delay becomes honest.** Route generation now
+  genuinely waits on `nearby_locations`, which may itself trigger the server's
+  tile ingestion on a cold area ([12](12-poi-sources-and-ingestion.md)). Surface
+  real stages here rather than the old fixed-timer animation.
+- **Re-visiting a warm area is instant and free.** `FetchedAreas` with a ~60-day
+  TTL means a user who opens the app in the same city twice in a season makes
+  zero location network calls the second time — the local cache already has
+  every row the RPC would return.
+
+The curated fallback (`isCurated = true`) rows are the one exception: those 8
+are worth having everywhere regardless of viewport, so pull them in full on
+first launch, independent of `FetchedAreas`.
 
 ### Realtime — where it's worth it
 
@@ -196,7 +231,7 @@ first time a user complains.
 | Tier | Contents | Store | Invalidation |
 | --- | --- | --- | --- |
 | Memory | Current queue, active trip, decoded thumbnails | Bloc state, `ImageCache` | Process death |
-| Database | Catalogue, user data, chat history | Drift | Cursor / ETag |
+| Database | POI cache (by viewport), user data, chat history | Drift | `FetchedAreas` TTL (POI) / cursor (user data) |
 | Files | Capture JPEGs, downloaded `.glb`, map tiles | App documents + cache dir | LRU with size budget |
 | Signed URLs | Storage access tokens | Memory map, TTL-aware | Refresh at 80% of TTL |
 
@@ -282,3 +317,6 @@ the alternative is a support ticket.
 - [ ] Expired signed URL → transparently re-signed, no broken image
 - [ ] Device clock set a year forward → sync does not skip rows
 - [ ] Realtime subscription as user A receives no rows belonging to user B
+- [ ] Panning inside a previously-fetched viewport issues zero `nearby_locations` calls
+- [ ] Panning to a new area beyond the `FetchedAreas` TTL re-fetches correctly
+- [ ] Curated fallback locations load on first launch with no network

@@ -59,6 +59,10 @@ later. The user never waits on a round trip to see their own tap take effect.
 // lib/data/local/tables.dart
 
 // ---------- Catalogue (cached) ----------
+//
+// `locations` mirrors a slice of the server's POI cache, not a static seed —
+// see 12-poi-sources-and-ingestion.md. Rows arrive via `nearby_locations`
+// responses as the user pans the map, not via one bulk sync.
 
 class Regions extends Table {
   TextColumn get id => text()();
@@ -68,13 +72,21 @@ class Regions extends Table {
 
 class Locations extends Table {
   TextColumn   get id => text()();
-  TextColumn   get regionId => text().references(Regions, #id)();
+  TextColumn   get regionId => text().nullable().references(Regions, #id)();
   TextColumn   get category => text()();
   RealColumn   get lat => real()();
   RealColumn   get lng => real()();
   TextColumn   get photoUrl => text().nullable()();
   BoolColumn   get isActive => boolean().withDefault(const Constant(true))();
   DateTimeColumn get updatedAt => dateTime()();
+
+  // Mirrors the server's scoring columns (12) — enough to render a result
+  // list and respect the quality floor without a round trip.
+  RealColumn   get interestScore => real().withDefault(const Constant(0))();
+  TextColumn   get heritageStatus => text().nullable()();
+  BoolColumn   get isCurated => boolean().withDefault(const Constant(false))();
+  TextColumn   get photoAttribution => text().nullable()();
+
   @override Set<Column> get primaryKey => {id};
 }
 
@@ -92,6 +104,20 @@ class LocationTasks extends Table {
   TextColumn get type => text()();          // task_type enum
   IntColumn  get points => integer().withDefault(const Constant(30))();
   @override Set<Column> get primaryKey => {id};
+}
+
+class FetchedAreas extends Table {
+  /// Tracks which circular query areas (center + radius) this device has
+  /// already asked the server about, so panning the map a few hundred metres
+  /// doesn't re-issue `nearby_locations` for data already on disk. This is
+  /// deliberately coarser than the server's own tile cache (12) — it just
+  /// needs to answer "do I already have this neighbourhood locally?".
+  IntColumn      get id => integer().autoIncrement()();
+  RealColumn     get centerLat => real()();
+  RealColumn     get centerLng => real()();
+  RealColumn     get radiusKm => real()();
+  DateTimeColumn get fetchedAt => dateTime()();
+  DateTimeColumn get expiresAt => dateTime()();  // mirrors server TTL, ~30-90 days
 }
 
 // ---------- User-owned (local first) ----------
@@ -240,20 +266,34 @@ data.
 
 SQLite has no PostGIS. Two options:
 
-1. Do the radius filter in Dart over the cached catalogue. With a few hundred
-   locations this is microseconds — `Distance().as(LengthUnit.Kilometer, a, b)`
-   from `latlong2`, which is already a dependency.
+1. Do the radius filter in Dart over the cached catalogue.
 2. Bounding-box pre-filter in SQL (`lat between ? and ?`), then refine in Dart.
-   Worth it above ~5,000 rows.
 
-Start with (1). The catalogue is 8 rows today.
+**Start with (2), not (1), and revisit this once real usage data exists.**
+Earlier guidance for this app assumed the catalogue was the 8 hand-written
+locations, where an in-memory Dart filter is trivially fast. That assumption
+no longer holds: with POI data fetched live from a maps API
+([12](12-poi-sources-and-ingestion.md)), a user who has browsed Algiers,
+Constantine, and Béjaïa in one session can have several thousand cached rows
+locally, and a bounding-box `WHERE` clause backed by an index on `(lat, lng)`
+keeps the filter cheap regardless of how large that cache grows. Add:
 
-The important thing is that **the same radius semantics apply in both places**.
-If online uses `ST_DWithin` on a spheroid and offline uses flat Euclidean
-distance, results differ near the poles and at large radii. Use
-`latlong2`'s haversine (`Distance()`), which is close enough to the spheroid
-at these scales, and write a test that compares both against a fixed set of
-coordinates.
+```dart
+Index get locationsLatLngIdx => Index('locations_lat_lng_idx', 'CREATE INDEX locations_lat_lng_idx ON locations (lat, lng)');
+```
+
+The important thing is that **the same radius semantics apply locally and on
+the server**. The server uses `ST_DWithin` on a spheroid
+([02](02-cloud-database-schema.md)); offline, use `latlong2`'s haversine
+(`Distance()`) as the refinement step after the bounding-box pre-filter — close
+enough to the spheroid at these scales — and write a test that compares both
+against a fixed set of coordinates.
+
+**And the same score floor applies in both places.** The local filter must
+also respect `isCurated OR interestScore >= threshold` — otherwise a device
+that's offline and querying its local cache surfaces the same low-quality POIs
+that `nearby_locations` was built specifically to exclude
+([12](12-poi-sources-and-ingestion.md)).
 
 ### Media files are not blobs
 
@@ -307,10 +347,34 @@ Two things people forget:
 
 - **`PRAGMA foreign_keys = ON` in `beforeOpen`.** SQLite ignores foreign keys
   by default. Every `references` above is decorative without it.
-- **Seed the catalogue from a bundled asset.** Port
-  `lib/models/location_data.dart` to `assets/seed/catalogue.json` so a user on
-  a plane with a fresh install still sees a map with content. The network pull
-  then updates it.
+- **Seed only the curated fallback from a bundled asset.** Port the 8
+  hand-written entries in `lib/models/location_data.dart` to
+  `assets/seed/catalogue.json` with `isCurated = true`, so a user on a plane
+  with a fresh install still sees a map with content. **Do not** try to bundle
+  the live POI cache — that data belongs to the server's tile cache
+  ([12](12-poi-sources-and-ingestion.md)) and grows and changes independently
+  of app releases; the local database only ever holds what's been fetched
+  during actual use, plus this small curated floor.
+
+### Retention for the POI cache
+
+Unlike the 8-row catalogue this replaces, the local `locations` table can grow
+without bound as a user travels — every neighbourhood they've ever queried
+stays cached indefinitely otherwise. Two options, and they compose:
+
+1. **Time-based**, mirroring the server's tile TTL: evict `locations` rows
+   whose `updatedAt` is older than ~90 days and that fall inside no
+   `FetchedAreas` row the user is likely to revisit (i.e. more than, say,
+   200 km from every saved or recently-viewed trip center).
+2. **Distance-based**, on app storage pressure: keep locations near saved
+   places and the current trip; evict the rest, oldest-fetched first — the
+   same LRU shape as the media cache in [04](04-sync-and-caching.md), but
+   keyed by `updatedAt` instead of `lastAccessedAt` since these rows aren't
+   read on every frame.
+
+**Never evict `isCurated` rows or anything referenced by `trip_stops`,
+`saved_locations`, or `artifacts`.** A location a user has already visited or
+saved must stay resolvable offline even if they never return to that city.
 
 ## Repository layer
 
@@ -351,6 +415,10 @@ bloc refactor was worth doing before any of this.
 - [ ] Reconnect → outbox drains, rows flip to `synced`, no duplicates server-side
 - [ ] Same capture flushed twice (kill mid-upload) → one row on the server
 - [ ] Local radius filter and `nearby_locations` agree within 1% on a fixed coordinate set
-- [ ] Fresh install with no network → bundled catalogue renders the map
+- [ ] Local filter respects the `isCurated OR interestScore >= threshold` floor when offline
+- [ ] Fresh install with no network → bundled curated fallback renders the map
+- [ ] Panning within an already-fetched `FetchedAreas` circle issues no network call
+- [ ] Cache eviction never removes a location referenced by `trip_stops`, `saved_locations`, or `artifacts`
 - [ ] Foreign key violation actually raises (proves the pragma is on)
 - [ ] DB opens after simulated schema upgrade from v1 to v2
+- [ ] Bounding-box index is used (not a full scan) once the local cache exceeds a few thousand rows
