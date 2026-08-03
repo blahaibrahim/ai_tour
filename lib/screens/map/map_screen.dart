@@ -62,6 +62,7 @@ class _MapScreenState extends State<MapScreen> {
                 onPositionChanged: (position, hasGesture) {
                   if (position.center != null) {
                     _centerNotifier.value = position.center!;
+                    context.read<AppBloc>().add(SetMapCenterEvent(position.center!));
                   }
                 },
                 interactionOptions: const InteractionOptions(

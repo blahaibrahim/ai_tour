@@ -1,14 +1,20 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_3d_controller/flutter_3d_controller.dart';
+
 import '../../models/location.dart';
+import '../../services/media_cache.dart';
 import '../../theme.dart';
 import '../../widgets/artifact_cube.dart';
 import '../../widgets/cube3d.dart';
 import '../../widgets/pressable_scale.dart';
 
-/// Full interactive 3D view of an artifact — drag to turn it around, pinch
-/// to zoom. Auto-rotates gently for show, and pauses the moment a finger
-/// touches it.
+/// Full interactive viewer for artifacts.
+///
+/// Photo/video artifacts are rendered as a 3D photo cube.
+/// Generated 3D GLB models (when modelStatus == succeeded) are rendered using
+/// a real native 3D GLB viewer via [Flutter3DViewer].
 class ArtifactViewerScreen extends StatefulWidget {
   final Artifact artifact;
 
@@ -18,7 +24,9 @@ class ArtifactViewerScreen extends StatefulWidget {
   State<ArtifactViewerScreen> createState() => _ArtifactViewerScreenState();
 }
 
-class _ArtifactViewerScreenState extends State<ArtifactViewerScreen> with SingleTickerProviderStateMixin {
+class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
+    with SingleTickerProviderStateMixin {
+  // Cube control state
   double _rotX = -0.22;
   double _rotY = 0.5;
   double _scale = 1.0;
@@ -28,10 +36,32 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen> with Single
   DateTime _lastInteraction = DateTime.now().subtract(const Duration(seconds: 5));
   late final Ticker _ticker;
 
+  // Real GLB model file state
+  File? _glbFile;
+  bool _loadingGlb = false;
+  String? _glbError;
+
   @override
   void initState() {
     super.initState();
     _ticker = createTicker(_onTick)..start();
+
+    if (widget.artifact.modelPath != null &&
+        widget.artifact.modelStatus == ModelStatus.succeeded) {
+      _loadGlbModel();
+    }
+  }
+
+  Future<void> _loadGlbModel() async {
+    setState(() => _loadingGlb = true);
+    final file = await MediaCache.getModel(widget.artifact.modelPath!);
+    if (mounted) {
+      setState(() {
+        _glbFile = file;
+        _loadingGlb = false;
+        if (file == null) _glbError = 'Could not load 3D model file';
+      });
+    }
   }
 
   @override
@@ -43,7 +73,8 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen> with Single
   void _onTick(Duration elapsed) {
     final dt = (elapsed - _lastElapsed).inMicroseconds / 1e6;
     _lastElapsed = elapsed;
-    if (DateTime.now().difference(_lastInteraction) > const Duration(milliseconds: 1100)) {
+    if (DateTime.now().difference(_lastInteraction) >
+        const Duration(milliseconds: 1100)) {
       setState(() => _rotY += dt * 0.32);
     }
   }
@@ -69,8 +100,7 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen> with Single
   @override
   Widget build(BuildContext context) {
     final art = widget.artifact;
-    final faces = artifactCubeFaces(art, iconSize: 46);
-    final cubeSize = MediaQuery.of(context).size.shortestSide * 0.62;
+    final isRealGlb = art.modelStatus == ModelStatus.succeeded && art.modelPath != null;
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
@@ -101,13 +131,17 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen> with Single
                       children: [
                         Text(
                           art.name,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 17),
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(fontSize: 17),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           art.region,
-                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textSecondary),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -118,37 +152,86 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen> with Single
               ),
             ),
             Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onScaleStart: _onScaleStart,
-                onScaleUpdate: _onScaleUpdate,
-                onScaleEnd: _onScaleEnd,
-                child: Center(
-                  child: Transform.scale(
-                    scale: _scale,
-                    child: Cube3D(
-                      size: cubeSize,
-                      rotateX: _rotX,
-                      rotateY: _rotY,
-                      front: faces[0],
-                      back: faces[1],
-                      left: faces[2],
-                      right: faces[3],
-                      top: faces[4],
-                      bottom: faces[5],
-                    ),
-                  ),
-                ),
-              ),
+              child: isRealGlb
+                  ? _buildGlbViewer()
+                  : _buildPhotoCubeViewer(art),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
               child: Text(
-                'Drag to rotate · Pinch to zoom',
+                isRealGlb
+                    ? 'Interactive 3D Model — Touch to rotate'
+                    : 'Drag to rotate · Pinch to zoom',
                 style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlbViewer() {
+    if (_loadingGlb) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppTheme.accent),
+            SizedBox(height: 16),
+            Text(
+              'Loading 3D model…',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_glbFile != null) {
+      return Flutter3DViewer(
+        src: _glbFile!.path,
+      );
+    }
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.warning_amber_rounded, size: 40, color: Colors.amber),
+          const SizedBox(height: 12),
+          Text(
+            _glbError ?? 'Could not display 3D model',
+            style: const TextStyle(fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoCubeViewer(Artifact art) {
+    final faces = artifactCubeFaces(art, iconSize: 46);
+    final cubeSize = MediaQuery.of(context).size.shortestSide * 0.62;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onScaleStart: _onScaleStart,
+      onScaleUpdate: _onScaleUpdate,
+      onScaleEnd: _onScaleEnd,
+      child: Center(
+        child: Transform.scale(
+          scale: _scale,
+          child: Cube3D(
+            size: cubeSize,
+            rotateX: _rotX,
+            rotateY: _rotY,
+            front: faces[0],
+            back: faces[1],
+            left: faces[2],
+            right: faces[3],
+            top: faces[4],
+            bottom: faces[5],
+          ),
         ),
       ),
     );

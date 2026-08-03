@@ -46,6 +46,9 @@ class AppState extends Equatable {
     Set<String>? savedLocationIds,
     this.tripDate,
     this.tripEndDate,
+    this.isGeneratingRoute = false,
+    this.isChatLoading = false,
+    this.routeError,
   })  : selectedRegions = selectedRegions ?? regions,
         savedLocationIds = savedLocationIds ?? const {};
 
@@ -76,6 +79,10 @@ class AppState extends Equatable {
   final Set<String> savedLocationIds;
   final DateTime? tripDate;
   final DateTime? tripEndDate;
+  // Async loading & error state
+  final bool isGeneratingRoute;
+  final bool isChatLoading;
+  final String? routeError;
 
   /// The location currently being swiped on, or null if the queue is exhausted.
   Location? get currentLoc {
@@ -122,6 +129,9 @@ class AppState extends Equatable {
     Set<String>? savedLocationIds,
     Object? tripDate = _sentinel,
     Object? tripEndDate = _sentinel,
+    bool? isGeneratingRoute,
+    bool? isChatLoading,
+    Object? routeError = _sentinel,
   }) {
     return AppState(
       screen: screen ?? this.screen,
@@ -151,6 +161,9 @@ class AppState extends Equatable {
       savedLocationIds: savedLocationIds ?? this.savedLocationIds,
       tripDate: tripDate == _sentinel ? this.tripDate : tripDate as DateTime?,
       tripEndDate: tripEndDate == _sentinel ? this.tripEndDate : tripEndDate as DateTime?,
+      isGeneratingRoute: isGeneratingRoute ?? this.isGeneratingRoute,
+      isChatLoading: isChatLoading ?? this.isChatLoading,
+      routeError: routeError == _sentinel ? this.routeError : routeError as String?,
     );
   }
 
@@ -183,6 +196,9 @@ class AppState extends Equatable {
         savedLocationIds,
         tripDate,
         tripEndDate,
+        isGeneratingRoute,
+        isChatLoading,
+        routeError,
       ];
 }
 

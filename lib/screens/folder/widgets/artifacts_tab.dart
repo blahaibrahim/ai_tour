@@ -1,7 +1,5 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../blocs/app/app_bloc.dart';
-import '../../../blocs/app/app_event.dart';
 import '../../../models/location.dart';
 import '../../../theme.dart';
 import '../../../widgets/glass_surface.dart';
@@ -10,7 +8,7 @@ import '../../../widgets/staggered_entrance.dart';
 import '../../../widgets/artifact_cube.dart';
 import '../../artifact_viewer/artifact_viewer_screen.dart';
 
-/// Grid tab showing captured and example artifacts.
+/// Grid tab showing captured and example artifacts with 3D generation status badges.
 class ArtifactsTab extends StatelessWidget {
   const ArtifactsTab({super.key, required this.artifacts});
 
@@ -46,22 +44,11 @@ class ArtifactsTab extends StatelessWidget {
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              Center(child: ArtifactCubeThumbnail(artifact: art, size: 104)),
+                              Center(child: _buildMediaPreview(art)),
                               Positioned(
                                 top: 8,
                                 left: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.bg,
-                                    borderRadius: AppTheme.brPill,
-                                    boxShadow: AppTheme.shadowSm,
-                                  ),
-                                  child: Text(
-                                    art.kindLabel,
-                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTheme.accent),
-                                  ),
-                                ),
+                                child: _buildBadge(art),
                               ),
                             ],
                           ),
@@ -71,8 +58,25 @@ class ArtifactsTab extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(art.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                              Text(art.region, style: TextStyle(fontSize: 11, color: AppTheme.text.withOpacity(0.6)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                              Text(
+                                art.name,
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                art.modelStatus == ModelStatus.failed
+                                    ? (modelFailureMessages[art.errorCode] ?? 'Generation failed')
+                                    : art.region,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: art.modelStatus == ModelStatus.failed
+                                      ? Colors.redAccent
+                                      : AppTheme.text.withOpacity(0.6),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ],
                           ),
                         ),
@@ -83,6 +87,95 @@ class ArtifactsTab extends StatelessWidget {
               );
             },
           );
+  }
+
+  Widget _buildMediaPreview(Artifact art) {
+    if (art.isLocalFile && File(art.photoUrl).existsSync()) {
+      return Image.file(
+        File(art.photoUrl),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => ArtifactCubeThumbnail(artifact: art, size: 104),
+      );
+    }
+    return ArtifactCubeThumbnail(artifact: art, size: 104);
+  }
+
+  Widget _buildBadge(Artifact art) {
+    if (art.modelStatus == ModelStatus.generating) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.ink,
+          borderRadius: AppTheme.brPill,
+          boxShadow: AppTheme.shadowSm,
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 10,
+              height: 10,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.sand),
+            ),
+            SizedBox(width: 6),
+            Text(
+              'Generating 3D…',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.sand),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (art.modelStatus == ModelStatus.failed) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.red.shade900,
+          borderRadius: AppTheme.brPill,
+          boxShadow: AppTheme.shadowSm,
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 12, color: Colors.white),
+            SizedBox(width: 4),
+            Text(
+              '3D Failed',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (art.modelStatus == ModelStatus.succeeded) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.accent,
+          borderRadius: AppTheme.brPill,
+          boxShadow: AppTheme.shadowSm,
+        ),
+        child: const Text(
+          '3D Model',
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTheme.onAccent),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.bg,
+        borderRadius: AppTheme.brPill,
+        boxShadow: AppTheme.shadowSm,
+      ),
+      child: Text(
+        art.kindLabel,
+        style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTheme.accent),
+      ),
+    );
   }
 
   Widget _emptyState(BuildContext context) {

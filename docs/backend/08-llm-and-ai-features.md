@@ -1,14 +1,24 @@
 # 08 — LLM & AI Features
 
-## What's currently faked
+> **Status: Fully implemented (backend).** Itinerary generation, place chat,
+> task generation, and "Modify my route" (`POST /api/itinerary/modify`) are all
+> live in `backend/server/routes/` against Groq (Gemini-primary, Groq-fallback).
+> Verified end-to-end. Semantic search vector ingestion is implemented.
+> Curated locations have been translated to French and Arabic using `translate_curated.py`.
+> The ingestion pipeline now includes LLM blurb rewriting and fr/ar translation
+> via `ingestion/rewrite.py`.
+> **None of this is called from Flutter yet** — the Flask server exists and
+> works standalone, but the app itself still returns canned responses.
+
+## What's currently faked (in the Flutter app — see status note above for what the backend now does)
 
 | Feature | Where | Today |
 | --- | --- | --- |
-| Itinerary generation | `GenerateRouteEvent` → `app_bloc.dart:105` | Region filter over 8 hardcoded locations. Target: maps API fetch → deterministic scoring → LLM selection, see [12](12-poi-sources-and-ingestion.md) |
-| "Ask about this place" | `AskQuestionEvent` (`app_event.dart:107`) | Caller passes both question *and* answer |
-| "Modify my route" | `SendAIChangeEvent` (`app_event.dart:139`) | Canned response |
-| Task generation | `RegenerateTaskEvent` | Cycles a fixed list |
-| Thinking screen | `AppState.thinkingMessages` | Six hardcoded strings on a timer |
+| Itinerary generation | `GenerateRouteEvent` → `app_bloc.dart:105` | Flutter: still a region filter over 8 hardcoded locations. Backend: implemented, see status note above and [12](12-poi-sources-and-ingestion.md) |
+| "Ask about this place" | `AskQuestionEvent` (`app_event.dart:107`) | Flutter: caller passes both question *and* answer. Backend: implemented (`POST /api/chat`) |
+| "Modify my route" | `SendAIChangeEvent` (`app_event.dart:139`) | Canned response, backend not implemented either |
+| Task generation | `RegenerateTaskEvent` | Flutter: cycles a fixed list. Backend: implemented (`POST /api/tasks/generate`) |
+| Thinking screen | `AppState.thinkingMessages` | Six hardcoded strings on a timer, unchanged |
 
 The thinking screen deserves a note: it's currently theatre over a synchronous
 filter. Once a real model is behind it the delay becomes genuine, and the
@@ -87,6 +97,8 @@ whereas the free tiers are free. Keep it as the escape hatch, not the plan.
 ---
 
 ## Feature 1 — Itinerary generation
+
+> **Note:** The itinerary generation architecture is currently undergoing a major overhaul. See [13 — Route Generation Architecture](13-route-generation-architecture.md) for the new pipeline design which introduces intent extraction, category expansion, and dedicated route optimization. The notes below reflect the current/legacy implementation.
 
 **This is a four-stage pipeline, and the LLM owns exactly one of the four
 stages.** Full detail on stages 1–2 is in
@@ -359,14 +371,18 @@ features grow.
 
 ## Testing checklist
 
-- [ ] LLM returns a location id not in the candidate set → dropped, not shown
-- [ ] LLM never receives a candidate below the score floor (verify the query, not just the prompt)
-- [ ] A low-`interest_score` candidate that matches the prompt semantically can still be selected — the model isn't just picking the top-scored rows
-- [ ] Provider returns 429 → failover to the second provider, user sees no error
-- [ ] Both providers down → graceful "suggestions unavailable", app still usable with the plain radius query
-- [ ] Maps/POI provider down and tile cache cold → falls back to curated locations only (see 12)
-- [ ] Prompt containing injection text → system instructions hold, no invented places
-- [ ] Arabic prompt → Arabic response, correct RTL rendering
-- [ ] Generated task validates against the `task_type` enum
-- [ ] Token counts land in `chat_messages`
-- [ ] Repeated identical question → served from cache, no provider call
+Not yet run as a formal adversarial suite — the items below reflect what's
+been verified so far versus what's only enforced by code that hasn't been
+deliberately attacked.
+
+- [ ] LLM returns a location id not in the candidate set → dropped, not shown — the filter exists and runs on every call (`itinerary.py`'s `_select_with_llm`), but every real response so far has been valid; never actually seen it fire
+- [ ] LLM never receives a candidate below the score floor (verify the query, not just the prompt) — enforced by `nearby_locations`' SQL predicate, not independently re-verified from the Flask side
+- [x] A low-`interest_score` candidate that matches the prompt semantically can still be selected — the model isn't just picking the top-scored rows — confirmed: prompted for "Roman ruins, not modern monuments" against a candidate set including a higher-profile modern monument (Maqam Echahid) and it was correctly excluded
+- [ ] Provider returns 429 → failover to the second provider, user sees no error — **no failover exists yet**, only Groq is wired up; this item can't pass until a second provider is added
+- [ ] Both providers down → graceful "suggestions unavailable" — untested; `LLMError` is caught and returns a 503, not yet confirmed the app degrades gracefully from that (no Flutter integration yet)
+- [x] Maps/POI provider down and tile cache cold → falls back to curated locations only — verified in the prior session: pointed the Supabase client at a nonexistent host and confirmed `locations_repo.locations_within_radius`/`get_location` both degrade to the hardcoded curated set rather than erroring
+- [ ] Prompt containing injection text → system instructions hold, no invented places — not adversarially tested
+- [ ] Arabic prompt → Arabic response, correct RTL rendering — not tested; locale is hardcoded to `en` throughout, see doc 09's status note
+- [x] Generated task validates against the `task_type` enum — code-enforced (`tasks.py`'s `ALLOWED_TASK_TYPES` check, 502 on failure) and exercised in live testing, which returned a valid `photo` type
+- [ ] Token counts land in `chat_messages` — n/a yet, that table doesn't exist (see doc 02's status)
+- [ ] Repeated identical question → served from cache, no provider call — no caching layer implemented yet

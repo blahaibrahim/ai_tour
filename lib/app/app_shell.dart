@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../blocs/app/app_bloc.dart';
 import '../blocs/app/app_event.dart';
 import '../blocs/app/app_state.dart';
+import '../blocs/auth/auth_bloc.dart';
+import '../blocs/auth/auth_state.dart';
 import '../theme.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/pressable_scale.dart';
@@ -37,7 +39,46 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final authState = context.watch<AuthBloc>().state;
     final state = context.watch<AppBloc>().state;
+
+    // Show a minimal splash while the session is being restored from secure
+    // storage. This prevents the map from flashing before auth is resolved.
+    if (authState.status == AuthStatus.unknown) {
+      return const Scaffold(
+        backgroundColor: AppTheme.ink,
+        body: Center(
+          child: CircularProgressIndicator(color: AppTheme.accent),
+        ),
+      );
+    }
+
+    return BlocListener<AuthBloc, AuthState>(
+      listenWhen: (prev, curr) => curr.status == AuthStatus.signedOut && prev.status != AuthStatus.signedOut,
+      listener: (context, _) {
+        // Sign-out clears all tour state — per doc 01 "sign-out must clear local data".
+        context.read<AppBloc>().add(const LeaveTourEvent());
+      },
+      child: _AppShellBody(state: state),
+    );
+  }
+}
+
+class _AppShellBody extends StatelessWidget {
+  const _AppShellBody({required this.state});
+  final AppState state;
+
+  void _openCamera(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const ArHuntScreen(mode: ArCameraMode.capture),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
 
     Widget currentScreen;
     switch (state.screen) {

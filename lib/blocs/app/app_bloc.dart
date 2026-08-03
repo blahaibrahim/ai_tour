@@ -1,7 +1,14 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../models/location.dart';
 import '../../models/location_data.dart';
+import 'dart:math';
+import '../../repositories/chat_repository.dart';
+import '../../repositories/location_repository.dart';
+import '../../repositories/model_repository.dart';
+import '../../repositories/task_repository.dart';
 import 'app_event.dart';
 import 'app_state.dart';
 
@@ -10,6 +17,10 @@ import 'app_state.dart';
 /// All state mutations happen here in response to [AppEvent]s dispatched by
 /// the UI. The thinking-screen animation timer lives here too, so the widget
 /// layer stays completely stateless.
+///
+/// Backend calls now go through repository classes rather than inline HTTP —
+/// see lib/repositories/. The Supabase Realtime subscription for model_jobs
+/// is started here and torn down in [close].
 class AppBloc extends Bloc<AppEvent, AppState> {
   AppBloc() : super(const AppState()) {
     on<SetScreenEvent>(_onSetScreen);
@@ -37,6 +48,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<ReorderStopsEvent>(_onReorderStops);
     on<TogglePlayEvent>(_onTogglePlay);
     on<AcceptRouteEvent>(_onAcceptRoute);
+    on<RestoreAcceptedRouteEvent>(_onRestoreAcceptedRoute);
     on<CompleteTaskEvent>(_onCompleteTask);
     on<RegenerateTaskEvent>(_onRegenerateTask);
     on<AdvanceStopEvent>(_onAdvanceStop);
@@ -45,13 +57,48 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<LeaveTourEvent>(_onLeaveTour);
     on<ToggleSavedLocationEvent>(_onToggleSavedLocation);
     on<SetTripDateEvent>(_onSetTripDate);
+    on<JobStatusUpdatedEvent>(_onJobStatusUpdated);
+    on<RequestModelGenerationEvent>(_onRequestModelGeneration);
+    on<ResumeRouteEvent>(_onResumeRoute);
+
+    _startRealtimeSubscription();
+    add(const ResumeRouteEvent());
   }
 
   Timer? _thinkTimer;
+  StreamSubscription<List<Map<String, dynamic>>>? _realtimeSub;
+
+  /// Subscribe to model_jobs rows for the current user so the folder updates
+  /// automatically when the Modal worker finishes.
+  void _startRealtimeSubscription() {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _realtimeSub = Supabase.instance.client
+        .from('model_jobs')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .listen((rows) {
+          for (final row in rows) {
+            final status = row['status'] as String?;
+            if (status == null) continue;
+            // Only surface terminal states to the bloc — avoid excessive emits
+            if (status == 'succeeded' || status == 'failed' || status == 'cancelled') {
+              add(JobStatusUpdatedEvent(
+                jobId: row['id'] as String,
+                status: status,
+                outputPath: row['output_path'] as String?,
+                errorCode: row['error_code'] as String?,
+              ));
+            }
+          }
+        });
+  }
 
   @override
   Future<void> close() {
     _thinkTimer?.cancel();
+    _realtimeSub?.cancel();
     return super.close();
   }
 
@@ -90,26 +137,63 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   }
 
   // ---------------------------------------------------------------------------
-  // Route generation (thinking screen)
+  // Route generation (thinking screen) — now calls real backend
   // ---------------------------------------------------------------------------
 
-  void _onGenerateRoute(GenerateRouteEvent event, Emitter<AppState> emit) {
+  Future<void> _onGenerateRoute(
+      GenerateRouteEvent event, Emitter<AppState> emit) async {
     _thinkTimer?.cancel();
-    emit(state.copyWith(screen: 'thinking', thinkIdx: 0));
+    emit(state.copyWith(screen: 'thinking', thinkIdx: 0, isGeneratingRoute: true));
 
     _thinkTimer = Timer.periodic(const Duration(milliseconds: 850), (_) {
       add(const ThinkTickEvent());
     });
 
-    // Filter locations by selected regions, then transition to swipe screen.
-    final filtered = state.selectedRegions.isNotEmpty
-        ? allLocations.where((l) => state.selectedRegions.contains(l.region)).toList()
-        : List<Location>.from(allLocations);
+    // Fetch from the real backend while the thinking animation plays.
+    final locations = await LocationRepository.generateItinerary(
+      lat: state.mapCenter.latitude,
+      lng: state.mapCenter.longitude,
+      radiusKm: state.radiusKm,
+      prompt: state.prompt.isNotEmpty ? state.prompt : null,
+      wantedVisits: state.wantedVisits,
+    );
 
-    Timer(const Duration(milliseconds: 3200), () {
+    _thinkTimer?.cancel();
+    add(FinishThinkingEvent(locations));
+  }
+
+  Future<void> _onResumeRoute(
+      ResumeRouteEvent event, Emitter<AppState> emit) async {
+    final job = await LocationRepository.checkLatestJob();
+    if (job == null) return;
+    
+    final status = job['status'] as String?;
+    if (status == 'succeeded') {
+      final resultData = job['result_data'] as Map<String, dynamic>?;
+      final stops = resultData?['stops'] as List<dynamic>?;
+      if (stops != null && stops.isNotEmpty) {
+        final parsed = stops.whereType<Map<String, dynamic>>().map(Location.fromJson).toList();
+        add(FinishThinkingEvent(parsed));
+      }
+    } else if (status == 'accepted') {
+      final resultData = job['result_data'] as Map<String, dynamic>?;
+      final stops = resultData?['stops'] as List<dynamic>?;
+      if (stops != null && stops.isNotEmpty) {
+        final parsed = stops.whereType<Map<String, dynamic>>().map(Location.fromJson).toList();
+        add(RestoreAcceptedRouteEvent(parsed));
+      }
+    } else if (status == 'processing' || status == 'queued') {
       _thinkTimer?.cancel();
-      add(FinishThinkingEvent(filtered.isNotEmpty ? filtered : List<Location>.from(allLocations)));
-    });
+      emit(state.copyWith(screen: 'thinking', thinkIdx: 0, isGeneratingRoute: true));
+      _thinkTimer = Timer.periodic(const Duration(milliseconds: 850), (_) {
+        add(const ThinkTickEvent());
+      });
+      
+      final parsed = await LocationRepository.pollJob(job['id'] as String);
+      
+      _thinkTimer?.cancel();
+      add(FinishThinkingEvent(parsed));
+    }
   }
 
   void _onThinkTick(ThinkTickEvent event, Emitter<AppState> emit) {
@@ -125,10 +209,12 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       accepted: event.isRefresh ? state.accepted : const [],
       rejected: event.isRefresh ? state.rejected : const [],
       screen: 'swipe',
+      isGeneratingRoute: false,
     ));
   }
 
-  void _onRefreshQueue(RefreshQueueEvent event, Emitter<AppState> emit) {
+  Future<void> _onRefreshQueue(
+      RefreshQueueEvent event, Emitter<AppState> emit) async {
     _thinkTimer?.cancel();
     emit(state.copyWith(screen: 'thinking', thinkIdx: 0));
 
@@ -136,23 +222,25 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       add(const ThinkTickEvent());
     });
 
-    Timer(const Duration(milliseconds: 3200), () {
-      _thinkTimer?.cancel();
-      final filtered = state.selectedRegions.isNotEmpty
-          ? allLocations.where((l) => state.selectedRegions.contains(l.region)).toList()
-          : List<Location>.from(allLocations);
-      
-      final newQueue = filtered.where((l) => !state.accepted.contains(l)).toList();
-      if (newQueue.isEmpty) {
-        newQueue.addAll(allLocations.where((l) => !state.accepted.contains(l)));
-      }
-      if (newQueue.isEmpty) {
-        // Absolute fallback if they somehow accepted the entire database
-        newQueue.addAll(allLocations);
-      }
-      newQueue.shuffle();
-      add(FinishThinkingEvent(newQueue, isRefresh: true));
-    });
+    final all = await LocationRepository.generateItinerary(
+      lat: state.mapCenter.latitude,
+      lng: state.mapCenter.longitude,
+      radiusKm: state.radiusKm,
+      prompt: state.prompt.isNotEmpty ? state.prompt : null,
+      rejectedIds: state.rejected.map((e) => e.id).toList(),
+      acceptedIds: state.accepted.map((e) => e.id).toList(),
+    );
+
+    _thinkTimer?.cancel();
+    final newQueue = all.where((l) => 
+        !state.accepted.any((a) => a.id == l.id) &&
+        !state.rejected.any((r) => r.id == l.id)
+    ).toList();
+    
+    add(FinishThinkingEvent(
+      newQueue,
+      isRefresh: true,
+    ));
   }
 
   void _onBackToMap(BackToMapEvent event, Emitter<AppState> emit) {
@@ -164,10 +252,12 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   // Swipe screen
   // ---------------------------------------------------------------------------
 
-  void _handleSwipeNext(int nextIndex, List<Location> newAccepted, List<Location> newRejected, Emitter<AppState> emit) {
+  void _handleSwipeNext(int nextIndex, List<Location> newAccepted,
+      List<Location> newRejected, Emitter<AppState> emit) {
     if (nextIndex >= state.queue.length) {
       final target = state.wantedVisits;
-      final canProceed = newAccepted.isNotEmpty && (target == null || newAccepted.length >= target);
+      final canProceed = newAccepted.isNotEmpty &&
+          (target == null || newAccepted.length >= target);
       if (!canProceed) {
         emit(state.copyWith(
           accepted: newAccepted,
@@ -198,8 +288,10 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     final loc = state.currentLoc;
     if (loc == null) return;
 
-    final newAccepted = event.isAccept ? [...state.accepted, loc] : state.accepted;
-    final newRejected = !event.isAccept ? [...state.rejected, loc] : state.rejected;
+    final newAccepted =
+        event.isAccept ? [...state.accepted, loc] : state.accepted;
+    final newRejected =
+        !event.isAccept ? [...state.rejected, loc] : state.rejected;
 
     _handleSwipeNext(state.currentIndex + 1, newAccepted, newRejected, emit);
   }
@@ -222,15 +314,48 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     ));
   }
 
-  void _onAskQuestion(AskQuestionEvent event, Emitter<AppState> emit) {
+  /// Sends the question to /api/chat and emits the real response.
+  Future<void> _onAskQuestion(
+      AskQuestionEvent event, Emitter<AppState> emit) async {
     if (event.question.trim().isEmpty) return;
+
+    final loc = state.detailLoc;
+    if (loc == null) return;
+
+    // Optimistically add the user message and a loading placeholder.
     emit(state.copyWith(
+      isChatLoading: true,
       detailConversation: [
         ...state.detailConversation,
         ChatMessage('user', event.question),
-        ChatMessage('ai', event.answer),
       ],
     ));
+
+    try {
+      final answer = await ChatRepository.askAboutPlace(
+        locationId: loc.id,
+        locationName: loc.name,
+        blurb: loc.blurb,
+        question: event.question,
+        history: state.detailConversation,
+      );
+      emit(state.copyWith(
+        isChatLoading: false,
+        detailConversation: [
+          ...state.detailConversation,
+          ChatMessage('ai', answer),
+        ],
+      ));
+    } catch (_) {
+      emit(state.copyWith(
+        isChatLoading: false,
+        detailConversation: [
+          ...state.detailConversation,
+          const ChatMessage('ai',
+              "Sorry, I couldn't reach the guide right now — try again."),
+        ],
+      ));
+    }
   }
 
   void _onDetailAccept(OnDetailAcceptEvent event, Emitter<AppState> emit) {
@@ -238,7 +363,6 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     if (loc == null) return;
 
     final newAccepted = [...state.accepted, loc];
-    // Need to hide detail immediately, but wait for _handleSwipeNext to emit the right screen
     emit(state.copyWith(detailLoc: null, detailConversation: const []));
     _handleSwipeNext(state.currentIndex + 1, newAccepted, state.rejected, emit);
   }
@@ -264,15 +388,42 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     emit(state.copyWith(askPanelOpen: !state.askPanelOpen));
   }
 
-  void _onSendAIChange(SendAIChangeEvent event, Emitter<AppState> emit) {
+  /// Calls /api/itinerary/modify and updates the accepted stop list.
+  Future<void> _onSendAIChange(
+      SendAIChangeEvent event, Emitter<AppState> emit) async {
     if (event.text.trim().isEmpty) return;
+
     emit(state.copyWith(
       aiConversation: [
         ...state.aiConversation,
         ChatMessage('user', event.text),
-        ChatMessage('ai', "Noted — I'll weight the next suggestions toward that."),
       ],
     ));
+
+    try {
+      final newStops = await ChatRepository.modifyRoute(
+        lat: state.mapCenter.latitude,
+        lng: state.mapCenter.longitude,
+        existingStops: state.accepted,
+        changeRequest: event.text,
+        radiusKm: state.radiusKm,
+      );
+      emit(state.copyWith(
+        accepted: newStops,
+        aiConversation: [
+          ...state.aiConversation,
+          const ChatMessage('ai', 'Done — I\'ve adjusted your route.'),
+        ],
+      ));
+    } catch (_) {
+      emit(state.copyWith(
+        aiConversation: [
+          ...state.aiConversation,
+          const ChatMessage('ai',
+              "Couldn't reach the AI right now — your route is unchanged."),
+        ],
+      ));
+    }
   }
 
   void _onMoveStop(MoveStopEvent event, Emitter<AppState> emit) {
@@ -314,6 +465,20 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       routeAccepted: true,
       currentStopIdx: 0,
     ));
+    LocationRepository.acceptLatestItinerary(state.accepted);
+  }
+
+  void _onRestoreAcceptedRoute(RestoreAcceptedRouteEvent event, Emitter<AppState> emit) {
+    final tasks = event.acceptedLocations
+        .map((l) => Task(type: l.task.type, label: l.task.label, points: 30))
+        .toList();
+    emit(state.copyWith(
+      accepted: event.acceptedLocations,
+      tasks: tasks,
+      screen: 'overview',
+      routeAccepted: true,
+      currentStopIdx: 0,
+    ));
   }
 
   // ---------------------------------------------------------------------------
@@ -333,29 +498,48 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     ));
   }
 
-  void _onRegenerateTask(RegenerateTaskEvent event, Emitter<AppState> emit) {
+  /// Calls /api/tasks/generate for a real LLM-generated task.
+  Future<void> _onRegenerateTask(
+      RegenerateTaskEvent event, Emitter<AppState> emit) async {
     if (state.currentStopIdx >= state.tasks.length) return;
     final t = state.tasks[state.currentStopIdx];
     if (t.state != 'pending' || state.taskRegenerationsLeft <= 0) return;
 
-    const cycle = {'video': 'scan', 'scan': 'mascot', 'mascot': 'video'};
-    const labels = {
-      'video': 'Record a quick panoramic video of your surroundings.',
-      'scan': 'Scan the surrounding area to uncover a hidden historical detail.',
-      'mascot': 'A fennec is hiding somewhere here — find it and photograph it.',
-    };
-    final next = cycle[t.type] ?? 'video';
-    final updated = List<Task>.from(state.tasks);
-    updated[state.currentStopIdx] = Task(
-      type: next,
-      label: labels[next]!,
-      state: 'pending',
-      points: t.points,
-    );
-    emit(state.copyWith(
-      tasks: updated,
-      taskRegenerationsLeft: state.taskRegenerationsLeft - 1,
-    ));
+    try {
+      final loc = state.accepted.length > state.currentStopIdx
+          ? state.accepted[state.currentStopIdx]
+          : null;
+      final newTask = await TaskRepository.generateTask(
+        locationId: loc?.id ?? 'unknown',
+        locationName: loc?.name ?? 'this location',
+      );
+      final updated = List<Task>.from(state.tasks);
+      updated[state.currentStopIdx] = newTask.copyWith(state: 'pending', points: t.points);
+      emit(state.copyWith(
+        tasks: updated,
+        taskRegenerationsLeft: state.taskRegenerationsLeft - 1,
+      ));
+    } catch (_) {
+      // Fall back to the existing cycling behaviour on network failure.
+      const cycle = {'video': 'scan', 'scan': 'mascot', 'mascot': 'video'};
+      const labels = {
+        'video': 'Record a quick panoramic video of your surroundings.',
+        'scan': 'Scan the surrounding area to uncover a hidden historical detail.',
+        'mascot': 'A fennec is hiding somewhere here — find it and photograph it.',
+      };
+      final next = cycle[t.type] ?? 'video';
+      final updated = List<Task>.from(state.tasks);
+      updated[state.currentStopIdx] = Task(
+        type: next,
+        label: labels[next]!,
+        state: 'pending',
+        points: t.points,
+      );
+      emit(state.copyWith(
+        tasks: updated,
+        taskRegenerationsLeft: state.taskRegenerationsLeft - 1,
+      ));
+    }
   }
 
   void _onAdvanceStop(AdvanceStopEvent event, Emitter<AppState> emit) {
@@ -383,8 +567,15 @@ class AppBloc extends Bloc<AppEvent, AppState> {
           : null;
     }
 
+    final random = Random();
+    final data = List<int>.generate(16, (_) => random.nextInt(256));
+    data[6] = (data[6] & 0x0f) | 0x40;
+    data[8] = (data[8] & 0x3f) | 0x80;
+    final str = data.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    final uuid = '${str.substring(0,8)}-${str.substring(8,12)}-${str.substring(12,16)}-${str.substring(16,20)}-${str.substring(20)}';
+
     final artifact = Artifact(
-      id: 'capture-${DateTime.now().millisecondsSinceEpoch}',
+      id: uuid,
       name: currentLoc?.name ?? 'Your capture',
       region: currentLoc?.region ?? 'On the go',
       kindLabel: switch (currentTask?.type) {
@@ -398,7 +589,6 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
     final newArtifacts = [artifact, ...state.capturedArtifacts];
 
-    // If there is a pending task at the current stop, complete it now.
     if (currentTask != null && currentTask.state == 'pending') {
       final updated = List<Task>.from(state.tasks);
       updated[state.currentStopIdx] = currentTask.copyWith(state: 'done');
@@ -410,6 +600,98 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     } else {
       emit(state.copyWith(capturedArtifacts: newArtifacts));
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 3D model generation
+  // ---------------------------------------------------------------------------
+
+  /// Inserts an optimistic [Artifact] directly into the folder — called by the
+  /// camera screen immediately after object detection passes, before any upload.
+  void _onOptimisticArtifact(
+      OptimisticArtifactEvent event, Emitter<AppState> emit) {
+    emit(state.copyWith(
+      capturedArtifacts: [event.artifact, ...state.capturedArtifacts],
+    ));
+  }
+
+  /// Uploads the image and kicks off the Modal generation job.
+  /// The artifact is already in capturedArtifacts with modelStatus=generating
+  /// (added by the AR screen before dispatching this event).
+  Future<void> _onRequestModelGeneration(
+      RequestModelGenerationEvent event, Emitter<AppState> emit) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      // Upload to Supabase Storage captures/ bucket
+      final imagePath = await ModelRepository.uploadCapture(
+        userId: userId,
+        artifactId: event.artifactId,
+        bytes: event.imageBytes,
+      );
+
+      // Call /api/models/generate — returns {job_id} or {cached, output_path}
+      final result = await ModelRepository.requestGeneration(
+        userId: userId,
+        artifactId: event.artifactId,
+        imagePath: imagePath,
+        sha256: event.sha256,
+      );
+
+      if (result.cached) {
+        // SHA-256 cache hit — already have the model, no GPU run needed
+        final updated = state.capturedArtifacts.map((a) {
+          if (a.id != event.artifactId) return a;
+          return a.copyWith(
+            modelStatus: ModelStatus.succeeded,
+            modelPath: result.outputPath,
+          );
+        }).toList();
+        emit(state.copyWith(capturedArtifacts: updated));
+      } else {
+        // Job submitted — Realtime will update us when it completes
+        final updated = state.capturedArtifacts.map((a) {
+          if (a.id != event.artifactId) return a;
+          return a.copyWith(jobId: result.jobId);
+        }).toList();
+        emit(state.copyWith(capturedArtifacts: updated));
+        // Re-subscribe with the new job now in flight
+        _realtimeSub?.cancel();
+        _startRealtimeSubscription();
+      }
+    } catch (_) {
+      // Mark the artifact as failed so the folder shows the retry UI
+      final updated = state.capturedArtifacts.map((a) {
+        if (a.id != event.artifactId) return a;
+        return a.copyWith(modelStatus: ModelStatus.failed, errorCode: 'internal');
+      }).toList();
+      emit(state.copyWith(capturedArtifacts: updated));
+    }
+  }
+
+  /// Called by Realtime when a model_jobs row changes to a terminal state.
+  void _onJobStatusUpdated(
+      JobStatusUpdatedEvent event, Emitter<AppState> emit) {
+    final updated = state.capturedArtifacts.map((a) {
+      if (a.jobId != event.jobId) return a;
+      switch (event.status) {
+        case 'succeeded':
+          return a.copyWith(
+            modelStatus: ModelStatus.succeeded,
+            modelPath: event.outputPath,
+          );
+        case 'failed':
+        case 'cancelled':
+          return a.copyWith(
+            modelStatus: ModelStatus.failed,
+            errorCode: event.errorCode,
+          );
+        default:
+          return a;
+      }
+    }).toList();
+    emit(state.copyWith(capturedArtifacts: updated));
   }
 
   // ---------------------------------------------------------------------------
@@ -457,6 +739,9 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       points: 0,
       taskRegenerationsLeft: 3,
       videoPlaying: false,
+      isGeneratingRoute: false,
+      isChatLoading: false,
+      routeError: null,
     ));
   }
 }

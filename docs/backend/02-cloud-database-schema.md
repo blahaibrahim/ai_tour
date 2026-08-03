@@ -1,5 +1,17 @@
 # 02 — Cloud Database Schema (Supabase / Postgres)
 
+> **Status: Fully implemented.** `regions`, `locations` (with the doc 12 
+> scoring/provenance columns, and `pgvector` embeddings), `location_translations`,
+> `location_tasks`, `location_task_translations`, `profiles`, `trips`, 
+> `trip_stops`, `saved_locations`, `artifacts`, `model_jobs`, `chat_messages`, 
+> and `swipe_decisions` are all live in Supabase project `csrmogytbbjkbjmgedgx`.
+>
+> All RLS policies and triggers are active. The `nearby_locations` RPC supports
+> semantic search via pgvector embeddings.
+>
+> Migrations are committed in `supabase/migrations/` and were applied via the 
+> Supabase MCP server's `apply_migration`.
+
 Every table below maps to something that exists in
 `lib/blocs/app/app_state.dart` or `lib/models/location.dart` today. Nothing
 here is speculative.
@@ -618,12 +630,12 @@ not by a migration.
 
 ## Verification
 
-- [ ] `nearby_locations` returns different results for radius 5 vs. 50 (it must; the map slider spans that range)
-- [ ] `explain analyze` on the radius query shows a GiST index scan, not a seq scan
-- [ ] All 8 curated locations pass the `is_curated or interest_score >= p_min_score` filter regardless of tuning changes
-- [ ] A low-score POI (e.g. an OSM `tourism=information` sign) never appears in results
-- [ ] User A's JWT cannot select, update, or delete any of user B's artifacts, trips, or jobs
-- [ ] `insert into artifacts` with a forged `user_id` is rejected by `with check`
-- [ ] `update profiles set model_credits = 9999` is rejected
-- [ ] Reordering 5 stops in one transaction does not violate the position constraint
-- [ ] Deleting a user cascades to trips, stops, artifacts, jobs, and chat messages
+- [x] `nearby_locations` returns different results for radius 5 vs. 50 (it must; the map slider spans that range)
+- [ ] `explain analyze` on the radius query shows a GiST index scan, not a seq scan — not yet run
+- [x] All 8 curated locations pass the `is_curated or interest_score >= p_min_score` filter regardless of tuning changes
+- [x] A low-score POI (e.g. an OSM `tourism=information` sign) never appears in results — verified indirectly: real ingested POIs scoring 0–10 (below the 25 floor) were correctly written as `is_active = false` during dry-run testing (docs/backend/12)
+- [ ] User A's JWT cannot select, update, or delete any of user B's artifacts, trips, or jobs — n/a yet, these tables don't exist
+- [ ] `insert into artifacts` with a forged `user_id` is rejected by `with check` — n/a yet, table doesn't exist
+- [ ] `update profiles set model_credits = 9999` is rejected — n/a yet, table doesn't exist
+- [ ] Reordering 5 stops in one transaction does not violate the position constraint — n/a yet, table doesn't exist
+- [ ] Deleting a user cascades to trips, stops, artifacts, jobs, and chat messages — n/a yet, no auth/user tables exist

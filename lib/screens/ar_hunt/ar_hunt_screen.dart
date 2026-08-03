@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'dart:math' as math;
 
@@ -12,11 +13,13 @@ import 'package:ar_flutter_plugin_2/managers/ar_session_manager.dart';
 import 'package:ar_flutter_plugin_2/models/ar_anchor.dart';
 import 'package:ar_flutter_plugin_2/models/ar_hittest_result.dart';
 import 'package:ar_flutter_plugin_2/models/ar_node.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 
 import '../../ar/ar_session_host.dart';
@@ -24,6 +27,8 @@ import '../../ar/glb_bounds.dart';
 import '../../ar/mascot_placement.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
+import '../../models/location.dart';
+import '../../services/object_detector.dart';
 import '../../theme.dart';
 import '../../widgets/glass_surface.dart';
 import '../../widgets/pressable_scale.dart';
@@ -571,9 +576,9 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     setState(() => _stage = _Stage.caught);
   }
 
-  // ---------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // Capture
-  // ---------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
 
   Future<void> _capture() async {
     final session = _session;
@@ -585,31 +590,101 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     final navigator = Navigator.of(context);
 
     try {
-      // The AR view renders the camera feed and the mascot together, so its
-      // own snapshot is already the composite — no re-projecting needed.
       final image = await session.snapshot();
       if (image is! MemoryImage) {
         throw StateError('unexpected snapshot format');
       }
 
+      // Save raw PNG so the capture appears in the folder immediately
       final directory = await getApplicationDocumentsDirectory();
-      final file = File(
-        '${directory.path}/fennec_${DateTime.now().millisecondsSinceEpoch}.png',
-      );
-      await file.writeAsBytes(image.bytes, flush: true);
+      final rawPath = '${directory.path}/capture_${DateTime.now().millisecondsSinceEpoch}.png';
+      await File(rawPath).writeAsBytes(image.bytes, flush: true);
 
-      bloc.add(AddCapturedArtifactEvent(file.path));
-      navigator.pop();
-      messenger.showSnackBar(SnackBar(
-        content: Text(_hunting
-            ? 'Fennec caught — saved to your folder'
-            : 'Added to your folder'),
-      ));
-    } catch (_) {
+      // In capture mode: run the full 3D generation pipeline
+      if (!_hunting) {
+        // 1. Compress to JPEG + strip EXIF (privacy + bandwidth)
+        final compressed = await FlutterImageCompress.compressWithFile(
+          rawPath,
+          minWidth: 1536,
+          minHeight: 1536,
+          quality: 85,
+          format: CompressFormat.jpeg,
+          keepExif: false,
+        );
+
+        if (compressed == null || compressed.isEmpty) {
+          throw StateError('image compression failed');
+        }
+
+        // 2. Object detection — tell user if no scan-worthy object found
+        final jpegPath = rawPath.replaceAll('.png', '.jpg');
+        await File(jpegPath).writeAsBytes(compressed, flush: true);
+
+        final hasObject = await ObjectDetector.hasDetectableObject(jpegPath);
+        if (!hasObject) {
+          if (!mounted) return;
+          setState(() => _busy = false);
+          messenger.showSnackBar(const SnackBar(
+            content: Text(
+              'No clear object found — try filling more of the frame with the subject',
+            ),
+            duration: Duration(seconds: 3),
+          ));
+          return;
+        }
+
+        // 3. SHA-256 for deduplication (server will skip GPU if identical image seen before)
+        final sha256hex = sha256.convert(compressed).toString();
+        final artifactId = 'capture-${DateTime.now().millisecondsSinceEpoch}';
+
+        // 4. Add optimistic artifact immediately so the user sees it in the folder
+        final artifact = Artifact(
+          id: artifactId,
+          name: bloc.state.accepted.isNotEmpty &&
+                  bloc.state.currentStopIdx < bloc.state.accepted.length
+              ? bloc.state.accepted[bloc.state.currentStopIdx].name
+              : 'Your scan',
+          region: bloc.state.accepted.isNotEmpty &&
+                  bloc.state.currentStopIdx < bloc.state.accepted.length
+              ? bloc.state.accepted[bloc.state.currentStopIdx].region
+              : 'On the go',
+          kindLabel: '3D Model',
+          photoUrl: jpegPath,
+          isLocalFile: true,
+          modelStatus: ModelStatus.generating,
+          jobId: null,
+        );
+
+        // Emit the optimistic state directly (bypassing AddCapturedArtifactEvent
+        // because we need the full Artifact, not just the file path)
+        bloc.add(OptimisticArtifactEvent(artifact));
+
+        // 5. Dispatch the async upload+generation event
+        bloc.add(RequestModelGenerationEvent(
+          artifactId: artifactId,
+          localImagePath: jpegPath,
+          imageBytes: compressed,
+          sha256: sha256hex,
+        ));
+
+        navigator.pop();
+        messenger.showSnackBar(const SnackBar(
+          content: Text('Generating 3D model — check your folder in a moment'),
+          duration: Duration(seconds: 4),
+        ));
+      } else {
+        // Hunt mode: plain capture, no 3D generation
+        bloc.add(AddCapturedArtifactEvent(rawPath));
+        navigator.pop();
+        messenger.showSnackBar(const SnackBar(
+          content: Text('Fennec caught — saved to your folder'),
+        ));
+      }
+    } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
       messenger.showSnackBar(
-        const SnackBar(content: Text("Couldn't save that shot — try again")),
+        SnackBar(content: Text("Couldn't save that shot: ${e.toString()}")),
       );
     }
   }

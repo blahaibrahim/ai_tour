@@ -4,7 +4,78 @@
 > [08](08-llm-and-ai-features.md) — it defines where location data comes from.
 > It's numbered last only to keep existing cross-links stable.
 
+> **Status: Substantially implemented,** as a Flask module
+> (`backend/server/ingestion/`) rather than a Supabase Edge Function — see
+> the README's architecture-update note. Live and tested against real
+> Overpass, Wikidata, Wikipedia, and Commons traffic (not mocked):
+>
+> - **Fetch** — `ingestion/overpass.py` and `ingestion/wikidata.py`. A real
+>   6km-radius query around Constantine returned 11 POIs and 145 nearby
+>   Wikidata items; category normalization and name-based filtering both
+>   worked as designed on real, messy data (Arabic-named POIs, French
+>   place-name tags, etc.).
+> - **Score** — `ingestion/scoring.py`, all weights from the table below
+>   implemented. Verified on real output: an OSM viewpoint proximity-matched
+>   to its Wikidata item (`Monument aux morts de Constantine`) scored 45 with
+>   an explainable breakdown; unlinked, lesser-known POIs correctly scored
+>   0–10, below the 25 activity floor.
+> - **Photos** — `ingestion/photos.py` + `commons.py`. The "approaches
+>   evaluated" subsection below was rewritten from an actual empirical test
+>   run during implementation, not written speculatively — see that section
+>   for what was tried and rejected, and why.
+> - **Dedupe** — `find_location_match` (Postgres RPC, trigram + proximity)
+>   plus a QID-exact-match check added *after* live testing (see below),
+>   wired into `ingestion/ingest.py`. Access-controlled and tested (see doc
+>   11's status note for the real gap this testing caught).
+> - **Tile cache** — `poi_tiles` table + `ingestion/tiling.py`'s grid
+>   covering (a deliberate, documented deviation from this doc's original
+>   geohash/H3 suggestion — see that section).
+>
+> **Now run end-to-end for real**, with `SUPABASE_SERVICE_ROLE_KEY` set: a
+> live `POST /api/poi/ingest` call around central Constantine (~4km radius)
+> took ~51s, ingested 3 tiles, and persisted 15 new locations alongside the
+> 8 curated ones — verified afterward by querying Supabase directly, not
+> just trusting the 200 response. `/api/itinerary` then correctly returned a
+> mix of curated and newly-ingested stops for the same area, and correctly
+> picked the ingested museum specifically when prompted for one.
+>
+> **Two real bugs surfaced by this run, both fixed and re-verified — not
+> caught by the earlier per-component testing, only by running the whole
+> thing together against live data:**
+>
+> 1. **A real duplicate.** The curated `ahmedbey` seed coordinate turned out
+>    to be 432m from OSM's actual mapped point for the same building, and
+>    OSM's name for it ("Palais du Bey") doesn't trigram-match "Ahmed Bey
+>    Palace" — both comfortably outside `find_location_match`'s thresholds.
+>    Both records independently resolved to the same Wikidata QID
+>    (`Q12232975`) even though neither weaker signal caught it. Fixed by
+>    adding an exact-QID lookup as a first check in `ingest.py` (doc 12's own
+>    dedup tier 1, "definitive," not previously wired in) and backfilling the
+>    QID onto the curated row so future runs match correctly. Re-verified: a
+>    second ingestion pass over overlapping ground produced zero duplicates.
+> 2. **A worse one: transient failures were being cached as confirmed-empty.**
+>    A real Overpass 504 (the shared public instance was under load,
+>    reproduced twice) resulted in a tile being marked `fetch_status='ok',
+>    poi_count=0` with the normal 60-day TTL — indistinguishable from "this
+>    tile genuinely has nothing in it." `overpass.fetch_pois` originally
+>    swallowed request failures into an empty list "gracefully"; the actual
+>    effect was silently poisoning the cache for two months over a timeout.
+>    Fixed by having it raise `OverpassError` instead, so the existing
+>    tile-level exception handling (which already did the right thing for
+>    every *other* failure mode) also catches this one — re-triggered the
+>    same failure for real afterward and confirmed the tile now gets marked
+>    `failed` with a 1-day retry TTL instead.
+>
+> **Deliberately not implemented:** semantic search/embeddings, fr/ar
+> translation of ingested content, `poi_merge_overrides`, pre-warming/cron,
+> and per-caller rate limiting on the ingestion endpoint (see doc 11's open
+> issue #9). `MAX_TILES_PER_INGEST` was cut from 9 to 3 after empirically
+> hitting Overpass's rate limit while testing this — real evidence, not a
+> cautious guess, and worth knowing before raising it back up.
+
 ## What changed
+
+> **Note:** The POI sourcing and ingestion architecture is undergoing a major overhaul to move towards offline OSM extracts and semantic POI cards. See [13 — Route Generation Architecture](13-route-generation-architecture.md) for the new unified pipeline. The notes below reflect the current/legacy implementation.
 
 Route generation is a **three-stage funnel**, not an LLM call:
 
@@ -165,6 +236,19 @@ shared across every user.
 
 ## The tile cache
 
+> **Implemented, with one deliberate deviation from the plan below:**
+> `ingestion/tiling.py` uses a plain equirectangular degree grid
+> (`TILE_SIZE_DEG = 0.045`, ~5km cells matching the target size here) instead
+> of geohash or H3. Both need either an extra dependency or a non-trivial
+> neighbour-enumeration algorithm to correctly cover a circle; a fixed
+> lat/lng grid gets the same operational property — deterministic, reusable
+> cache keys per patch of ground — in about 15 lines with zero dependencies.
+> The code's own comment flags this explicitly as swappable later without
+> touching any caller, since every consumer just sees opaque `tile_id`
+> strings. `poi_tiles.bounds` is populated via `upsert_poi_tile`'s
+> `ST_MakeEnvelope`, not hand-constructed WKT/GeoJSON from the client — see
+> the "Ingestion Edge Function" section's status note for why.
+
 This is the piece that makes the whole thing viable.
 
 POI queries are `(lat, lng, radius)`. Caching per query is useless — every
@@ -230,6 +314,23 @@ exactly these areas, the pre-warm list is essentially free to write.
 
 ## Deduplication
 
+> **Implemented as two checks, run in order** — a change from the original
+> single-RPC plan, made *because* live testing exposed a real gap. First: an
+> exact Wikidata QID lookup against existing `locations` (signal 1 below,
+> "definitive") — added after a live ingestion run produced a genuine
+> duplicate that only a QID match caught (the curated `ahmedbey` seed
+> coordinate and OSM's mapped point for the same building are 432m apart,
+> and the names don't trigram-match — see the top status note for the full
+> story). Second, if no QID match: `find_location_match` (Postgres RPC,
+> signal 3 — proximity + trigram similarity). Both are locked to
+> `service_role` only (see doc 11's status note for the access-control gap
+> *that* surfaced during testing — a separate, earlier finding). Re-verified
+> after the fix: a second ingestion pass over overlapping ground produced no
+> new duplicates. Signals 2 and 4 below are not implemented;
+> `poi_source_links`' primary key `(source, source_ref)`
+> makes signal 2 (same OSM element across refetches) a natural side effect
+> of the upsert rather than something dedup logic needs to check separately.
+
 The same place arrives from multiple sources with different names, slightly
 different coordinates, and different ids. "Casbah of Algiers" / "Kasbah
 d'Alger" / "قصبة الجزائر" must resolve to one row.
@@ -289,6 +390,22 @@ create table public.poi_merge_overrides (
 ---
 
 ## Stage 2 — Interestingness scoring
+
+> **Implemented** — `ingestion/scoring.py`. Every signal in the table below
+> is computed, including the log-scaled pageviews curve and the generic-name
+> penalty regex. One addition beyond the original spec: a `-30` penalty for
+> names matching a generic/retail pattern (parking, WC, ticket office, …)
+> short-circuits the rest of scoring entirely rather than just subtracting —
+> catches POIs that slipped past Overpass's tag filter with a misleading tag
+> but a give-away name. Verified on real data during dry-run testing: an
+> OSM `tourism=viewpoint` point named "Monument aux morts," proximity-matched
+> to its Wikidata item, scored 45 with breakdown `{multilingual_coverage: 15,
+> has_photo: 10, specific_category: 10, corroborated: 10}`; unlinked
+> Arabic-named POIs with a specific category but no Wikidata/Wikipedia match
+> scored 0–10, correctly below the 25 activity floor. Not yet tuned against
+> the 8 curated locations as ground truth (they bypass scoring via
+> `is_curated`, so this specific validation doesn't apply the way the
+> original plan below assumed — see the note in that subsection).
 
 The core question: **would a traveller be glad they went?**
 
@@ -373,6 +490,18 @@ the scorer over stored `raw` payloads beats refetching.
 
 ### Tuning
 
+> **Note on how this landed in practice:** the 8 curated locations were
+> seeded with `is_curated = true` and `interest_score = 100` directly (see
+> `supabase/seed.sql`), not run through `scoring.py` — they bypass the score
+> floor by construction (`nearby_locations`' `is_curated or interest_score >=
+> p_min_score` predicate), so "must score in the top decile" doesn't
+> literally apply to them as implemented. The spirit of this test still
+> matters and hasn't been done: once real ingested POIs exist near a curated
+> location (e.g. Timgad), verify the scorer would *independently* rank that
+> curated location highly if it went through scoring like everything else —
+> that's the real check on whether the weights are sane, not just that the
+> hardcoded 100 outranks things (which is true by definition).
+
 Take the 8 hand-picked locations in `lib/models/location_data.dart` as ground
 truth. They're all genuinely good stops. **Every one of them must score in the
 top decile of its tile.** If Timgad doesn't outrank a car park, the weights are
@@ -411,12 +540,27 @@ filters for relevance.**
 
 Replaces the `picsum.photos` placeholders.
 
-1. Wikidata `P18` gives a Commons filename.
-2. Resolve to a thumbnail URL via the Commons API at the size you need.
-3. Fetch once, store in the `catalogue` bucket ([05](05-storage-and-media.md)),
-   serve from your own CDN path.
-4. **Store the attribution** — author and licence — and display it. Commons
-   images are freely licensed, not public domain; most require credit.
+**Implemented** — `backend/server/ingestion/photos.py` and `commons.py`.
+What actually shipped differs from the original plan below in two ways,
+both discovered by testing rather than decided upfront:
+
+1. **The primary source is the Wikipedia lead image, not Wikidata P18
+   directly.** `wikipedia.fetch_summary()` returns a ready-to-use
+   `thumbnail_url` in the same call that already fetches the blurb text — no
+   separate Commons lookup needed to get *a* usable URL. P18 is still used,
+   but only as the second tier, for Wikidata items whose matched Wikipedia
+   article (if any) lacks a thumbnail. Testing found real Wikidata P18
+   claims that pointed at a wrong or generic image shared across unrelated
+   items (`Constantine` and `Sidi Rached Viaduct` both carried
+   `image_filename: 'Magnia.jpg'`) — an upstream Wikidata data-quality issue
+   that the Wikipedia-first ordering happens to route around for any POI
+   with a decent Wikipedia article.
+2. **A fourth approach — search-engine-based photo discovery — was tested
+   and rejected**, not just considered. See the subsection below for what
+   was tried and why it failed a real verification check.
+
+Every resolved photo still carries attribution and license, exactly as
+originally planned:
 
 ```sql
 alter table public.locations
@@ -425,13 +569,77 @@ alter table public.locations
   add column photo_source_url  text;
 ```
 
+`commons.resolve_commons_file()` returns `None` — treated as "no photo,"
+not "photo without credit" — if Commons has no `Artist`/`Credit` or
+`LicenseShortName` metadata for a file. Verified on a real result: the
+Constantine "Monument aux morts" photo came back with attribution
+`Bernard Gagnon` and license `CC BY 4.0`, both stored.
+
+**Not yet implemented**: step 3 of the original plan below (fetch once,
+store in a `catalogue` Storage bucket, serve from your own CDN path).
+Resolved photos are currently stored as direct `upload.wikimedia.org` URLs
+on the `locations` row — hotlinking Commons rather than proxying through
+Supabase Storage. Doc 05 (not started) is where that would get built; this
+was the pragmatic MVP choice to avoid taking on the storage/upload work in
+the same pass as the ingestion pipeline itself.
+
 Fall back to a generated placeholder when no image exists — a category glyph on
 the `AppTheme` sand/navy palette reads better than a random stock photo of
-something else entirely.
+something else entirely. *(Still not implemented — this is Flutter-side work,
+and `photos.resolve_photo()` already returns `None` cleanly for this case to
+render against.)*
+
+### Approaches evaluated for the long tail (search-engine-based discovery)
+
+Before settling on the two-tier structured chain above, a third and fourth
+approach were tested empirically against a real, obscure ingestion candidate
+— a Roman aqueduct near Constantine with no `wikidata=`/`wikipedia=` tags in
+OSM — specifically because the structured sources predictably have gaps for
+small, local POIs, and the honest question was whether anything could fill
+them safely.
+
+**Wikipedia full-text search**, as a name-based fallback for POIs with no
+direct Wikidata/Wikipedia link: `srsearch=Aqueduc Romain Constantine
+Algeria` returned exactly one hit, "History of the Loiret" — a French
+department article with zero relevance. Rejected: fuzzy full-text matching
+isn't reliable enough to trust unattended.
+
+**Search-engine image discovery**, both general and Commons-restricted, were
+also tested. A general web search for the same aqueduct returned exclusively
+paid stock-photo listings (Alamy, Dreamstime, Shutterstock) — unusable
+without per-image licensing, and those sites actively block hotlinking
+besides. Restricting the search to `commons.wikimedia.org` looked more
+promising — the top result was literally titled `File:Aqueduc_romain.JPG` —
+but fetching that file's actual Commons categories revealed it depicts a
+bridge in **Carrazeda de Ansiães, Portugal**, captioned generically in
+French. A real, silent false positive that passed every surface-level check
+except actually reading the metadata.
+
+**Conclusion, and why it's not wired into the pipeline:** only structured,
+ID-based lookups are trustworthy enough to run unattended — guessing at
+*which building a photo depicts* from text similarity fails in ways that are
+hard to catch automatically, as the Portugal/Algeria mismatch demonstrates.
+Below the two structured tiers, `photos.resolve_photo()` simply returns
+`None`. Closing this gap properly means either a bounded human-review queue
+(surface the candidate, let a person approve it) or a paid, properly-licensed
+provider — not scraping. Full writeup, including why each approach failed,
+is in `ingestion/photos.py`'s module docstring, kept next to the code it
+justifies rather than only here.
 
 ---
 
 ## Content and translations
+
+> **Partially implemented.** English-only: `ingestion/ingest.py`'s
+> `_truncate_blurb` takes the raw Wikipedia extract and cuts it to ~280
+> characters at a sentence boundary, but does **not** run it through an LLM
+> rewrite pass for tone — the "encyclopedic, not editorial" caveat below is
+> still exactly as true of the stored blurbs as it warns. `fr`/`ar`
+> translation isn't implemented at all; only `locale='en'` rows are ever
+> written. Both are real, known gaps, not oversights — deferred to keep the
+> ingestion pipeline's per-POI cost down (an LLM call per blurb would roughly
+> double it) until doc 09 (i18n, not started) makes translated content
+> actually renderable.
 
 Wikipedia summaries in `en`, `fr`, and `ar` fill `location_translations`
 ([09](09-internationalization.md)) directly:
@@ -455,6 +663,24 @@ is to attribute the source article on the detail screen regardless.
 ---
 
 ## Ingestion Edge Function
+
+> **Implemented differently from the sketch below, on both axes.** It's a
+> Flask route (`backend/server/routes/poi.py` → `POST /api/poi/ingest`), not
+> a Deno Edge Function — consistent with the whole-project shift to Flask,
+> see the README's architecture note. More significantly, it's **fully
+> synchronous, not stale-while-revalidate**: there's no `waitUntil`
+> equivalent wired up (Flask's dev server has no background-task primitive
+> as convenient as Supabase Edge Functions' `EdgeRuntime.waitUntil`), so a
+> cold-tile request blocks until every POI in it is fetched, enriched,
+> scored, and persisted — which `routes/poi.py`'s own docstring documents
+> can take tens of seconds. That's exactly why ingestion is its own
+> explicitly-triggered endpoint rather than an automatic step inside
+> `/api/itinerary` (see doc 08's status note): synchronous is an acceptable
+> trade for a deliberate, bounded backfill call, but not for blocking a
+> user's read. Closing this gap for real — background refresh, `waitUntil`-
+> style non-blocking staleness — needs either a task queue (Celery/RQ) or
+> moving ingestion to something with better async primitives; noted as
+> future work, not attempted here.
 
 ```typescript
 // supabase/functions/ingest-pois/index.ts
@@ -489,13 +715,29 @@ Commons   → fetch photo → catalogue bucket
 Mark tile fresh
 ```
 
+**Implemented** (`ingestion/ingest.py`'s `_ingest_one_tile`), with three
+differences from this sketch: dedupe happens per-POI via `find_location_match`
+rather than as a distinct batch step; `en` only, not `en/fr/ar` (see
+"Content and translations" above); and the photo step stores a direct
+Commons URL rather than copying into a `catalogue` bucket (see "Photos"
+above) — there is no bucket yet.
+
 Make each step idempotent and resumable. Provider failures are routine; a
 half-ingested tile must be safe to retry. Track `fetch_status = 'partial'` so
-the reconciler knows to come back.
+the reconciler knows to come back. **Partially implemented**: a failed tile
+is marked `fetch_status = 'failed'` with a 1-day retry TTL (shorter than the
+normal 60-day success TTL) so it comes back around soon — but failure is
+currently all-or-nothing per tile, not per-POI, so `'partial'` status is
+defined in the schema but never actually set by the code yet.
 
 ---
 
 ## Updated `nearby_locations`
+
+> **Implemented and live** — see doc 02's status note. One addition beyond
+> this sketch: the deployed version also returns `is_curated` and orders
+> `is_curated desc` first, ahead of score, so the hand-verified 8 always
+> surface before ingested content at equal distance.
 
 The RPC in [02](02-cloud-database-schema.md) gains score filtering and ordering:
 
@@ -555,6 +797,14 @@ A/B test once you have `swipe_decisions` data to measure against.
 
 ## Routing
 
+> **Partially implemented.** `itinerary.py`'s `_order_nearest_neighbor` does
+> exactly the "≤ 10 stops" case described below — greedy nearest-neighbour
+> from the user's position — but in Python server-side, not Dart client-side
+> as originally sketched, and without the 2-opt refinement pass (plain
+> nearest-neighbour only). No hosted routing service (OSRM, Valhalla, etc.)
+> is integrated, and no route geometry is cached — this app only orders
+> stops, it doesn't fetch or display actual road-following polylines yet.
+
 Once the model has selected stops, order them geometrically. Free options:
 
 | Service | Free tier | Notes |
@@ -576,6 +826,21 @@ recomputed on every screen open is a waste of somebody's quota.
 
 ## Failure behaviour
 
+> **Partially implemented, and via a different mechanism than sketched
+> below for the "provider down" cases.** "No tiles, provider down → serve
+> curated only" doesn't need special handling the way this section implies:
+> if Overpass/Wikidata are unreachable, `nearby_locations` still serves
+> whatever's already in Supabase (curated rows plus any previously-ingested
+> POIs) exactly as normal — ingestion just fails to *add* anything new for
+> that request, verified via `overpass.fetch_pois` returning `[]` on a real
+> 429 without raising. The case this section really describes — **Supabase
+> itself unreachable** — is handled one layer up, in `locations_repo.py`
+> (docs/backend/02's read path), and was verified in an earlier session by
+> pointing the client at a nonexistent host. "Stale tiles serve immediately,
+> refresh in background" is **not implemented** — see the "Ingestion Edge
+> Function" section's status note on why this pipeline is fully synchronous
+> instead.
+
 Providers go down. The app must degrade, not break:
 
 ```
@@ -592,15 +857,15 @@ The curated 8 are the floor. Never show an empty map.
 
 ## Testing checklist
 
-- [ ] Overpass query around Algiers returns the Casbah and Maqam Echahid, and excludes hotels and gift shops
-- [ ] All 8 curated locations score in the top decile of their tile
-- [ ] Same place from OSM and Wikidata merges into one row via QID
-- [ ] Arabic and Latin names for one place do not create two rows
-- [ ] Second request for the same area makes zero provider calls
-- [ ] Stale tile serves immediately and refreshes in the background
-- [ ] Provider 429 → cached data still served, no user-visible error
-- [ ] Provider fully down with a cold cache → curated locations shown with an explanation
-- [ ] Unnamed POIs never reach the candidate set
-- [ ] Photo attribution and licence stored and displayed for every Commons image
-- [ ] Interrupted tile ingestion is safely resumable
-- [ ] `nearby_locations` at radius 5 vs. 50 returns materially different sets
+- [ ] Overpass query around Algiers returns the Casbah and Maqam Echahid, and excludes hotels and gift shops — not tested against Algiers specifically; the equivalent query around **Constantine** was run for real and correctly returned named, categorized POIs while excluding hotels/gift shops by construction (the query's tag filter never requests those tags in the first place)
+- [ ] All 8 curated locations score in the top decile of their tile — n/a as implemented; see the "Tuning" section's note above on why, and what the real equivalent check would be
+- [x] Same place from OSM and Wikidata merges into one row via QID — verified for real, the hard way: the *original* dedup design (proximity + trigram only) failed to catch a real duplicate (curated `ahmedbey` vs. OSM's `Palais du Bey`, 432m apart, non-matching names), both sides sharing QID `Q12232975`. Adding an exact-QID check fixed it; a second ingestion pass over the same ground confirmed zero new duplicates
+- [ ] Arabic and Latin names for one place do not create two rows — not specifically tested; the QID path covers the case that was actually hit, but a pure name-based Arabic/Latin collision hasn't been exercised
+- [x] Second request for the same area makes zero provider calls — verified: tiles marked `fetch_status='ok'` on the first run were correctly skipped (not re-fetched) on the second ingestion call over overlapping ground; only the two previously-`failed`/deleted tiles were retried
+- [ ] Stale tile serves immediately and refreshes in the background — **not applicable to the current implementation** — see the "Ingestion Edge Function" status note; ingestion is fully synchronous, there is no background refresh to test
+- [x] Provider 429/504 → cached data still served, no user-visible error, tile marked for retry rather than falsely cached as empty — verified for real, twice: a live Overpass 504 initially resulted in a genuine bug (the tile got cached as `fetch_status='ok', poi_count=0` for 60 days — indistinguishable from "really empty"). Fixed by making `overpass.fetch_pois` raise instead of swallowing the failure; re-triggered the same 504 afterward and confirmed the tile now gets `fetch_status='failed'` with a 1-day retry TTL. The endpoint itself still returned 200 with no user-visible error either time
+- [ ] Provider fully down with a cold cache → curated locations shown with an explanation — the "curated locations shown" half is verified (see "Failure behaviour" above); the "with an explanation" half is **not implemented** — the fallback is silent, there's no user-facing message distinguishing "nothing here" from "couldn't check"
+- [x] Unnamed POIs never reach the candidate set — verified: `overpass.py` drops any element with no resolvable name before it's returned, and none appeared in real query results during testing
+- [x] Photo attribution and licence stored and displayed for every Commons image — verified: `commons.resolve_commons_file` returns `None` (not a partial result) when either is missing, and a real resolved photo (Constantine's "Monument aux morts") came back with both fields populated
+- [x] Interrupted tile ingestion is safely resumable — verified by the same 504 incident above: the failed tile was correctly retryable (short TTL) rather than stuck in a bad cached state, and a subsequent run successfully completed it
+- [x] `nearby_locations` at radius 5 vs. 50 returns materially different sets — verified in an earlier session against curated-only data; unchanged by ingestion since it's the same RPC

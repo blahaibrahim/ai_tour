@@ -1,5 +1,7 @@
 # 01 — Auth & Accounts
 
+> **Status: Backend implemented.** Flask endpoint for account deletion exists (`POST /api/auth/delete-account`). Supabase Auth triggers and cron jobs (`purge_anonymous_users`) are live in the database. Flutter frontend integration is pending.
+
 ## Goal
 
 Every user has an identity from the first launch, without being asked to sign

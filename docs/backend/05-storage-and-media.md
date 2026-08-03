@@ -1,5 +1,7 @@
 # 05 — Storage & Media
 
+> **Status: Backend implemented.** Supabase Storage buckets (`captures`, `models`, `thumbnails`, `catalogue`) are created via SQL migrations with RLS policies in place. Maintenance cron jobs for purging orphan objects are active. Flutter frontend integration is pending.
+
 Covers the binary side: capture photos, generated `.glb` models, thumbnails,
 and how they move between the device and Supabase Storage.
 

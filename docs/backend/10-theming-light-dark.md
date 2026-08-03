@@ -1,5 +1,7 @@
 # 10 — Theming: Light & Dark
 
+> **Status: Not started.** No Flutter changes. Everything below is still plan.
+
 ## The obstacle
 
 `lib/theme.dart` is a class of `static const Color` fields, and there are **224

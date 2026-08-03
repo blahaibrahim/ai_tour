@@ -63,6 +63,11 @@ class GenerateRouteEvent extends AppEvent {
   const GenerateRouteEvent();
 }
 
+/// Dispatched on app startup to resume any async route generation.
+class ResumeRouteEvent extends AppEvent {
+  const ResumeRouteEvent();
+}
+
 class ThinkTickEvent extends AppEvent {
   const ThinkTickEvent();
 }
@@ -105,12 +110,14 @@ class CloseDetailEvent extends AppEvent {
 }
 
 class AskQuestionEvent extends AppEvent {
-  const AskQuestionEvent(this.question, this.answer);
+  /// Sends the question to /api/chat. The bloc fetches the answer asynchronously.
+  const AskQuestionEvent(this.question, {this.locationId});
   final String question;
-  final String answer;
+  /// Optional: if null the bloc uses state.detailLoc.id
+  final String? locationId;
 
   @override
-  List<Object?> get props => [question, answer];
+  List<Object?> get props => [question, locationId];
 }
 
 class OnDetailAcceptEvent extends AppEvent {
@@ -171,6 +178,14 @@ class AcceptRouteEvent extends AppEvent {
   const AcceptRouteEvent();
 }
 
+class RestoreAcceptedRouteEvent extends AppEvent {
+  const RestoreAcceptedRouteEvent(this.acceptedLocations);
+  final List<Location> acceptedLocations;
+
+  @override
+  List<Object?> get props => [acceptedLocations];
+}
+
 class CompleteTaskEvent extends AppEvent {
   const CompleteTaskEvent();
 }
@@ -214,4 +229,49 @@ class SetTripDateEvent extends AppEvent {
 
   @override
   List<Object?> get props => [start, end];
+}
+
+/// Fired when a model_jobs Realtime update arrives.
+class JobStatusUpdatedEvent extends AppEvent {
+  const JobStatusUpdatedEvent({
+    required this.jobId,
+    required this.status,
+    this.outputPath,
+    this.errorCode,
+  });
+  final String jobId;
+  final String status;
+  final String? outputPath;
+  final String? errorCode;
+
+  @override
+  List<Object?> get props => [jobId, status, outputPath, errorCode];
+}
+
+/// Triggers the full 3D capture flow: compress → upload → call /api/models/generate.
+class RequestModelGenerationEvent extends AppEvent {
+  const RequestModelGenerationEvent({
+    required this.artifactId,
+    required this.localImagePath,
+    required this.imageBytes,
+    required this.sha256,
+  });
+  final String artifactId;
+  final String localImagePath;
+  final List<int> imageBytes;
+  final String sha256;
+
+  @override
+  List<Object?> get props => [artifactId, localImagePath, sha256];
+}
+
+/// Inserts a fully-formed [Artifact] (with modelStatus etc.) into the folder
+/// without going through the AddCapturedArtifactEvent path-only constructor.
+/// Used by the camera screen after object detection passes.
+class OptimisticArtifactEvent extends AppEvent {
+  const OptimisticArtifactEvent(this.artifact);
+  final Artifact artifact;
+
+  @override
+  List<Object?> get props => [artifact];
 }

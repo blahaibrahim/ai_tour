@@ -1,5 +1,7 @@
 # 06 — 3D Generation Pipeline
 
+> **Status: Backend implemented.** The Modal API endpoint (`backend/hunyuan2.1/api.py`) handles asynchronous jobs via `Generator.generate.spawn`, includes validation and caching, and pushes the resulting `.glb` to Supabase Storage. Flutter client integration is pending.
+
 Camera → image → Hunyuan3D 2.1 → `.glb` → the user's folder.
 
 Security hardening of the endpoint is in [07](07-securing-the-3d-endpoint.md).

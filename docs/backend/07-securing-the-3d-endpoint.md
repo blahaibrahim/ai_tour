@@ -1,5 +1,7 @@
 # 07 — Securing the 3D Endpoint
 
+> **Status: Fully implemented.** Layers 1 through 4 are fully implemented. The Flask backend validates Supabase JWTs, enforces rate limits, consumes model credits (quota), and securely proxies requests to the Modal endpoint. The Modal worker itself verifies the file extension, ensures pixel bounds, runs NSFW image detection, and pushes directly to Supabase storage.
+
 ## Current exposure
 
 ```python

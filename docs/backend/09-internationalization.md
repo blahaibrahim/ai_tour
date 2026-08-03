@@ -1,5 +1,12 @@
 # 09 — Internationalization
 
+> **Status: Not started.** No ARB files, no RTL work, no Flutter changes.
+> Worth flagging: the new backend (docs 02, 08, 12) hardcodes `locale='en'`
+> throughout — `location_translations`/`location_task_translations` support
+> multiple locales in schema, but only English rows exist, and the LLM
+> endpoints don't yet accept a locale parameter. Everything below is still
+> plan.
+
 ## Target languages
 
 The app's content is Algerian heritage — the Casbah, Constantine, Djemila,

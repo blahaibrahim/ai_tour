@@ -1,5 +1,8 @@
 # 03 — Local Database Schema (Drift / SQLite)
 
+> **Status: Not started.** No Drift dependency, no local DB, no Flutter
+> changes. Everything below is still plan.
+
 ## Why a real local database
 
 The app is used at Djemila, at Timgad, on the Tassili plateau. Those are

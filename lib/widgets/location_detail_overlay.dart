@@ -170,14 +170,14 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                       runSpacing: 8,
                       children: [
                         OutlinedButton(
-                          onPressed: () => context.read<AppBloc>().add(const AskQuestionEvent("Best time to visit?", "Early morning or just before sunset — softer light, thinner crowds.")),
+                          onPressed: () => context.read<AppBloc>().add(const AskQuestionEvent("Best time to visit?")),
                           style: OutlinedButton.styleFrom(
                             textStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 12.5),
                           ),
                           child: const Text('Best time to visit?'),
                         ),
                         OutlinedButton(
-                          onPressed: () => context.read<AppBloc>().add(const AskQuestionEvent("How long to explore?", "Budget 2–3 hours to explore at an easy pace.")),
+                          onPressed: () => context.read<AppBloc>().add(const AskQuestionEvent("How long to explore?")),
                           style: OutlinedButton.styleFrom(
                             textStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 12.5),
                           ),
@@ -242,7 +242,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                       textInputAction: TextInputAction.send,
                       onSubmitted: (val) {
                         if (val.trim().isNotEmpty) {
-                          context.read<AppBloc>().add(AskQuestionEvent(val, "I'm a local AI guide. This place is amazing, you should definitely visit!"));
+                          context.read<AppBloc>().add(AskQuestionEvent(val));
                           _chatController.clear();
                         }
                       },
@@ -262,7 +262,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                       child: PressableScale(
                         onTap: () {
                           if (_chatController.text.trim().isNotEmpty) {
-                            context.read<AppBloc>().add(AskQuestionEvent(_chatController.text, "I'm a local AI guide. This place is amazing, you should definitely visit!"));
+                            context.read<AppBloc>().add(AskQuestionEvent(_chatController.text));
                             _chatController.clear();
                           }
                         },
@@ -270,7 +270,12 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                           width: 30,
                           height: 30,
                           decoration: const BoxDecoration(color: AppTheme.accent, shape: BoxShape.circle),
-                          child: const Icon(Icons.arrow_upward_rounded, color: AppTheme.onAccent, size: 15),
+                          child: state.isChatLoading
+                              ? const Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.onAccent),
+                                )
+                              : const Icon(Icons.arrow_upward_rounded, color: AppTheme.onAccent, size: 15),
                         ),
                       ),
                     ),

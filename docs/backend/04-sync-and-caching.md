@@ -1,5 +1,8 @@
 # 04 — Sync & Caching
 
+> **Status: Not started.** No outbox, no sync engine, no Flutter changes.
+> Everything below is still plan.
+
 ## The contract
 
 > A user action commits locally and is reflected in the UI immediately. The
