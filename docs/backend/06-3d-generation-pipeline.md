@@ -1,6 +1,36 @@
 # 06 — 3D Generation Pipeline
 
-> **Status: Backend implemented.** The Modal API endpoint (`backend/hunyuan2.1/api.py`) handles asynchronous jobs via `Generator.generate.spawn`, includes validation and caching, and pushes the resulting `.glb` to Supabase Storage. Flutter client integration is pending.
+> **Status: The target flow below is what now runs.** `backend/hunyuan2.1/api.py`
+> is split into `submit` (fast, proxy-authed, `Generator.generate.spawn`),
+> the `Generator` GPU worker (pipelines loaded once in `@modal.enter()`,
+> per-job temp dirs), and a `status` fallback poll. The worker uploads the
+> `.glb` to `models/{user_id}/{artifact_id}.glb` and patches `model_jobs`
+> itself; the Flutter client picks that up over Realtime.
+>
+> Two things had to be true for the client to ever see a result, and neither
+> was: Modal had no `/submit` endpoint at all (the Flask route's POST 404'd),
+> and `model_jobs` was not in the `supabase_realtime` publication, so even a
+> job that finished never reached the app. Both are fixed — the publication in
+> `supabase/migrations/20260805201500_realtime_model_jobs.sql`.
+>
+> **The Flutter half is also complete**, which it was not when this note was
+> first written: on-device object labelling gates the capture
+> (`services/object_detector.dart`, `google_mlkit_image_labeling`), the image
+> is compressed and EXIF-stripped, an optimistic artifact appears in the
+> folder immediately (`OptimisticArtifactEvent`), the upload and
+> `POST /api/models/generate` call run behind it
+> (`repositories/model_repository.dart`), the Realtime subscription in
+> `AppBloc._startRealtimeSubscription` moves the artifact to `succeeded` or
+> `failed`, and `Flutter3DViewer` renders the cached `.glb`
+> (`screens/artifact_viewer/`). The photo-textured `Cube3D` survives only as
+> the loading/failure placeholder and as the folder-grid thumbnail
+> (`widgets/artifact_cube.dart`) — it is no longer what the viewer shows.
+>
+> **Still open:** no user-facing retry for a failed job (the folder shows the
+> failure, but nothing re-submits), and no thumbnail generation (doc 05).
+>
+> The sections below describing the old synchronous endpoint are kept as the
+> record of why the design changed.
 
 Camera → image → Hunyuan3D 2.1 → `.glb` → the user's folder.
 

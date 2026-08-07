@@ -41,6 +41,16 @@ def generate_model():
     if not image_sha256 or not re.match(r"^[a-f0-9]{64}$", image_sha256):
         return jsonify({"error": "bad_request"}), 400
 
+    # artifact_id lands in model_jobs.artifact_id, a uuid column with a foreign
+    # key to artifacts.id. Validating it here turns what was an opaque 500 (the
+    # insert below failing on a malformed id, after a credit had already been
+    # consumed) into a clear 400.
+    if not artifact_id or not re.match(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        str(artifact_id).lower(),
+    ):
+        return jsonify({"error": "bad_artifact_id"}), 400
+
     admin = get_admin_client()
 
     # --- check rate limit ---
@@ -67,14 +77,27 @@ def generate_model():
         return jsonify({"cached": True, "output_path": cached_output}), 200
 
     # --- create the job ---
-    job_res = admin.table("model_jobs").insert({
-        "user_id": user.id,
-        "artifact_id": artifact_id,
-        "input_path": image_path,
-        "input_sha256": image_sha256,
-        "status": "queued"
-    }).execute()
-    
+    # The client inserts its own artifacts row (RLS "own artifacts") before
+    # calling this, so a missing row means the two got out of sync rather than
+    # a transient fault — report it instead of failing the FK insert blind.
+    owner = admin.table("artifacts").select("id").eq("id", artifact_id).eq(
+        "user_id", user.id).limit(1).execute()
+    if not owner.data:
+        admin.rpc("refund_model_credit", {"p_user": user.id}).execute()
+        return jsonify({"error": "artifact_not_found"}), 404
+
+    try:
+        job_res = admin.table("model_jobs").insert({
+            "user_id": user.id,
+            "artifact_id": artifact_id,
+            "input_path": image_path,
+            "input_sha256": image_sha256,
+            "status": "queued"
+        }).execute()
+    except Exception:
+        admin.rpc("refund_model_credit", {"p_user": user.id}).execute()
+        return jsonify({"error": "internal_error"}), 500
+
     if not job_res.data:
         admin.rpc("refund_model_credit", {"p_user": user.id}).execute()
         return jsonify({"error": "internal_error"}), 500
@@ -96,7 +119,15 @@ def generate_model():
         admin.table("model_jobs").update({"status": "failed", "error_code": "sign_failed"}).eq("id", job_id).execute()
         return jsonify({"error": "upstream_unavailable"}), 503
 
-    modal_key, modal_secret, modal_submit_url = require_modal_keys()
+    try:
+        modal_key, modal_secret, modal_submit_url = require_modal_keys()
+    except RuntimeError:
+        # Misconfiguration, not the user's fault — fail the job explicitly and
+        # give the credit back rather than raising an opaque 500 with a row
+        # left in `queued` for the reconcile cron to time out 20 minutes later.
+        admin.table("model_jobs").update({"status": "failed", "error_code": "internal"}).eq("id", job_id).execute()
+        admin.rpc("refund_model_credit", {"p_user": user.id}).execute()
+        return jsonify({"error": "not_configured"}), 503
 
     try:
         modal_res = requests.post(
@@ -111,19 +142,29 @@ def generate_model():
         )
         modal_res.raise_for_status()
     except requests.exceptions.HTTPError as e:
-        admin.table("model_jobs").update({"status": "failed", "error_code": f"http_{e.response.status_code}"}).eq("id", job_id).execute()
+        # error_code is surfaced to the client, which only has copy for the
+        # four codes in modelFailureMessages — the HTTP status stays in the
+        # response body for debugging rather than in the job row.
+        admin.table("model_jobs").update({"status": "failed", "error_code": "internal"}).eq("id", job_id).execute()
         admin.rpc("refund_model_credit", {"p_user": user.id}).execute()
         return jsonify({"error": "upstream_error", "details": e.response.text}), e.response.status_code
     except Exception:
-        admin.table("model_jobs").update({"status": "failed", "error_code": "submit_failed"}).eq("id", job_id).execute()
+        admin.table("model_jobs").update({"status": "failed", "error_code": "internal"}).eq("id", job_id).execute()
         admin.rpc("refund_model_credit", {"p_user": user.id}).execute()
         return jsonify({"error": "upstream_unavailable"}), 503
 
-    call_id = modal_res.json().get("call_id")
-    
+    try:
+        call_id = modal_res.json().get("call_id")
+    except ValueError:
+        call_id = None
+
+    # Only advance `queued -> processing`. The Modal worker sets `processing`
+    # itself and may already have finished by the time this line runs (a warm
+    # container with a cached mesh is fast); an unguarded write would drag a
+    # succeeded job back to processing and strand it there.
     admin.table("model_jobs").update({
         "modal_call_id": call_id,
-        "status": "processing"
-    }).eq("id", job_id).execute()
+        "status": "processing",
+    }).eq("id", job_id).eq("status", "queued").execute()
 
     return jsonify({"job_id": job_id}), 200

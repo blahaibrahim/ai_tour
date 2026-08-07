@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 /// "Fennec Compass" — the palette is lifted straight off the app icon
-/// (assets/icon/app-icon.png): the sleeping fennec's sand-and-cream fur, the
+/// (assets/icon/app-icon-ios.png): the sleeping fennec's sand-and-cream fur, the
 /// brass compass with its deep blue face, and the navy field it sits on.
 /// Flat fills only — no gradients anywhere in the app's chrome.
 class AppTheme {

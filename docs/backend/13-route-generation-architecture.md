@@ -1,5 +1,33 @@
 # AI-Powered Travel Itinerary Generation — Architecture Plan
 
+> **Status: Partially implemented — roughly the back half of the pipeline.**
+> This is the newest design document and the one the live route code was
+> written against, so read it alongside `backend/server/routes/itinerary.py`.
+> Stage by stage, against section 3's diagram:
+>
+> | Stage | State |
+> | --- | --- |
+> | Intent extraction | **Built, not wired.** `llm.extract_intent()` exists and works; nothing in the request path calls it |
+> | Category expansion | **Built, not wired.** `routes/itinerary._expand_categories()`; its docstring records why it is dormant — it targeted the catalogue's `nearby_locations(p_categories =>)` argument |
+> | Fast geographic candidate search | **Implemented, but live rather than offline.** `_build_candidates()` queries Overpass per request (hedged mirrors + 10-min bbox cache), not a preloaded PBF database. `scripts/ingest_geofabrik.py` implements section 4's offline extract but has not been run against the live project |
+> | Hybrid ranking + diversification | **Partial.** Ranking is one deterministic formula — `interest_score − distance_km × 2`, top 50 kept, top 30 offered to the model. No embedding similarity, no diversity pass |
+> | LLM candidate selection | **Implemented.** Ids validated against the candidate set; invented ids are dropped and the list padded from the ranked remainder |
+> | Travel-time calculation | **Implemented.** `data/geo.get_travel_time_matrix()` against public OSRM, 6s timeout, haversine fallback |
+> | Route optimization | **Implemented as greedy nearest-neighbour** over the travel-time matrix — not the optimizer this document implies |
+>
+> **The 8-stop target is hardcoded**, not derived from trip duration or travel
+> mode: `_select_with_llm` is called with `8` regardless of the client's
+> `wanted_visits`, which only reaches the model as a hint about eventual
+> intent. Duration and travel mode from section 1 are not accepted by the API
+> at all.
+>
+> **The latency budget in section 3 is not met and is not currently measured.**
+> The one measurement on record is the LLM selection stage (~1.6s on Groq with
+> `thinking_level="minimal"`, down from ~16s). Because total time exceeded what
+> a request could hold, generation became an **async job** — `POST
+> /api/itinerary` returns a `job_id` and the client polls — which is a
+> structural change this document does not describe.
+
 ## 1. Objective
 
 Build a travel itinerary system that accepts:

@@ -1,12 +1,36 @@
 # 11 — Security Checklist
 
-> **Status: Partially addressed — new work only.** RLS now genuinely exists
-> for the Supabase catalogue and ingestion tables, and was verified with live
-> calls using the real anon key (not just reviewed) — see doc 02's status
-> note and the "Threat model" section below for the one gap this surfaced
-> mid-build. Nothing about the 3D endpoint (issues #1, #2, #4, #5 below) has
-> changed. One new gap this session introduced: `POST /api/poi/ingest`
-> (doc 12) has no rate limiting of its own — see the updated table below.
+> **Status: The critical items are closed. What remains is client-side and
+> lower severity.**
+>
+> The GPU endpoint — issues #1, #2, #4, #5, "the single most urgent item in
+> this entire plan" for the life of this document — is now behind the Flask
+> proxy: JWT verification, per-user rate limit (20/day), an atomic credit
+> deduction with refund-on-failure at every early return, and Modal proxy auth
+> so the endpoint is unreachable without the key pair. The Modal worker
+> validates extension and pixel bounds and runs NSFW detection before any GPU
+> work. See doc 07.
+>
+> RLS is enabled on all 14 live tables and was verified with real anon-key
+> calls rather than by reading the SQL — that method is what caught the
+> default-grant trap described under "Threat model".
+>
+> **One genuinely serious hole was found and closed since:**
+> `rate_limit_events` had RLS disabled *and* full DML granted to `anon` and
+> `authenticated`, so anyone holding the publishable key could
+> `delete from public.rate_limit_events where user_id = '<their uid>'` and
+> reset every limit gating them — including the 20/day ceiling standing between
+> an anonymous user and unbounded L4 spend. The limiter was advisory against
+> anyone who bothered to look. Fixed in
+> `20260805203000_lock_down_rate_limit_events.sql` (grants revoked, RLS on,
+> deliberately no policies; `check_rate_limit` is `SECURITY DEFINER` and
+> unaffected). **Generalize it: a rate limiter's own ledger is part of the
+> limiter.**
+>
+> **Now the weakest link:** `rate_limit.py` fails *open* — if the
+> `check_rate_limit` RPC raises, the request proceeds unlimited (the `except`
+> block is a bare `pass`). Combined with anonymous sign-in being unlimited and
+> free, per-user quota is a soft control. See the new issue #10 below.
 
 Consolidated review across every document. Ordered by what actually gets
 exploited, not by what's most interesting.
@@ -19,18 +43,23 @@ These exist right now, in committed or staged code.
 
 | # | Issue | Where | Severity |
 | --- | --- | --- | --- |
-| 1 | GPU endpoint is completely unauthenticated | `backend/hunyuan2.1/api.py:29` | **Critical** — direct financial loss, still unfixed |
-| 2 | Endpoint URL committed to the repo | `backend/hunyuan2.1/api_test.py:3` | High (compounds #1), still unfixed |
+| 1 | ~~GPU endpoint is completely unauthenticated~~ | `backend/hunyuan2.1/api.py` | **Fixed** — Modal proxy auth, plus JWT + rate limit + credit consumption in `routes/models.py` before the call is ever made |
+| 2 | ~~Endpoint URL committed to the repo~~ | `backend/hunyuan2.1/api_test.py` | **No longer exploitable** — the URL still appears in the repo, but the endpoint now rejects requests without the `Modal-Key`/`Modal-Secret` pair. Treat obscurity as worth nothing; the auth is what closed this |
 | 3 | ~~`venv/` untracked but not ignored~~ | `.gitignore` | **Fixed** — `backend/**/venv/`, `__pycache__/`, and `.env` are gitignored; confirmed nothing under `backend/server/venv` is tracked |
-| 4 | No request size or content validation before GPU work | `api.py:30-33` | High, still unfixed |
-| 5 | `timeout=3600` on a GPU function | `api.py:21` | Medium — one hung call costs an hour of L4, still unfixed |
-| 6 | Absolute file paths persisted for captures | `ar_hunt_screen.dart:596` | Medium — data loss on iOS reinstall, still unfixed (no Flutter work this session) |
-| 7 | Nominatim `User-Agent` has no contact info | `location_search_bar.dart:75` | Low — still unfixed. Note: the *new* ingestion clients (Overpass/Wikidata/Wikipedia/Commons) do send a real contact-carrying User-Agent via `OVERPASS_CONTACT` — this specific pre-existing Nominatim call in the Flutter app was not touched |
-| 8 | ~~No auth, no RLS, no user scoping anywhere~~ | Whole app | **Partially addressed** — RLS now exists and is verified for the Supabase catalogue/ingestion tables (doc 02, 12). Still true for everything else: no user accounts exist anywhere, so there's nothing yet for per-user RLS to scope |
-| 9 | ~~`POST /api/poi/ingest` has no rate limit~~ | `backend/server/routes/poi.py` | **Fixed** — `check_rate_limit` RPC is called (10 requests per user per day) before any ingestion work begins, same pattern as the 3D endpoint. Verified in `poi.py`. |
+| 4 | ~~No request size or content validation before GPU work~~ | `backend/hunyuan2.1/api.py` | **Fixed** — extension check, pixel-bound check, and NSFW detection run in the worker before the pipeline; `captures` bucket enforces a 10 MB limit and a JPEG/PNG/WebP allow-list at the storage layer |
+| 5 | `timeout=3600` on a GPU function | `backend/hunyuan2.1/api.py` | **Partially addressed** — the `reconcile-stuck-jobs` cron (every 5 min) now fails jobs stranded past their window, so a hung call no longer strands the *user*. Verify the Modal-side timeout and account spend limit are actually set before launch; nothing in this repo can prove it |
+| 6 | Absolute file paths persisted for captures | `lib/screens/ar_hunt/ar_hunt_screen.dart` | Medium — **still unfixed**. Captures that go through the 3D flow are uploaded and safe; a plain capture is still stored by absolute path and breaks on iOS reinstall |
+| 7 | Nominatim `User-Agent` has no contact info | `lib/widgets/location_search_bar.dart` | Low — **still unfixed**. The backend's ingestion clients do send a contact-carrying User-Agent via `OVERPASS_CONTACT`; this pre-existing in-app Nominatim call was never touched |
+| 8 | ~~No auth, no RLS, no user scoping anywhere~~ | Whole app | **Fixed** — anonymous sign-in on first launch, JWT on every request, RLS enabled on all 14 tables and enforced per `auth.uid()` on the user-scoped ones |
+| 9 | ~~`POST /api/poi/ingest` has no rate limit~~ | `backend/server/routes/poi.py` | **Fixed** — `check_rate_limit` runs before any ingestion work. Note the committed limit is **1000/user/day**, not the 10 an earlier revision of this table claimed; that is high enough to be nearly no limit at all for the third-party APIs it fans out to |
+| 10 | Rate limiting fails open | `backend/server/rate_limit.py` | **New, Medium-High** — the `check_rate_limit` call is wrapped in `try/except: pass`, so any DB hiccup silently grants unlimited access to every LLM and GPU endpoint. Combined with unlimited free anonymous sign-ups, quota is advisory |
+| 11 | Anonymous accounts are an unlimited quota reset | Supabase Auth | **New, Medium** — the "quota farming" threat below is now live rather than theoretical: nothing rate-limits sign-in itself, so a fresh anonymous user is a fresh set of model credits. `purge-stale-anon` reclaims rows but does not slow this down |
+| 12 | Two schema objects exist only in the live database | `supabase/migrations/` | **New, Low (security), High (operational)** — `route_jobs` and the recreated `saved_locations` have no committed migration, so the repo cannot rebuild the project it describes. See doc 02 |
 
-Fix #1 before the next push — it's spending real money on someone else's
-terms and remains the single most urgent item in this entire plan.
+Issues #1, #2, #4 and #8 — the whole reason this document led with "fix #1
+before the next push" — are closed. The remaining ranked priority is **#10,
+then #11**: together they mean the spend controls in front of the GPU are
+weaker than they look on paper.
 
 ```gitignore
 backend/**/venv/

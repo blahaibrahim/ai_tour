@@ -62,6 +62,12 @@ class Location {
   final String? reason;
   // Real photo URL from Supabase catalogue (null falls back to picsum)
   final String? remotePhotoUrl;
+  // True when the photo is of the surrounding area rather than this place.
+  // Most POIs have no photograph of their own, and a labelled picture of the
+  // neighbourhood is more use than an empty placeholder — but it must be
+  // labelled, or it is the same lie the old picsum fallback told.
+  final bool photoIsStock;
+  final String? photoStockNote;
 
   const Location({
     required this.id,
@@ -75,6 +81,8 @@ class Location {
     required this.lng,
     this.reason,
     this.remotePhotoUrl,
+    this.photoIsStock = false,
+    this.photoStockNote,
   });
 
   /// Constructs a Location from the JSON shape returned by POST /api/itinerary.
@@ -90,6 +98,8 @@ class Location {
       lng: (json['lng'] as num).toDouble(),
       reason: json['reason'] as String?,
       remotePhotoUrl: json['photo_url'] as String?,
+      photoIsStock: json['photo_is_stock'] as bool? ?? false,
+      photoStockNote: json['photo_stock_note'] as String?,
       task: Task(type: 'photo', label: 'Take a photo of this location.'),
     );
   }
@@ -106,14 +116,28 @@ class Location {
       'lng': lng,
       'reason': reason,
       'photo_url': remotePhotoUrl,
+      'photo_is_stock': photoIsStock,
+      'photo_stock_note': photoStockNote,
     };
   }
 
-  String get photoUrl => remotePhotoUrl ?? 'https://picsum.photos/seed/$id/640/900';
-  String get thumbUrl => remotePhotoUrl ?? 'https://picsum.photos/seed/$id/120/120';
-  String get artifactUrl => remotePhotoUrl ?? 'https://picsum.photos/seed/$id-artifact/300/300';
-  String get overviewPhotoUrl => remotePhotoUrl ?? 'https://picsum.photos/seed/$id/640/420';
-  String get detailPhotoUrl => remotePhotoUrl ?? 'https://picsum.photos/seed/$id/640/500';
+  /// Whether the catalogue actually has a photo of this place.
+  bool get hasPhoto => remotePhotoUrl != null && remotePhotoUrl!.isNotEmpty;
+
+  /// Short label for the stock-image chip. Null when the photo really is of
+  /// this place, or when there is no photo at all.
+  String? get photoCredit =>
+      (hasPhoto && photoIsStock) ? (photoStockNote ?? 'Nearby photo') : null;
+
+  // These used to fall back to `picsum.photos/seed/$id`, which returns a real
+  // photograph of somewhere else entirely — a stock image presented as if it
+  // were the location. An empty string instead tells [NetImage] to draw the
+  // branded placeholder, which is honest about there being no photo yet.
+  String get photoUrl => remotePhotoUrl ?? '';
+  String get thumbUrl => remotePhotoUrl ?? '';
+  String get artifactUrl => remotePhotoUrl ?? '';
+  String get overviewPhotoUrl => remotePhotoUrl ?? '';
+  String get detailPhotoUrl => remotePhotoUrl ?? '';
 
   String distanceLabel(bool isMiles) {
     if (isMiles) {
@@ -146,6 +170,10 @@ class Artifact {
   final ModelStatus? modelStatus;
   final String? jobId;
   final String? errorCode;       // Backend error code for specific failure messages
+  /// `artifacts.captured_at` — set for anything rehydrated from Supabase, null
+  /// for an artifact that only exists in this session so far. Orders the folder
+  /// grid across sessions.
+  final DateTime? capturedAt;
 
   const Artifact({
     required this.id,
@@ -158,6 +186,7 @@ class Artifact {
     this.modelStatus,
     this.jobId,
     this.errorCode,
+    this.capturedAt,
   });
 
   Artifact copyWith({
@@ -171,6 +200,7 @@ class Artifact {
     ModelStatus? modelStatus,
     String? jobId,
     String? errorCode,
+    DateTime? capturedAt,
   }) {
     return Artifact(
       id: id ?? this.id,
@@ -183,6 +213,7 @@ class Artifact {
       modelStatus: modelStatus ?? this.modelStatus,
       jobId: jobId ?? this.jobId,
       errorCode: errorCode ?? this.errorCode,
+      capturedAt: capturedAt ?? this.capturedAt,
     );
   }
 }

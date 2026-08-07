@@ -23,56 +23,89 @@ def get_gemini_client() -> genai.Client:
         _gemini_client = genai.Client(api_key=require_gemini_key())
     return _gemini_client
 
+def _chat_gemini(
+    messages: list[dict],
+    *,
+    json_mode: bool,
+    max_tokens: int,
+    temperature: float,
+    thinking_level: str,
+) -> str:
+    prompt = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in messages)
+    if json_mode:
+        prompt += "\n\nCRITICAL INSTRUCTION: Return ONLY valid JSON."
+
+    client = get_gemini_client()
+    generation_config = {
+        # Headroom for reasoning, but bounded by the caller's own budget — an
+        # unconditional 65536 lets a model that starts rambling run for a
+        # minute before anything stops it.
+        'max_output_tokens': max(max_tokens * 4, 4096),
+        'thinking_level': thinking_level,
+        'temperature': temperature,
+    }
+
+    if json_mode:
+        generation_config['response_mime_type'] = 'application/json'
+
+    interaction = client.interactions.create(
+        model='models/gemini-3-flash-preview',
+        input=prompt,
+        generation_config=generation_config,
+    )
+    content = getattr(interaction, 'output_text', getattr(interaction, 'text', ''))
+    if not content:
+        raise LLMError("Empty response from Gemini")
+
+    # Optional: strip markdown json blocks if present
+    if json_mode:
+        content = content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+
+    return content.strip()
+
+
 def chat(
     messages: list[dict],
     *,
     json_mode: bool = False,
     max_tokens: int = 800,
     temperature: float = 0.7,
+    thinking_level: str = "medium",
+    prefer: str = "gemini",
 ) -> str:
-    """Send a chat-completion request with Gemini as primary, Groq as fallback."""
-    
-    # 1. Try Gemini primary
-    prompt = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in messages)
-    if json_mode:
-        prompt += "\n\nCRITICAL INSTRUCTION: Return ONLY valid JSON."
-        
-    try:
-        client = get_gemini_client()
-        generation_config = {
-            'max_output_tokens': max_tokens,
-            'thinking_level': 'medium',
-            'temperature': temperature,
-        }
-        
-        if json_mode:
-            generation_config['response_mime_type'] = 'application/json'
+    """Send a chat-completion request. Both providers back each other up;
+    `prefer` picks which one is tried first.
 
-        interaction = client.interactions.create(
-            model='models/gemini-3-flash-preview',
-            input=prompt,
-            generation_config=generation_config,
-        )
-        content = getattr(interaction, 'output_text', getattr(interaction, 'text', ''))
-        if not content:
-            raise LLMError("Empty response from Gemini")
-            
-        # Optional: strip markdown json blocks if present
-        if json_mode:
-            content = content.strip()
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            
-        return content.strip()
-        
-    except Exception as e:
-        print(f"Gemini failed, falling back to Groq: {e}")
-        
-    # 2. Fallback to Groq
+    Two latency dials, both measured on the itinerary selection prompt
+    (pick 8 ids out of 30 candidates, JSON out):
+
+      * `thinking_level` — 'minimal' 5.5s, 'low' 16.2s, 'medium' 16.1s,
+        'high' 20.6s, all returning the same 8 valid ids. It was hardcoded to
+        'medium' for every caller, so a constrained selection over pre-vetted
+        candidates was paying full reasoning cost for nothing.
+      * `prefer` — Groq answers the same prompt in ~1.6s against Gemini's 5.5s
+        at its fastest. Gemini stays the default (it is the better model for
+        the open-ended describe/rewrite work), but latency-critical calls on
+        the user's waiting path ask for Groq first and still fall back to
+        Gemini if Groq is down. Nothing loses a provider; only the order
+        changes.
+    """
+    if prefer == "gemini":
+        try:
+            return _chat_gemini(
+                messages, json_mode=json_mode, max_tokens=max_tokens,
+                temperature=temperature, thinking_level=thinking_level,
+            )
+        except Exception as e:
+            print(f"Gemini failed, falling back to Groq: {e}")
+
+    # Groq — either the caller's preference, or Gemini's fallback.
     client = get_groq_client()
     kwargs: dict = {"reasoning_effort": "none"}
     if json_mode:
@@ -106,6 +139,14 @@ def chat(
                 )
             except APIError as e3:
                 print(f"Groq fallback model failed: {e3}")
+                if prefer == "groq":
+                    # Groq was first choice, so Gemini hasn't been tried yet —
+                    # a preference must not cost the caller a provider.
+                    print("Groq exhausted, falling back to Gemini")
+                    return _chat_gemini(
+                        messages, json_mode=json_mode, max_tokens=max_tokens,
+                        temperature=temperature, thinking_level=thinking_level,
+                    )
                 raise LLMError(str(e3)) from e3
 
     content = response.choices[0].message.content

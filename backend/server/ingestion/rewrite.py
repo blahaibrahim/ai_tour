@@ -69,6 +69,69 @@ def rewrite_blurb(raw_text: str, location_name: str, category: str) -> Optional[
         return None
 
 
+def describe_from_facts(facts: dict) -> Optional[str]:
+    """Write a blurb for a POI that has no Wikipedia article, from the OSM
+    facts `describe.collect_facts` gathered.
+
+    Distinct from `rewrite_blurb`, which condenses text that already exists.
+    Here there is no source text — only a handful of tags — so the prompt is
+    explicit that the model may not add anything it wasn't given. Without that
+    constraint this is an invitation to invent a founding date and an architect
+    for a municipal car park.
+
+    Returns None on any failure or if the result looks unusable, so the caller
+    falls back to the deterministic sentence.
+    """
+    name = facts.get("name") or "this place"
+    lines = [f"Name: {name}"]
+    if facts.get("kind"):
+        lines.append(f"Type: {facts['kind']}")
+    if facts.get("embassy"):
+        lines.append(f"Role: {facts['embassy']}")
+    if facts.get("qualifiers"):
+        lines.append("Attributes: " + "; ".join(facts["qualifiers"]))
+    if facts.get("place"):
+        lines.append(f"City: {facts['place']}")
+    if facts.get("street"):
+        lines.append(f"Street: {facts['street']}")
+
+    # With only a name and nothing else there is nothing for the model to work
+    # from, and asking anyway is how you get invented history.
+    if len(lines) < 2:
+        return None
+
+    try:
+        from llm import chat
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You write one-sentence captions for a travel app. "
+                    "You will be given verified facts about a place. "
+                    "Write ONE inviting sentence (max 180 characters) using "
+                    "ONLY those facts. Do not invent history, dates, "
+                    "architects, significance, or details you were not given. "
+                    "Do not repeat the place's name — the app shows it above "
+                    "the caption. Do not start with 'It is' or 'This is'. "
+                    "Reply with ONLY the sentence."
+                ),
+            },
+            {"role": "user", "content": "\n".join(lines)},
+        ]
+        result = (chat(messages, json_mode=False, max_tokens=120, temperature=0.5) or "").strip()
+    except Exception as e:
+        logger.warning("Fact-based description failed for %s: %s", name, e)
+        return None
+
+    result = result.strip().strip('"')
+    if not (20 <= len(result) <= 260):
+        return None
+    # A model that starts explaining itself has not written a caption.
+    if result.lower().startswith(("i ", "as an", "sorry", "i'm sorry", "unfortunately")):
+        return None
+    return result
+
+
 def translate_blurbs(
     en_blurb: str,
     location_name: str,

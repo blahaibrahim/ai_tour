@@ -1,8 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../models/location.dart';
+import '../../../services/media_cache.dart';
 import '../../../theme.dart';
 import '../../../widgets/glass_surface.dart';
+import '../../../widgets/net_image.dart';
+import '../../../widgets/shimmer.dart';
 import '../../../widgets/pressable_scale.dart';
 import '../../../widgets/staggered_entrance.dart';
 import '../../../widgets/artifact_cube.dart';
@@ -96,6 +99,12 @@ class ArtifactsTab extends StatelessWidget {
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => ArtifactCubeThumbnail(artifact: art, size: 104),
       );
+    }
+    // Restored from Supabase: photoUrl is a private storage key. Key on the
+    // artifact id so the sign-and-load isn't redone every time the search box
+    // rebuilds the grid.
+    if (!art.isLocalFile && art.photoUrl.startsWith('captures/')) {
+      return _StoredCapturePreview(key: ValueKey(art.id), artifact: art);
     }
     return ArtifactCubeThumbnail(artifact: art, size: 104);
   }
@@ -200,5 +209,49 @@ class ArtifactsTab extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Thumbnail for an artifact restored from Supabase, whose capture lives in the
+/// private `captures` bucket.
+///
+/// The signed URL is resolved once in [initState] rather than from a
+/// FutureBuilder in the grid's build method, which would mint a fresh one on
+/// every keystroke in the search field.
+class _StoredCapturePreview extends StatefulWidget {
+  const _StoredCapturePreview({super.key, required this.artifact});
+
+  final Artifact artifact;
+
+  @override
+  State<_StoredCapturePreview> createState() => _StoredCapturePreviewState();
+}
+
+class _StoredCapturePreviewState extends State<_StoredCapturePreview> {
+  String? _url;
+  bool _resolving = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final url = await MediaCache.captureSignedUrlForPath(widget.artifact.photoUrl);
+    if (!mounted) return;
+    setState(() {
+      _url = url;
+      _resolving = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_resolving) return const ShimmerFill();
+    if (_url == null) {
+      return ArtifactCubeThumbnail(artifact: widget.artifact, size: 104);
+    }
+    return NetImage(url: _url!, fit: BoxFit.cover);
   }
 }

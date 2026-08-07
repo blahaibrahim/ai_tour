@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ (API 31) replaces the windowBackground splash with the
+         system SplashScreen API. Left alone it composites the *launcher*
+         icon, which means the adaptive icon's navy plate is drawn as a circle
+         on top of the navy splash background — a visible disc for no reason.
+         Pointing it at the transparent logo instead removes the plate, so the
+         fennec sits directly on the splash colour. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+        <!-- windowSplashScreenIconBackgroundColor is deliberately unset: any
+             value here reintroduces the plate this override exists to remove. -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+</resources>

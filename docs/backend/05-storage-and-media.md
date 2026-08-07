@@ -1,6 +1,29 @@
 # 05 — Storage & Media
 
-> **Status: Backend implemented.** Supabase Storage buckets (`captures`, `models`, `thumbnails`, `catalogue`) are created via SQL migrations with RLS policies in place. Maintenance cron jobs for purging orphan objects are active. Flutter frontend integration is pending.
+> **Status: Implemented for the 3D path; `thumbnails` and `catalogue` are
+> unused.**
+>
+> All four buckets are live and confirmed against the project, with the size
+> limits and MIME allow-lists below (`captures` 10 MB, `models` 50 MB,
+> `thumbnails` 512 KB, `catalogue` 5 MB; only `catalogue` public). RLS
+> policies are in place and the `purge-orphan-media` cron runs daily at 04:00.
+>
+> **In use:** `captures` (client compresses + strips EXIF via
+> `flutter_image_compress`, uploads through `ModelRepository.uploadCapture`,
+> path `{user_id}/{artifact_id}.jpg`) and `models` (the Modal worker writes
+> `.glb` there directly with the service-role key;
+> `lib/services/media_cache.dart` downloads and caches it on disk, because
+> `flutter_3d_controller` needs a local path rather than a URL).
+>
+> **Not in use:** nothing generates `thumbnails` — the folder grid renders the
+> full capture or an animated cube placeholder instead. `catalogue` is empty
+> and unreferenced now that location photos are resolved live from
+> Wikipedia/Commons at request time (`ingestion/photos.py`) rather than served
+> from our own bucket.
+>
+> **Still open from the sections below:** no client-side retention/eviction
+> policy, and captures on the device are still referenced by absolute path
+> (doc 11 issue #6).
 
 Covers the binary side: capture photos, generated `.glb` models, thumbnails,
 and how they move between the device and Supabase Storage.

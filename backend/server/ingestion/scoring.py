@@ -25,7 +25,48 @@ _GENERIC_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Places whose *name* says they are closed to visitors even when their tags
+# don't. "Djenane El Mithak (Résidence d'Etat)" carries no `barrier` and no
+# `office=diplomatic`, so nothing else catches it — it reached the offered
+# candidate list as an ordinary park. Embassies are normally excluded by tag
+# in ingestion/overpass.py; the name is the backstop for the ones tagged
+# incompletely.
+_CLOSED_TO_VISITORS_RE = re.compile(
+    r"(r[ée]sidence\s+d\s*['’]?\s*[ée]tat|ambassade|embassy|"
+    r"consulat(e)?|chancellerie)",
+    re.IGNORECASE,
+)
+
 _RICHNESS_TAGS = ("website", "opening_hours", "description", "image")
+
+
+def _is_walled_enclosure(osm_tags: dict) -> bool:
+    """A walled/fenced enclosure mapped as a park with nothing saying it is
+    public — `barrier=wall` + `leisure=park` and no knowledge-base link,
+    tourism tag, historic tag or `access`.
+
+    In Algiers this pattern is state residences and private villa grounds:
+    "Résidence d'Etat", "Domaine Bensmen", "Villa Montfeld", "Villa Sidi
+    Allaoui", and a plant nursery — all of which a naive `leisure=park` rule
+    reads as public parks worth 25 points, ahead of actual mosques.
+
+    A **penalty and not an exclusion**, because the signal is ambiguous rather
+    than wrong: Dar Aziza, a 16th-century Ottoman palace, carries exactly the
+    same tags as Villa Montfeld and nothing in OSM distinguishes them. Scoring
+    it down puts it below every properly-tagged landmark while leaving it
+    available in a sparse area, which dropping it would not.
+    """
+    if osm_tags.get("barrier") not in ("wall", "fence"):
+        return False
+    if osm_tags.get("leisure") != "park":
+        return False
+    return not (
+        osm_tags.get("wikidata")
+        or osm_tags.get("wikipedia")
+        or osm_tags.get("tourism")
+        or osm_tags.get("historic")
+        or osm_tags.get("access") in ("yes", "public", "permissive")
+    )
 
 
 def compute_score(
@@ -46,6 +87,13 @@ def compute_score(
     if _GENERIC_NAME_RE.search(name):
         breakdown["generic_name_penalty"] = -30
         return -30.0, breakdown
+
+    if _CLOSED_TO_VISITORS_RE.search(name):
+        breakdown["closed_to_visitors"] = -30
+        return -30.0, breakdown
+
+    if _is_walled_enclosure(osm_tags):
+        breakdown["walled_private_grounds"] = -20
 
     if wikidata_match:
         if wikidata_match.get("is_unesco"):

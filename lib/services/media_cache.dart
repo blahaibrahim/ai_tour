@@ -16,7 +16,14 @@ class MediaCache {
   static Future<File?> getModel(String storagePath) async {
     try {
       final cacheFile = await _cacheFile(storagePath);
-      if (await cacheFile.exists()) return cacheFile;
+      if (await cacheFile.exists()) {
+        // A zero-length entry is a previous download that died between
+        // creating the file and filling it. Left alone it would be served
+        // forever, and the viewer renders an empty GLB as a blank screen —
+        // so treat it as a miss and fetch again.
+        if (await cacheFile.length() > 0) return cacheFile;
+        await cacheFile.delete();
+      }
 
       // Sign a short-lived URL and download
       final supabase = Supabase.instance.client;
@@ -24,7 +31,14 @@ class MediaCache {
         // storagePath is "models/{uid}/{id}.glb" — strip the bucket prefix
         storagePath.replaceFirst('models/', ''),
       );
-      await cacheFile.writeAsBytes(bytes, flush: true);
+      if (bytes.isEmpty) return null;
+
+      // Write beside the real path and rename into place. Rename is atomic, so
+      // being killed mid-download leaves a stray .part rather than a truncated
+      // file that every later launch would accept as a complete model.
+      final partial = File('${cacheFile.path}.part');
+      await partial.writeAsBytes(bytes, flush: true);
+      await partial.rename(cacheFile.path);
       return cacheFile;
     } catch (_) {
       return null;
@@ -44,6 +58,22 @@ class MediaCache {
       return await Supabase.instance.client.storage
           .from('captures')
           .createSignedUrl('$userId/$artifactId.jpg', 3600);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Signs the `image_path` stored on an artifacts row (1-hour TTL).
+  ///
+  /// An artifact restored from Supabase carries a storage key, not a URL — the
+  /// captures bucket is private, so the folder grid has to sign it before it
+  /// can be shown.
+  static Future<String?> captureSignedUrlForPath(String storagePath) async {
+    if (storagePath.isEmpty) return null;
+    try {
+      return await Supabase.instance.client.storage
+          .from('captures')
+          .createSignedUrl(storagePath.replaceFirst('captures/', ''), 3600);
     } catch (_) {
       return null;
     }

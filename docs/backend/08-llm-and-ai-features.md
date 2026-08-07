@@ -1,24 +1,61 @@
 # 08 — LLM & AI Features
 
-> **Status: Fully implemented (backend).** Itinerary generation, place chat,
-> task generation, and "Modify my route" (`POST /api/itinerary/modify`) are all
-> live in `backend/server/routes/` against Groq (Gemini-primary, Groq-fallback).
-> Verified end-to-end. Semantic search vector ingestion is implemented.
-> Curated locations have been translated to French and Arabic using `translate_curated.py`.
-> The ingestion pipeline now includes LLM blurb rewriting and fr/ar translation
-> via `ingestion/rewrite.py`.
-> **None of this is called from Flutter yet** — the Flask server exists and
-> works standalone, but the app itself still returns canned responses.
+> **Status: All four features implemented and wired to Flutter. Two of the
+> four are broken in production by an id-space mismatch — see below.**
+>
+> **Provider layer** (`backend/server/llm.py`) diverged from what this document
+> describes. It is now a two-provider wrapper where either can back the other,
+> chosen per call site:
+>
+> - `chat(..., prefer=)` — Gemini (`models/gemini-3-flash-preview`) is the
+>   default; Groq is the fallback. Latency-critical calls on the user's waiting
+>   path pass `prefer="groq"` and fall back to Gemini. Groq itself has a
+>   second-tier fallback to `llama-3.3-70b-versatile`.
+> - `chat(..., thinking_level=)` — was hardcoded `medium` for every caller.
+>   Measured on the itinerary selection prompt: `minimal` 5.5s vs `medium`
+>   16.1s for the *same 8 ids*, so selection now asks for `minimal`. Combined
+>   with `prefer="groq"` that call is ~1.6s.
+> - `embed()` — Gemini `models/gemini-embedding-2` at 384 dimensions (this
+>   document's `text-embedding-004` is superseded).
+> - `extract_intent()` — built, and **not called by anything in the request
+>   path**. Same for its consumer `routes/itinerary._expand_categories`. Both
+>   were designed against the catalogue's `nearby_locations(p_categories =>)`
+>   argument, which the route pipeline no longer uses (doc 12).
+>
+> **Wired to Flutter (all of it):** `repositories/location_repository.dart`,
+> `chat_repository.dart`, `task_repository.dart`, `model_repository.dart` —
+> `AppBloc` no longer returns canned responses for any of these. Every endpoint
+> requires a Supabase JWT and is rate-limited per user via `rate_limit.py` →
+> `check_rate_limit` RPC.
+>
+> **Itinerary generation is now asynchronous.** `POST /api/itinerary` inserts a
+> `route_jobs` row, returns `{job_id}` immediately, and does the work on a
+> background thread; the client polls `GET /api/itinerary/job/<id>` on a
+> backoff schedule while the thinking screen plays. `GET
+> /api/itinerary/job/latest` restores an in-flight or finished route across an
+> app restart, and `POST /api/itinerary/accept` marks the chosen stops. The
+> thinking screen is no longer theatre — it covers real work.
+>
+> **The break:** `/api/chat` and `/api/tasks/generate` both resolve their
+> subject through `data/locations_repo.get_location(location_id)`, which reads
+> the `locations` catalogue. The itinerary pipeline now returns Overpass ids
+> (`osm-node-123`), and the catalogue is empty besides. So every call from a
+> generated route looks up an id that cannot exist there and gets
+> `404 location_not_found`; the app catches it and shows its "couldn't reach
+> the guide" copy. Both routes need to take the location's name/category/blurb
+> from the request body — which `ChatRepository.askAboutPlace` **already
+> sends** and the backend currently ignores — or resolve `osm-*` ids directly.
+> This is the highest-value backend fix outstanding.
 
-## What's currently faked (in the Flutter app — see status note above for what the backend now does)
+## Feature status
 
-| Feature | Where | Today |
+| Feature | Where | State |
 | --- | --- | --- |
-| Itinerary generation | `GenerateRouteEvent` → `app_bloc.dart:105` | Flutter: still a region filter over 8 hardcoded locations. Backend: implemented, see status note above and [12](12-poi-sources-and-ingestion.md) |
-| "Ask about this place" | `AskQuestionEvent` (`app_event.dart:107`) | Flutter: caller passes both question *and* answer. Backend: implemented (`POST /api/chat`) |
-| "Modify my route" | `SendAIChangeEvent` (`app_event.dart:139`) | Canned response, backend not implemented either |
-| Task generation | `RegenerateTaskEvent` | Flutter: cycles a fixed list. Backend: implemented (`POST /api/tasks/generate`) |
-| Thinking screen | `AppState.thinkingMessages` | Six hardcoded strings on a timer, unchanged |
+| Itinerary generation | `GenerateRouteEvent` → `LocationRepository.generateItinerary` → `POST /api/itinerary` | **Working.** Async job + poll; live Overpass candidates, LLM selection, OSRM-ordered |
+| "Modify my route" | `SendAIChangeEvent` → `ChatRepository.modifyRoute` → `POST /api/itinerary/modify` | **Working.** Shares one candidate builder with generate, so keeping existing stops is expressible |
+| "Ask about this place" | `AskQuestionEvent` → `ChatRepository.askAboutPlace` → `POST /api/chat` | **Wired, 404s in practice** — see the id-space break above |
+| Task generation | `RegenerateTaskEvent` → `TaskRepository.generateTask` → `POST /api/tasks/generate` | **Wired, 404s in practice** — same cause; falls back to the old hardcoded cycle |
+| Thinking screen | `AppState.thinkingMessages` | Six hardcoded strings on a timer — but now over genuine latency |
 
 The thinking screen deserves a note: it's currently theatre over a synchronous
 filter. Once a real model is behind it the delay becomes genuine, and the

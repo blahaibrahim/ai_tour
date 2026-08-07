@@ -5,42 +5,50 @@ in-memory `AppBloc` seeded from `lib/models/location_data.dart`, plus an
 unauthenticated GPU endpoint in `backend/hunyuan2.1/` — to an account-based,
 offline-capable, multilingual product with a secured 3D generation pipeline.
 
-**Implementation has started.** A Flask server at `backend/server/` and a
-Supabase project (schema committed under `supabase/migrations/`) now back
-three real endpoints — itinerary generation, place chat, and task
-generation — plus a live POI ingestion pipeline. Each doc below carries a
-status line stating what's actually built versus still planned; don't infer
-implementation status from the prose alone, since these documents were
-written before any code existed and mostly still describe intent rather
-than what's live. The Flutter app itself is untouched so far — everything
-built to date is server-side.
+**Most of this plan is now built.** A Flask server at `backend/server/`, a live
+Supabase project, and a hardened Modal service back the whole product loop —
+route generation, place chat, task generation, 3D artifact capture — and the
+Flutter app calls all of it. What remains is mostly the *offline and polish*
+half of the plan (docs 03, 04, 09, 10) plus a short list of real defects.
+
+**These documents were written before any code existed**, and in several
+places the implementation deliberately went a different way. Each doc carries
+a `> **Status:**` note at the top saying what is actually true; **the status
+note is authoritative and the prose beneath it often is not.** The largest
+divergences, in order of how much they change the mental model:
+
+1. **Route generation no longer reads the `locations` catalogue** — it queries
+   Overpass live, per request. Docs 12 and 13 describe the ingest-then-query
+   design that this replaced. Location ids are `osm-node-123`, not uuids.
+2. **Itinerary generation is asynchronous** — `POST /api/itinerary` returns a
+   `job_id` and the client polls. No doc predicted this; it fell out of the
+   real latency.
+3. **The trusted server is Flask, not Supabase Edge Functions.** Wherever a
+   doc says "Edge Function," read "Flask route."
+4. **The schema shrank.** `trips`, `trip_stops`, `chat_messages` and
+   `swipe_decisions` were dropped as unused (doc 02).
 
 **Picking up this work?** Read [HANDOFF.md](HANDOFF.md) first — a
-current-state snapshot (what's implemented, what's not, known issues found
-during live testing) written specifically for an agent starting a new
-session, rather than the numbered docs' original design intent.
+current-state snapshot written for an agent starting a new session, rather
+than these documents' original design intent.
 
 ---
 
 ## Where the app is today
 
-Understanding the starting point matters, because it determines how invasive
-each piece of work is.
-
-| Area | Current state | Consequence |
-| --- | --- | --- |
-| State | One `AppBloc`, all state in memory, lost on kill | Every persisted field is new work, but the event API is already the right seam |
-| Data | Static `allLocations` list of 8 hardcoded `Location`s | Becomes a **cache of live POI data** from a maps API, scored and deduped. The 8 stay as curated fallbacks |
-| Auth | None | Entirely new |
-| Persistence | None. AR captures write PNGs to the app documents dir and are referenced by absolute path | Paths break across reinstalls; needs a real local DB + storage abstraction |
-| Radius filter | `radiusKm` exists in state and UI but the query in `app_bloc.dart` filters on region only | Radius must become a real geospatial predicate |
-| 3D generation | Modal endpoint exists, works, is completely public and synchronous | Needs auth, async job model, and quota |
-| Artifact viewer | A photo-textured cube (`lib/widgets/cube3d.dart`) — not a real 3D model renderer | Displaying generated `.glb` needs a real viewer |
-| i18n | ~20 hardcoded UI strings in screens plus all seed content in English | Needs ARB extraction + a content translation strategy |
-| Theme | 224 references to `AppTheme.` static consts across 34 files | Dark mode is a refactor, not a toggle |
-| Route generation | **Implemented server-side.** `POST /api/itinerary` runs the full three-stage funnel — Supabase `nearby_locations` → LLM selection (Groq) → nearest-neighbour ordering. The Flutter app doesn't call it yet | Wire `GenerateRouteEvent` to this endpoint |
-| AI features | **Implemented server-side.** `POST /api/chat` and `POST /api/tasks/generate` are live against Groq, grounded and validated per doc 08. Not yet called from Flutter | Wire `AskQuestionEvent`/`RegenerateTaskEvent` to these endpoints |
-| POI data | Was 8 hardcoded rows | **Now Supabase-backed and live-ingestible.** Same 8 rows seeded as `is_curated`, plus a working Overpass/Wikidata/Wikipedia/Commons ingestion pipeline (`backend/server/ingestion/`, triggered via `POST /api/poi/ingest`) that scores and dedupes real POIs into the same table |
+| Area | Current state |
+| --- | --- |
+| State | One `AppBloc`, all state in memory. Survives a kill only for the route itself, by re-fetching `route_jobs` on launch (`ResumeRouteEvent`). Everything else — points, tasks, captured artifacts — is lost |
+| Auth | **Anonymous sign-in on first launch**, session in the platform keychain, JWT on every request. No upgrade path to a real account (doc 01) |
+| POI data | **Live Overpass per request**, hedged across three mirrors with a 10-minute bbox cache. The `locations` catalogue still exists and is still ingestible via `POST /api/poi/ingest`, but is **currently empty and out of the request path** (doc 12) |
+| Route generation | **Async job.** Overpass candidates → deterministic ranking → LLM selection (Groq-first, ~1.6s) → OSRM travel-time matrix → greedy nearest-neighbour ordering, with photo lookups running underneath the model call |
+| AI features | Itinerary + modify **working**. Chat and task generation are wired but **404 on every generated stop** — they look up `osm-*` ids in the empty catalogue (doc 08) |
+| 3D generation | **Complete end to end.** On-device labelling → compress + EXIF strip → upload → authed, quota'd, deduped Flask proxy → Modal worker → `.glb` in Storage → Realtime → native `Flutter3DViewer` |
+| Artifact viewer | Real GLB renderer. The photo-textured cube survives only as placeholder and grid thumbnail |
+| Persistence | No local database. Captures outside the 3D flow are still referenced by absolute path (doc 11 #6) |
+| Offline | None. Every screen needs the network (docs 03, 04) |
+| i18n | None. `locale='en'` hardcoded backend-wide; no ARB files; no RTL (doc 09) |
+| Theme | **241** references to `AppTheme.` static consts across 34 files, single light theme (doc 10) |
 
 ## Target architecture
 
@@ -72,16 +80,27 @@ each piece of work is.
 ### Route generation is a funnel, not a prompt
 
 ```
-1. FETCH   Maps API → tourism POIs near the user       (cached by tile)
+1. FETCH   Overpass → tourism POIs near the user   (hedged mirrors, 10-min bbox cache)
 2. SCORE   Deterministic ranking — is this worth visiting at all?
-3. SELECT  LLM picks and orders from the top candidates, per the user's prompt
+3. SELECT  LLM picks from the top 30 candidates, per the user's prompt
+4. ORDER   OSRM travel-time matrix → greedy nearest-neighbour
 ```
 
 The model never invents a place; it only chooses from rows a maps provider
-vouched for. Stage 2 is where the product lives — raw POI feeds return the
-Casbah alongside gift shops and car parks, and filtering that cheaply before
-the model sees it is both a quality and a cost decision.
-Full detail in [12](12-poi-sources-and-ingestion.md).
+vouched for, and any id it returns that isn't in the candidate set is dropped.
+Stage 2 is where the product lives — raw POI feeds return the Casbah alongside
+gift shops and car parks, and filtering that cheaply before the model sees it
+is both a quality and a cost decision. Stage 4 is never asked of the model:
+geometry chooses the order.
+
+**Stage 1 changed after these docs were written.** [12](12-poi-sources-and-ingestion.md)
+describes fetching into the `locations` catalogue ahead of time and querying
+that; the request path now calls Overpass directly instead, because a city
+nobody had ingested returned only the curated seeds. The ingestion pipeline
+still exists and still works — it is simply no longer what a route request
+reads. Full reasoning in the docstring at the top of
+`backend/server/routes/itinerary.py`; the intended end-state pipeline is
+[13](13-route-generation-architecture.md).
 
 ### The one rule that drives most of the design
 
@@ -99,16 +118,23 @@ started with a **Flask server** at `backend/server/` instead — a deliberate
 choice to keep the whole backend in one language, alongside the existing
 Python Modal service in `backend/hunyuan2.1/`. The principle is unchanged
 (one trusted server holds the keys, the app never does); only the runtime
-differs. Flask currently holds the Groq key and, for the ingestion pipeline
-specifically, the Supabase `service_role` key
-(`backend/server/ingestion/supabase_admin.py`) — kept deliberately separate
-from the `anon`-key client every read path uses
-(`backend/server/data/supabase_client.py`). Wherever a doc below says "Edge
-Function," read "Flask route" — the security properties described still
-apply, just implemented in a different runtime. Doc 07 (securing the 3D
-endpoint) still describes an Edge Function proxy in front of Modal; that
-work hasn't started, and when it does it should likely become a Flask route
-too, for the same consistency reason.
+differs. Wherever a doc below says "Edge Function," read "Flask route" — the
+security properties described still apply, just in a different runtime.
+Doc 07's Edge Function proxy in front of Modal was built this way, as
+`backend/server/routes/models.py`.
+
+Flask holds the Groq key, the Gemini key, the Modal proxy key pair, and the
+Supabase `service_role` key (`backend/server/ingestion/supabase_admin.py` —
+kept deliberately separate from the `anon`-key client every read path uses,
+`backend/server/data/supabase_client.py`). The rule holds in both directions:
+the app reaches Modal only through Flask, and it ships no third-party key of
+any kind.
+
+**One deliberate exception:** `SavedLocationsRepository` writes to
+`public.saved_locations` straight from the app rather than through Flask. Its
+RLS policy already scopes every row to `auth.uid()`, so a server hop would add
+nothing — and Supabase, unlike Modal or an LLM provider, is not a metered
+third party the app would be spending on someone else's behalf.
 
 ## Document index
 
@@ -118,95 +144,63 @@ to keep existing cross-links stable.
 
 | # | Document | Covers | Status |
 | --- | --- | --- | --- |
-| 12 | [POI sources & ingestion](12-poi-sources-and-ingestion.md) | Maps API comparison, tile cache, dedupe, interestingness scoring | **Substantially implemented** |
-| 01 | [Auth & accounts](01-auth-and-accounts.md) | Anonymous-first sign-in, upgrade to email/OAuth, session handling, account deletion | Not started |
-| 02 | [Cloud database schema](02-cloud-database-schema.md) | Full Postgres schema, PostGIS radius queries, RLS policies, migrations | **Partially implemented** — catalogue only |
+| 12 | [POI sources & ingestion](12-poi-sources-and-ingestion.md) | Maps API comparison, tile cache, dedupe, interestingness scoring | **Implemented — but out of the request path**, and the catalogue is empty |
+| 01 | [Auth & accounts](01-auth-and-accounts.md) | Anonymous-first sign-in, upgrade to email/OAuth, session handling, account deletion | **Half implemented** — anonymous sign-in works; no upgrade path, delete-account unreachable |
+| 02 | [Cloud database schema](02-cloud-database-schema.md) | Full Postgres schema, PostGIS radius queries, RLS policies, migrations | **Implemented, then cut back** — 5 tables dropped, 2 live tables have no committed migration |
 | 03 | [Local database schema](03-local-database-schema.md) | Drift/SQLite mirror, what's cached vs. authoritative, encryption | Not started |
 | 04 | [Sync & caching](04-sync-and-caching.md) | Offline outbox, conflict resolution, cache tiers and TTLs | Not started |
-| 05 | [Storage & media](05-storage-and-media.md) | Buckets, upload paths, signed URLs, thumbnails, local file lifecycle | Not started |
-| 06 | [3D generation pipeline](06-3d-generation-pipeline.md) | Camera → job → `.glb` → viewer, end to end, plus fixes to the Modal function | Not started |
-| 07 | [Securing the 3D endpoint](07-securing-the-3d-endpoint.md) | Concrete hardening of `backend/hunyuan2.1/api.py` | **Not started — highest-priority open item** |
-| 08 | [LLM & AI features](08-llm-and-ai-features.md) | Free models for itinerary generation, chat, translation, moderation, embeddings | **Partially implemented** — 3 of 5 features |
+| 05 | [Storage & media](05-storage-and-media.md) | Buckets, upload paths, signed URLs, thumbnails, local file lifecycle | **Implemented for the 3D path**; `thumbnails` and `catalogue` unused |
+| 06 | [3D generation pipeline](06-3d-generation-pipeline.md) | Camera → job → `.glb` → viewer, end to end, plus fixes to the Modal function | **Implemented end to end** |
+| 07 | [Securing the 3D endpoint](07-securing-the-3d-endpoint.md) | Concrete hardening of `backend/hunyuan2.1/api.py` | **Implemented** — all four layers |
+| 08 | [LLM & AI features](08-llm-and-ai-features.md) | Free models for itinerary generation, chat, translation, moderation, embeddings | **Implemented and wired** — chat + tasks 404 on an id-space mismatch |
 | 09 | [Internationalization](09-internationalization.md) | ARB setup, RTL for Arabic, translating user-generated and seed content | Not started |
-| 10 | [Theming — light & dark](10-theming-light-dark.md) | Migrating 224 static const references to a themeable system | Not started |
-| 11 | [Security checklist](11-security-checklist.md) | Consolidated review, threat model, pre-launch gate | Partially addressed — new work only |
-| 12 | [POI sources & ingestion](12-poi-sources-and-ingestion.md) | *(listed above — read first)* | |
+| 10 | [Theming — light & dark](10-theming-light-dark.md) | Migrating 241 static const references to a themeable system | Not started |
+| 11 | [Security checklist](11-security-checklist.md) | Consolidated review, threat model, pre-launch gate | **Critical items closed**; fail-open rate limiting is now the weakest link |
+| 13 | [Route generation architecture](13-route-generation-architecture.md) | Intent extraction, offline geo data, hybrid ranking, travel-time optimization | **Partially implemented** — back half built, intent/ranking layers dormant |
 
-"Not started" means no Flutter or backend code exists for that doc yet — it's still exactly a plan. Where a doc is marked implemented, its own top-of-file status note gives specifics; don't assume full coverage from the table alone.
+"Not started" means no Flutter or backend code exists for that doc yet — it's
+still exactly a plan. Where a doc is marked implemented, **its own top-of-file
+status note is authoritative** and gives the specifics; don't assume full
+coverage from this table alone, and don't trust the prose under a status note
+over the note itself.
 
-## Suggested build order
+## Build order — what happened, and what's left
 
-Each phase leaves the app in a shippable state.
+The original plan ran phases 1→6 in order. **It didn't go that way**, and the
+deviation is worth understanding before planning the next step: phases 2–5 were
+built roughly together and phase 1 was skipped entirely.
 
-**Phase 1 — foundations (no user-visible change)**
-Repository layer between `AppBloc` and data · Drift local DB · models get
-JSON serialization · seed `allLocations` into SQLite instead of a Dart list.
-Ship it: the app behaves identically but now survives being killed.
-*Status: not started — this is Flutter-side work; everything built so far
-is the backend those repositories will eventually call.*
+| Phase | Plan | What actually happened |
+| --- | --- | --- |
+| 1 — foundations | Repository layer · Drift local DB · JSON serialization · seed into SQLite | **Half done, out of order.** The repository layer exists (`lib/repositories/`) and models serialize. **Drift was never added** — there is no local database, so the app still loses everything but the route on a kill, and works only online |
+| 2 — accounts and cloud | Supabase project · schema + RLS · anonymous auth · sync engine | **Done except the sync engine.** Anonymous auth, 14 RLS-enabled tables, `saved_locations` persisted. No outbox, no offline writes — every user action needs the network |
+| 3 — real POI data | Ingestion · tile cache · dedupe · scoring · enrichment | **Built, then bypassed.** All of it works; the request path now calls Overpass live instead and the catalogue sits empty (doc 12) |
+| 4 — LLM selection | Model layer on phase 3's candidates, plus chat surfaces | **Done and wired to Flutter.** Chat and task generation are the exception — they still resolve ids against phase 3's catalogue, which is why they 404 (doc 08) |
+| 5 — the 3D feature | Harden Modal · proxy · job table · camera flow · real `.glb` viewer | **Done end to end**, including the Realtime job updates and the native viewer |
+| 6 — polish | i18n · dark mode | **Not started.** Neither exists |
 
-**Phase 2 — accounts and cloud**
-Supabase project · schema + RLS · anonymous auth on first launch · sync engine
-for saved locations, trips, points. Ship it: progress follows the user.
-*Status: the Supabase project and catalogue schema/RLS exist
-(`supabase/migrations/`); auth, trips, saved locations, and the sync engine
-do not.*
-
-**Phase 3 — real POI data**
-Ingestion Edge Function · tile cache · dedupe · interestingness scoring ·
-Wikidata/Wikipedia/Commons enrichment. Ship it: the map covers real geography
-instead of 8 hardcoded points, and the radius slider works.
-*Status: implemented, as a Flask route rather than an Edge Function — see
-`backend/server/ingestion/` and doc 12's status note. Verified end-to-end
-for real, including persistence: a live `POST /api/poi/ingest` call
-populated Supabase with 15 new locations alongside the 8 curated ones, and
-`/api/itinerary` correctly served a mix of both afterward. Two real bugs
-surfaced by that run — a dedup miss and a cache-poisoning failure mode —
-were fixed and re-verified; see doc 12's status note for both. Not yet
-called from Flutter, and not yet wired to auto-trigger from a user's radius
-query (deliberately — see routes/poi.py's docstring on why it's a separate,
-explicitly-triggered endpoint rather than an inline step).*
-
-**Phase 4 — LLM selection**
-The model layer on top of phase 3's candidates, plus the chat surfaces. This
-is deliberately *after* ingestion: without scored candidates there's nothing
-worth prompting a model about.
-*Status: implemented — `POST /api/itinerary`, `/api/chat`,
-`/api/tasks/generate` in `backend/server/routes/`, against Groq. Not yet
-called from Flutter.*
-
-**Phase 5 — the 3D feature**
-Harden the Modal endpoint · Edge Function proxy · job table · camera flow ·
-real `.glb` viewer replacing the photo cube.
-*Status: not started. The Modal endpoint is still unauthenticated — see
-doc 07's status note for why this is the single highest-priority gap left.*
-
-**Phase 6 — polish**
-i18n · dark mode.
-*Status: not started.*
-
-Phases 1–2 are unglamorous but everything else sits on them. Doing the 3D
-feature first means building the job queue twice, and doing phase 4 before
-phase 3 means prompting a model with hardcoded data you're about to delete.
+**The cost of skipping phase 1 is now the main structural debt.** "Phases 1–2
+are unglamorous but everything else sits on them" was right; everything else
+got built anyway, so the offline foundation now has to be retrofitted under a
+working app rather than laid before it. That is a bigger job than doc 03
+describes, and it is the single largest item left.
 
 ## Immediate housekeeping
 
-`backend/hunyuan2.1/venv/` is untracked and contains ~13,600 files. Add this
-to `.gitignore` before the next `git add`:
+*(Resolved — kept as the record.)* `backend/**/venv/`, `__pycache__/`,
+`*.pyc`, `results/`, `*.glb` and `.env` are all gitignored; nothing under
+either venv is tracked. Doc 11 issue #3.
 
-```gitignore
-# Python
-backend/**/venv/
-backend/**/__pycache__/
-backend/**/*.pyc
+Two items **not** resolved, both from doc 02:
 
-# Generated 3D output — regenerable, and large
-backend/**/results/
-backend/**/*.glb
-```
-
-`backend/hunyuan2.1/result.glb` and `results/*.glb` are build output; keep one
-small fixture for tests if you need it, ignore the rest.
+- `route_jobs` and the recreated `saved_locations` exist in the live database
+  with **no committed migration**. The repo cannot currently rebuild the
+  project it documents. Dump both and commit them before anything else needs a
+  clean environment.
+- `20260801120005_storage_and_auth_cron.sql` and
+  `20260801120006_fix_stuck_jobs_cron.sql` are committed but not in the applied
+  ledger, though their effects are live. Reconcile so `list_migrations` and
+  `supabase/migrations/` agree.
 
 ## Cost expectations
 

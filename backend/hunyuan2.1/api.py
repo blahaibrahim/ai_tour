@@ -1,175 +1,386 @@
-import modal
-import subprocess
+"""Hunyuan3D 2.1 on Modal — async job model (docs/backend/06).
+
+Three surfaces:
+
+* ``submit``   — a fast, proxy-authed web endpoint. Validates, calls
+  ``Generator.generate.spawn(...)`` and returns ``{"call_id": ...}`` in well
+  under a second. This is what ``backend/server/routes/models.py`` POSTs to
+  (``MODAL_SUBMIT_URL``), with ``{"job_id", "image_url", "input_path"}``.
+* ``Generator`` — the GPU worker. Loads both pipelines **once per container**
+  (``@modal.enter()``) rather than once per request, runs the job in a
+  per-request temp dir, uploads the ``.glb`` to Supabase Storage and then
+  **patches ``model_jobs`` itself**. That patch is what the Flutter client's
+  Realtime subscription on ``model_jobs`` is waiting for — nothing polls.
+* ``status``   — a non-blocking poll on a call id, used only to reconcile a
+  job whose push never landed.
+
+The previous version was a single synchronous endpoint that took a multipart
+upload, held the connection open for the whole multi-minute run and never
+touched ``model_jobs``. Both halves of that broke the app: the Flask route
+POSTs JSON to ``/submit`` (404 — no such endpoint), and even the runs that did
+complete left their job row stuck in ``processing`` until the reconcile cron
+marked it ``timeout``, so the folder never advanced past "Generating 3D…".
+
+Storage layout matters here: the ``models`` bucket's RLS policy is
+``(storage.foldername(name))[1] = auth.uid()``, so the object **must** be
+written to ``{user_id}/{artifact_id}.glb`` or the owner cannot read back their
+own model. ``model_jobs.output_path`` stores it with the bucket prefix
+(``models/{user_id}/{artifact_id}.glb``) because ``MediaCache.getModel`` on the
+client strips exactly that prefix.
+"""
+
+import io
 import os
-import json
 import time
-from fastapi import UploadFile, File
-from fastapi.responses import JSONResponse, Response
+import traceback
+from datetime import datetime, timezone
+
+import modal
 
 app = modal.App("hunyuan3d-api")
 
-# We need the u2net cache back for the background remover!
+REPO = "/workspace/Hunyuan3D-2.1"
+
 hf_cache = modal.Volume.from_name("hf-cache")
 hy3dgen_cache = modal.Volume.from_name("hy3dgen-cache")
 u2net_cache = modal.Volume.from_name("u2net-cache", create_if_missing=True)
 
+# setuptools is pinned in the image rather than `pip install`-ed at request
+# time (as the old inline pipeline did): a network hop to PyPI in the hot path
+# fails the job whenever PyPI is slow, and it is the same pin on every run.
 image = (
     modal.Image.from_dockerfile("Dockerfile")
-    .pip_install("fastapi", "python-multipart", "supabase")
+    .pip_install("fastapi", "python-multipart", "supabase", "pillow", "requests", "setuptools<70.0.0")
 )
 
-@app.function(
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+# Error codes the client has copy for (lib/models/location.dart's
+# modelFailureMessages). Anything not in this set is reported as "internal",
+# with the specific cause left in the Modal logs.
+CLIENT_ERROR_CODES = {"no_subject", "timeout", "gpu_oom", "internal"}
+
+# A failure that isn't the user's fault gets the credit back. `no_subject`
+# does not — it consumed real GPU time and the user can fix the input by
+# retaking the photo (docs/backend/06).
+REFUNDABLE = {"timeout", "gpu_oom", "internal"}
+
+
+# ---------------------------------------------------------------------------
+# Supabase helpers (service role — this runs on the server side of the trust
+# boundary, never in the app)
+# ---------------------------------------------------------------------------
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _supabase():
+    from supabase import create_client
+
+    return create_client(
+        os.environ["SUPABASE_URL"],
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"],
+    )
+
+
+def _fetch_job(sb, job_id: str) -> dict | None:
+    res = (
+        sb.table("model_jobs")
+        .select("id,user_id,artifact_id,input_path,status")
+        .eq("id", job_id)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def _finish_job(sb, job_id: str, user_id: str | None, error_code: str) -> dict:
+    """Mark a job failed and refund the credit when the cause was ours."""
+    code = error_code if error_code in CLIENT_ERROR_CODES else "internal"
+    try:
+        sb.table("model_jobs").update(
+            {
+                "status": "failed",
+                "error_code": code,
+                "finished_at": _now(),
+            }
+        ).eq("id", job_id).execute()
+    except Exception:
+        traceback.print_exc()
+
+    if user_id and code in REFUNDABLE:
+        try:
+            sb.rpc("refund_model_credit", {"p_user": user_id}).execute()
+        except Exception:
+            traceback.print_exc()
+
+    return {"status": "failed", "error_code": code, "detail": error_code}
+
+
+def _download_image(sb, job: dict, image_url: str | None) -> bytes:
+    """Storage-first, signed-URL second.
+
+    The signed URL the Flask route mints is only good for ten minutes, and a
+    job can sit behind other jobs on the GPU for longer than that — so the
+    service-role download is the primary path and cannot expire. The URL is
+    kept as a fallback for the case where the object moved.
+    """
+    input_path = job.get("input_path") or ""
+    if input_path.startswith("captures/"):
+        try:
+            return sb.storage.from_("captures").download(input_path[len("captures/"):])
+        except Exception:
+            traceback.print_exc()
+
+    if not image_url:
+        raise RuntimeError("no image source: neither input_path nor image_url resolved")
+
+    import requests
+
+    resp = requests.get(image_url, timeout=60)
+    resp.raise_for_status()
+    return resp.content
+
+
+# ---------------------------------------------------------------------------
+# GPU worker
+# ---------------------------------------------------------------------------
+
+@app.cls(
     image=image,
     gpu="L4",
-    timeout=3600,
-    max_containers=1,
+    # 15 min is the ceiling a real job should ever need; the old 3600 meant a
+    # hung run held an L4 for an hour before anyone found out.
+    timeout=900,
+    # Keep a loaded container warm between jobs so consecutive runs skip the
+    # (multi-minute) pipeline load entirely.
+    scaledown_window=300,
+    max_containers=4,
     secrets=[modal.Secret.from_name("supabase-service")],
     volumes={
         "/root/.cache/huggingface": hf_cache,
         "/root/.cache/hy3dgen": hy3dgen_cache,
-        "/root/.u2net": u2net_cache
-    }
+        "/root/.u2net": u2net_cache,
+    },
 )
-@modal.fastapi_endpoint(method="POST")
-async def generate_3d_api(file: UploadFile = File(...)):
-    print(f"API Request received! Processing image: {file.filename}")
+class Generator:
 
-    image_bytes = await file.read()
+    @modal.enter()
+    def load(self):
+        """Runs once per container, not once per request.
 
-    # Paths
-    raw_input_path = "/workspace/Hunyuan3D-2.1/assets/raw_input.jpg"
-    output_glb = "/workspace/Hunyuan3D-2.1/demo_textured.glb"
+        A failure here is captured rather than raised: if it propagated, the
+        container would just be retried and the job row would sit in
+        `processing` until the reconcile cron timed it out 20 minutes later.
+        Storing it lets `generate` fail the job immediately with a real cause.
+        """
+        self.load_error = None
+        try:
+            import sys
 
-    if os.path.exists(output_glb):
-        os.remove(output_glb)
+            # Both pipelines resolve their checkpoint/config paths relative to
+            # the repo root (`hy3dpaint/ckpt/...`), so the cwd is part of the
+            # contract, not incidental.
+            os.chdir(REPO)
+            for path in (REPO, f"{REPO}/hy3dshape", f"{REPO}/hy3dpaint"):
+                if path not in sys.path:
+                    sys.path.insert(0, path)
 
-    os.makedirs(os.path.dirname(raw_input_path), exist_ok=True)
-    with open(raw_input_path, "wb") as f:
-        f.write(image_bytes)
+            try:
+                from torchvision_fix import apply_fix
 
-    print("Running Custom Pipeline...")
+                apply_fix()
+            except Exception:
+                pass
 
-    # Here is your custom Python script that runs inside the Conda environment
-    cmd = """
-    source /workspace/miniconda3/bin/activate hunyuan3d21
-    pip install "setuptools<70.0.0" -q
-    cd /workspace/Hunyuan3D-2.1
+            from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
+            from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
+            from rembg import new_session
 
-    cat << 'EOF' > custom_pipeline.py
-import sys
-import os
-from PIL import Image
+            self.rembg_session = new_session("u2net")
+            self.shape = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
+                "tencent/Hunyuan3D-2.1"
+            )
 
-# ---------------------------------------------------------
-# STEP 1: YOUR CUSTOM BACKGROUND REMOVAL
-# ---------------------------------------------------------
-print("--- STEP 1: Removing Background ---")
-from rembg import remove, new_session
+            conf = Hunyuan3DPaintConfig(6, 512)
+            conf.realesrgan_ckpt_path = "hy3dpaint/ckpt/RealESRGAN_x4plus.pth"
+            conf.multiview_cfg_path = "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml"
+            conf.custom_pipeline = "hy3dpaint/hunyuanpaintpbr"
+            self.paint = Hunyuan3DPaintPipeline(conf)
 
-input_img = Image.open('assets/raw_input.jpg')
+            print("Pipelines loaded and warm.")
+        except Exception as e:
+            traceback.print_exc()
+            self.load_error = f"pipeline load failed: {e}"
 
-# You can change 'u2net' to 'isnet-general-use' for better quality if needed
-session = new_session("u2net")
-transparent_img = remove(input_img, session=session)
+    @modal.method()
+    def generate(self, job_id: str, image_url: str | None = None) -> dict:
+        started = time.time()
+        sb = _supabase()
 
-# PRO TIP: Crop the image to the bounding box of the object.
-# This removes the floor/desk shadows and fixes the "flat base" issue you saw earlier!
-bbox = transparent_img.getbbox()
-if bbox:
-    transparent_img = transparent_img.crop(bbox)
+        job = _fetch_job(sb, job_id)
+        if not job:
+            print(f"job {job_id} not found — nothing to do")
+            return {"status": "failed", "error_code": "internal"}
 
-transparent_img.save('assets/processed.png')
-print("Background removed and cropped successfully.")
+        user_id = job["user_id"]
+        artifact_id = job["artifact_id"]
 
-# ---------------------------------------------------------
-# STEP 2: 3D GENERATION
-# ---------------------------------------------------------
-print("--- STEP 2: Generating 3D Model ---")
-sys.path.insert(0, './hy3dshape')
-sys.path.insert(0, './hy3dpaint')
-from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
-from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
+        if self.load_error:
+            print(self.load_error)
+            return _finish_job(sb, job_id, user_id, "internal")
 
-try:
-    from torchvision_fix import apply_fix
-    apply_fix()
-except:
-    pass
+        try:
+            sb.table("model_jobs").update(
+                {"status": "processing", "started_at": _now()}
+            ).eq("id", job_id).execute()
+        except Exception:
+            traceback.print_exc()
 
-# Generate Shape
-pipeline_shapegen = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained('tencent/Hunyuan3D-2.1')
-img_for_3d = Image.open('assets/processed.png').convert("RGBA")
-mesh = pipeline_shapegen(image=img_for_3d)[0]
-mesh.export('demo.glb')
+        try:
+            image_bytes = _download_image(sb, job, image_url)
+        except Exception as e:
+            print(f"download failed: {e}")
+            return _finish_job(sb, job_id, user_id, "internal")
 
-# Paint Textures
-conf = Hunyuan3DPaintConfig(6, 512)
-conf.realesrgan_ckpt_path = "hy3dpaint/ckpt/RealESRGAN_x4plus.pth"
-conf.multiview_cfg_path = "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml"
-conf.custom_pipeline = "hy3dpaint/hunyuanpaintpbr"
-paint_pipeline = Hunyuan3DPaintPipeline(conf)
+        if len(image_bytes) > MAX_IMAGE_BYTES:
+            return _finish_job(sb, job_id, user_id, "internal")
 
-paint_pipeline(mesh_path="demo.glb", image_path='assets/processed.png', output_mesh_path='demo_textured.glb')
-EOF
+        try:
+            glb_bytes = self._run_pipeline(image_bytes)
+        except _NoSubject:
+            return _finish_job(sb, job_id, user_id, "no_subject")
+        except Exception as e:
+            traceback.print_exc()
+            code = "gpu_oom" if "out of memory" in str(e).lower() else "internal"
+            return _finish_job(sb, job_id, user_id, code)
 
-    # Execute the custom pipeline
-    python custom_pipeline.py
+        # `{user_id}/...` is required by the models bucket RLS policy — an
+        # object written anywhere else is invisible to the user who owns it.
+        storage_path = f"{user_id}/{artifact_id}.glb"
+        output_path = f"models/{storage_path}"
+
+        try:
+            sb.storage.from_("models").upload(
+                path=storage_path,
+                file=glb_bytes,
+                file_options={
+                    "content-type": "model/gltf-binary",
+                    # Idempotent on retry: the path is derived from the
+                    # artifact, so a re-run overwrites rather than 409s.
+                    "upsert": "true",
+                },
+            )
+        except Exception as e:
+            print(f"upload failed: {e}")
+            traceback.print_exc()
+            return _finish_job(sb, job_id, user_id, "internal")
+
+        elapsed = round(time.time() - started, 2)
+
+        try:
+            sb.table("model_jobs").update(
+                {
+                    "status": "succeeded",
+                    "output_path": output_path,
+                    "finished_at": _now(),
+                    "gpu_seconds": elapsed,
+                }
+            ).eq("id", job_id).execute()
+        except Exception:
+            traceback.print_exc()
+
+        # The folder reads `artifacts.model_path` on a cold start, when the
+        # in-memory job id from this session is gone; without this the model
+        # only ever appears to the session that submitted it.
+        if artifact_id:
+            try:
+                sb.table("artifacts").update({"model_path": output_path}).eq(
+                    "id", artifact_id
+                ).execute()
+            except Exception:
+                traceback.print_exc()
+
+        print(f"job {job_id} succeeded in {elapsed}s -> {output_path}")
+        return {"status": "succeeded", "output_path": output_path, "gpu_seconds": elapsed}
+
+    def _run_pipeline(self, image_bytes: bytes) -> bytes:
+        """rembg → crop → shape → paint, in a temp dir of its own.
+
+        The temp dir replaces the old fixed `assets/raw_input.jpg` /
+        `demo_textured.glb` paths, which two concurrent jobs in one container
+        would clobber.
+        """
+        import tempfile
+
+        from PIL import Image
+        from rembg import remove
+
+        with tempfile.TemporaryDirectory() as work:
+            processed = os.path.join(work, "processed.png")
+            shape_path = os.path.join(work, "shape.glb")
+            out_path = os.path.join(work, "textured.glb")
+
+            source = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            cut = remove(source, session=self.rembg_session)
+
+            # Cropping to the subject's bounding box is what removes the
+            # floor/desk shadow and with it the flat-base artifact.
+            bbox = cut.getbbox()
+            if bbox is None:
+                raise _NoSubject()
+            cut = cut.crop(bbox)
+            cut.save(processed)
+
+            mesh = self.shape(image=cut.convert("RGBA"))[0]
+            mesh.export(shape_path)
+
+            self.paint(
+                mesh_path=shape_path,
+                image_path=processed,
+                output_mesh_path=out_path,
+            )
+
+            if not os.path.exists(out_path):
+                raise RuntimeError("paint pipeline produced no output mesh")
+
+            with open(out_path, "rb") as f:
+                return f.read()
+
+
+class _NoSubject(Exception):
+    """rembg found nothing to cut out — a blank wall, or a photo too far back."""
+
+
+# ---------------------------------------------------------------------------
+# Web endpoints
+# ---------------------------------------------------------------------------
+
+@app.function(image=image, secrets=[modal.Secret.from_name("supabase-service")])
+@modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)
+def submit(payload: dict):
+    """Queue a job. Returns immediately with the Modal call id.
+
+    Body: {"job_id": "<uuid>", "image_url": "<signed url>", "input_path": "..."}
     """
+    from fastapi.responses import JSONResponse
 
-    # Note: the pipeline may segfault on Python exit but the GLB is already saved.
-    # We ignore the return code and check for the output file directly.
-    subprocess.run(cmd, shell=True, executable="/bin/bash", check=False)
+    job_id = (payload or {}).get("job_id")
+    if not job_id:
+        return JSONResponse({"error": "job_id is required"}, status_code=400)
 
-    if not os.path.exists(output_glb):
-        return Response(content="Generation failed", status_code=500)
+    call = Generator().generate.spawn(job_id, (payload or {}).get("image_url"))
+    print(f"spawned {call.object_id} for job {job_id}")
+    return {"call_id": call.object_id}
 
-    # Read the generated .glb
-    with open(output_glb, "rb") as f:
-        glb_bytes = f.read()
 
-    print("Generation complete! Uploading to Supabase Storage...")
-
-    # ------------------------------------------------------------------
-    # Upload to Supabase Storage (models bucket) using service role key
-    # ------------------------------------------------------------------
-    supabase_url = os.environ["SUPABASE_URL"]
-    # The Modal secret stores this key as SUPABASE_SERVICE_ROLE_KEY
-    supabase_service_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-
-    from supabase import create_client, Client
-
-    supabase: Client = create_client(supabase_url, supabase_service_key)
-
-    # Unique path: models/<timestamp>_<original_filename>.glb
-    timestamp = int(time.time())
-    original_name = file.filename or "model"
-    # Strip extension from original name and always use .glb
-    base_name = os.path.splitext(original_name)[0]
-    storage_path = f"{timestamp}_{base_name}.glb"
-
-    upload_response = supabase.storage.from_("models").upload(
-        path=storage_path,
-        file=glb_bytes,
-        file_options={"content-type": "model/gltf-binary", "upsert": "true"}
-    )
-
-    print(f"Upload response: {upload_response}")
-
-    # Generate a signed URL valid for 1 hour (3600 seconds)
-    signed_url_response = supabase.storage.from_("models").create_signed_url(
-        path=storage_path,
-        expires_in=3600
-    )
-
-    signed_url = signed_url_response.get("signedURL") or signed_url_response.get("signedUrl", "")
-
-    print(f"3D model saved to Supabase Storage at: {storage_path}")
-    print(f"Signed URL: {signed_url}")
-
-    return JSONResponse(content={
-        "success": True,
-        "storage_path": storage_path,
-        "signed_url": signed_url,
-        "file_size_bytes": len(glb_bytes),
-        "message": "3D model generated and uploaded to Supabase Storage successfully."
-    })
+@app.function(image=image)
+@modal.fastapi_endpoint(method="GET", requires_proxy_auth=True)
+def status(call_id: str):
+    """Non-blocking poll, for reconciling a job whose push never landed."""
+    fc = modal.FunctionCall.from_id(call_id)
+    try:
+        return {"status": "finished", "result": fc.get(timeout=0)}
+    except TimeoutError:
+        return {"status": "processing"}

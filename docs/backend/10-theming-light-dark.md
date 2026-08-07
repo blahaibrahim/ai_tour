@@ -1,6 +1,11 @@
 # 10 — Theming: Light & Dark
 
-> **Status: Not started.** No Flutter changes. Everything below is still plan.
+> **Status: Not started, and the surface has grown.** No `ThemeMode`, no
+> `ThemeExtension`, no dark palette anywhere in `lib/`. `main.dart` passes a
+> single `theme: AppTheme.theme` with no `darkTheme`. The count this document
+> was written against has gone up with the UI work since: **241 references to
+> `AppTheme.` across 34 files** (was 224). Everything below is still plan, and
+> the migration is now slightly larger than it describes.
 
 ## The obstacle
 

@@ -1,16 +1,54 @@
 # 02 — Cloud Database Schema (Supabase / Postgres)
 
-> **Status: Fully implemented.** `regions`, `locations` (with the doc 12 
-> scoring/provenance columns, and `pgvector` embeddings), `location_translations`,
-> `location_tasks`, `location_task_translations`, `profiles`, `trips`, 
-> `trip_stops`, `saved_locations`, `artifacts`, `model_jobs`, `chat_messages`, 
-> and `swipe_decisions` are all live in Supabase project `csrmogytbbjkbjmgedgx`.
+> **Status: Implemented, then deliberately cut back. The schema below is no
+> longer the schema that exists** — read this note before trusting any table
+> listed further down.
 >
-> All RLS policies and triggers are active. The `nearby_locations` RPC supports
-> semantic search via pgvector embeddings.
+> **Live in project `csrmogytbbjkbjmgedgx` (14 tables):** `regions`,
+> `region_translations`, `locations` (doc 12 scoring/provenance columns plus a
+> `pgvector` embedding), `location_translations`, `location_tasks`,
+> `location_task_translations`, `poi_tiles`, `poi_source_links`, `profiles`,
+> `artifacts`, `model_jobs`, `rate_limit_events`, `saved_locations`,
+> `route_jobs`. RLS is enabled on all 14.
 >
-> Migrations are committed in `supabase/migrations/` and were applied via the 
-> Supabase MCP server's `apply_migration`.
+> **Dropped** by `20260805101612_drop_unused_user_trip_tables.sql` — they were
+> all empty and entirely unreferenced by any code: `trips`, `trip_stops`,
+> `chat_messages`, `swipe_decisions`, and the original `saved_locations`, plus
+> `artifacts.trip_id` and the `task_state` enum. The sections below describing
+> them are design intent, not current state. A rollback script is kept at
+> `supabase/rollback/`. **Consequence worth knowing:** an accepted route now
+> lives only in `route_jobs.result_data`, not in a normalized `trips` /
+> `trip_stops` pair, and chat history is not persisted at all.
+>
+> **Added since:** `saved_locations` was recreated (migration
+> `20260805130852_recreate_saved_locations`) with `location_id text` and **no
+> foreign key to `locations`** — necessary because ids now come from Overpass
+> (`osm-node-123`), not the catalogue. `route_jobs` backs the async itinerary
+> flow (`routes/itinerary.py`).
+>
+> **Two real drifts to fix, not just document:**
+>
+> 1. `route_jobs` exists in the database (31 rows) but there is **no migration
+>    file for it** in `supabase/migrations/` and no entry for it in
+>    `list_migrations` — it was created outside the migration system. A fresh
+>    project built from this repo would not have it, and `/api/itinerary` would
+>    fail on the first request.
+> 2. `20260805130852_recreate_saved_locations` is applied in the database but
+>    has **no committed file** either. Conversely,
+>    `20260801120005_storage_and_auth_cron.sql` and
+>    `20260801120006_fix_stuck_jobs_cron.sql` are committed but absent from the
+>    applied ledger — their *effects* are live (all four buckets exist, all
+>    four cron jobs run), so they were applied by some other path.
+>
+> **The catalogue is currently empty.** `locations`, `location_translations`,
+> `location_tasks`, `poi_tiles` and `poi_source_links` all have **0 rows** —
+> including the 8 curated seeds. `regions` still has its 5. This is a
+> consequence of the route pipeline moving to live Overpass (see doc 12) and
+> is what breaks `/api/chat` and `/api/tasks/generate` today (see doc 08).
+>
+> All RLS policies and triggers on the surviving tables are active. The
+> `nearby_locations` RPC still supports semantic ranking via pgvector, but
+> nothing in the request path calls it any more.
 
 Every table below maps to something that exists in
 `lib/blocs/app/app_state.dart` or `lib/models/location.dart` today. Nothing

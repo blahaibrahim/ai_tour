@@ -67,6 +67,34 @@ class ModelRepository {
     );
   }
 
+  /// Creates the `artifacts` row the generation job hangs off.
+  ///
+  /// This is not optional bookkeeping: `model_jobs.artifact_id` is a uuid with
+  /// a foreign key to `artifacts.id`, so POST /api/models/generate cannot
+  /// insert its job until this row exists. The app previously only built an
+  /// Artifact in bloc state, which is why every camera capture failed server
+  /// side while the test script — which does insert the row — worked.
+  ///
+  /// RLS ("own artifacts") lets the signed-in user insert their own row
+  /// directly, so this needs no backend round trip.
+  static Future<void> createArtifact({
+    required String userId,
+    required String artifactId,
+    required String storagePath,
+    String? title,
+  }) async {
+    await Supabase.instance.client.from('artifacts').insert({
+      'id': artifactId,
+      'user_id': userId,
+      'kind': 'model',
+      'title': ?title,
+      'image_path': storagePath,
+      // Lets a retry of the same capture reconcile to one row rather than
+      // duplicating (there is a unique index on user_id + local_id).
+      'local_id': artifactId,
+    });
+  }
+
   /// Submits the generation job to the Flask backend.
   static Future<GenerationResult> requestGeneration({
     required String userId,

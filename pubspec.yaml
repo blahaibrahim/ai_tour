@@ -49,6 +49,9 @@ flutter:
 
   assets:
     - assets/3d/fennec.glb
+    # Shown by NetImage when a location has no real photo, in place of the
+    # random stock image the old picsum.photos fallback pulled in.
+    - assets/icon/app-icon-transparent.png
     - .env
 
 flutter_launcher_icons:
@@ -57,7 +60,23 @@ flutter_launcher_icons:
   # The App Store rejects icons with an alpha channel; the artwork is fully
   # opaque anyway, so flattening it costs nothing.
   remove_alpha_ios: true
-  image_path: "assets/icon/app-icon-blue.png"
-  adaptive_icon_background: "#14254A"
+  # iOS has no inset concept — the whole square is the icon — so the margin has
+  # to be baked into the source. This is the master artwork: the fennec on the
+  # flat navy field, which matches adaptive_icon_background and
+  # splash_background exactly. Everything else is derived from it.
+  image_path: "assets/icon/app-icon-ios.png"
+  # Android 8+ renders the adaptive icon in preference to the raster
+  # launcher_icon.png, so this has to be regenerated too or the old artwork
+  # sticks around. The foreground is the same artwork with the navy field keyed
+  # out — transparent is what an adaptive foreground should be, since the navy
+  # comes from the background layer, so mask shape and parallax behave.
+  adaptive_icon_background: "#19274C"
   adaptive_icon_foreground: "assets/icon/app-icon-transparent.png"
+  # Both masters are centred on the fennec's *body circle*, not on its bounding
+  # box (see tool/center_icon_artwork.py), so the ear overhangs up and to the
+  # left and the farthest pixel sits 1122 of the master's 1024px half-canvas
+  # from centre. A 23% inset draws the canvas at 108*(1-0.46) = 58.3dp, which
+  # puts that ear tip 31.9dp from centre — inside the 33dp radius of the 66dp
+  # safe zone, so no mask shape clips it. The body circle lands at ~47dp.
+  adaptive_icon_foreground_inset: 23
   min_sdk_android: 21

@@ -59,6 +59,19 @@ class SwipeCard extends StatelessWidget {
             ),
           ),
 
+          // Says so when the picture is of the surrounding area rather than
+          // this place. Bottom-left, clear of the LIKE/NOPE badges.
+          if (loc.photoCredit != null)
+            Positioned(
+              left: 16,
+              bottom: 12,
+              right: 80,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: StockPhotoTag(label: loc.photoCredit!),
+              ),
+            ),
+
           // Labels (LIKE, NOPE, MORE INFO)
           if (!isBackground) ...[
             Positioned(

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../models/location.dart';
-import '../../models/location_data.dart';
 import '../../theme.dart';
 import '../../widgets/app_backdrop.dart';
 import '../../widgets/glass_surface.dart';
@@ -31,10 +30,16 @@ class _FolderScreenState extends State<FolderScreen> {
   Widget build(BuildContext context) {
     final state = context.watch<AppBloc>().state;
 
-    // Combine captured artifacts with done-task artifacts
+    // Stops whose task is done but which produced no capture of their own —
+    // a quiz or a task marked complete without the camera. Anything the user
+    // actually captured is already in capturedArtifacts (and, since it is
+    // persisted, survives a restart), so those ids are skipped here rather
+    // than shown twice.
+    final capturedIds = state.capturedArtifacts.map((a) => a.id).toSet();
     final doneArtifacts = <Artifact>[
       for (var i = 0; i < state.tasks.length && i < state.accepted.length; i++)
-        if (state.tasks[i].state == 'done')
+        if (state.tasks[i].state == 'done' &&
+            !capturedIds.contains(state.accepted[i].id))
           Artifact(
             id: state.accepted[i].id,
             name: state.accepted[i].name,
@@ -48,7 +53,7 @@ class _FolderScreenState extends State<FolderScreen> {
           ),
     ];
 
-    final allItems = [...state.capturedArtifacts, ...doneArtifacts, ...exampleArtifacts];
+    final allItems = [...state.capturedArtifacts, ...doneArtifacts];
     final query = _searchController.text.toLowerCase();
     final filteredArtifacts = allItems.where((a) => a.name.toLowerCase().contains(query)).toList();
 

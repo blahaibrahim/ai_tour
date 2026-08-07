@@ -1,6 +1,24 @@
 # 01 — Auth & Accounts
 
-> **Status: Backend implemented.** Flask endpoint for account deletion exists (`POST /api/auth/delete-account`). Supabase Auth triggers and cron jobs (`purge_anonymous_users`) are live in the database. Flutter frontend integration is pending.
+> **Status: Anonymous-first sign-in implemented end to end. Account *upgrade*
+> is not.**
+>
+> Live: `AuthBloc` (`lib/blocs/auth/`) signs in anonymously on first launch;
+> `SupabaseService` persists the session in the platform keychain via
+> `flutter_secure_storage`; `ApiClient` attaches the JWT to every backend
+> request, and re-signs-in anonymously if it finds no session. `profiles` rows
+> are created by the auth trigger (17 rows in the live project). The
+> `purge-stale-anon` cron (daily, 03:00) is active. `POST
+> /api/auth/delete-account` exists and deletes the user's storage objects
+> before deleting the auth user.
+>
+> **Not built:** the "claim your account" path this doc's whole design turns
+> on — no `linkIdentity`, no `updateUser(email)`, no OAuth, no sign-in UI.
+> Every user in the project is anonymous and loses everything on reinstall.
+> `POST /api/auth/delete-account` is unreachable from the app: nothing in
+> `lib/` calls it (`auth_bloc.dart:93` is a comment noting the endpoint
+> exists). The Settings screen's ACCOUNT section is placeholder tiles with no
+> `onTap`.
 
 ## Goal
 

@@ -4,11 +4,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/location.dart';
 import '../../models/location_data.dart';
-import 'dart:math';
+import '../../repositories/artifact_repository.dart';
 import '../../repositories/chat_repository.dart';
 import '../../repositories/location_repository.dart';
 import '../../repositories/model_repository.dart';
+import '../../repositories/saved_locations_repository.dart';
 import '../../repositories/task_repository.dart';
+import '../../utils/uuid.dart';
 import 'app_event.dart';
 import 'app_state.dart';
 
@@ -58,15 +60,39 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<ToggleSavedLocationEvent>(_onToggleSavedLocation);
     on<SetTripDateEvent>(_onSetTripDate);
     on<JobStatusUpdatedEvent>(_onJobStatusUpdated);
+    // Without this the camera's capture flow died on its first line: bloc.add
+    // throws for an unregistered event, so the optimistic insert aborted the
+    // whole capture before generation was ever requested.
+    on<OptimisticArtifactEvent>(_onOptimisticArtifact);
     on<RequestModelGenerationEvent>(_onRequestModelGeneration);
     on<ResumeRouteEvent>(_onResumeRoute);
 
+    on<LoadSavedLocationsEvent>(_onLoadSavedLocations);
+    on<LoadArtifactsEvent>(_onLoadArtifacts);
+
     _startRealtimeSubscription();
+    _watchAuth();
     add(const ResumeRouteEvent());
+    add(const LoadSavedLocationsEvent());
+    add(const LoadArtifactsEvent());
   }
 
   Timer? _thinkTimer;
   StreamSubscription<List<Map<String, dynamic>>>? _realtimeSub;
+  StreamSubscription<AuthState>? _authSub;
+
+  /// The bloc is built before the (anonymous) sign-in completes, so anything
+  /// keyed on `currentUser` has to be redone once a session actually exists —
+  /// otherwise bookmarks silently never load and the realtime subscription
+  /// never arms.
+  void _watchAuth() {
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.session == null) return;
+      if (_realtimeSub == null) _startRealtimeSubscription();
+      add(const LoadSavedLocationsEvent());
+      add(const LoadArtifactsEvent());
+    });
+  }
 
   /// Subscribe to model_jobs rows for the current user so the folder updates
   /// automatically when the Modal worker finishes.
@@ -99,6 +125,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   Future<void> close() {
     _thinkTimer?.cancel();
     _realtimeSub?.cancel();
+    _authSub?.cancel();
     return super.close();
   }
 
@@ -336,6 +363,8 @@ class AppBloc extends Bloc<AppEvent, AppState> {
         locationId: loc.id,
         locationName: loc.name,
         blurb: loc.blurb,
+        category: loc.category,
+        region: loc.region,
         question: event.question,
         history: state.detailConversation,
       );
@@ -567,15 +596,8 @@ class AppBloc extends Bloc<AppEvent, AppState> {
           : null;
     }
 
-    final random = Random();
-    final data = List<int>.generate(16, (_) => random.nextInt(256));
-    data[6] = (data[6] & 0x0f) | 0x40;
-    data[8] = (data[8] & 0x3f) | 0x80;
-    final str = data.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    final uuid = '${str.substring(0,8)}-${str.substring(8,12)}-${str.substring(12,16)}-${str.substring(16,20)}-${str.substring(20)}';
-
     final artifact = Artifact(
-      id: uuid,
+      id: uuidV4(),
       name: currentLoc?.name ?? 'Your capture',
       region: currentLoc?.region ?? 'On the go',
       kindLabel: switch (currentTask?.type) {
@@ -606,6 +628,34 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   // 3D model generation
   // ---------------------------------------------------------------------------
 
+  /// Pulls every persisted artifact back into the folder.
+  ///
+  /// Runs at construction and again once anonymous sign-in lands (the bloc is
+  /// built before there is a session, so the first attempt usually returns
+  /// nothing).
+  Future<void> _onLoadArtifacts(
+      LoadArtifactsEvent event, Emitter<AppState> emit) async {
+    final stored = await ArtifactRepository.fetchAll();
+    if (stored.isEmpty) return;
+
+    // Anything already in state is at least as fresh as the row just read — an
+    // optimistic insert or a Realtime completion can land while the fetch is in
+    // flight — so the in-memory copy wins on an id collision.
+    final byId = {for (final a in stored) a.id: a};
+    for (final a in state.capturedArtifacts) {
+      byId[a.id] = a;
+    }
+
+    // One `now` for the whole sort: this session's captures have no
+    // captured_at yet and belong at the top, and a comparator that re-read the
+    // clock per comparison wouldn't be consistent.
+    final now = DateTime.now();
+    final merged = byId.values.toList()
+      ..sort((a, b) => (b.capturedAt ?? now).compareTo(a.capturedAt ?? now));
+
+    emit(state.copyWith(capturedArtifacts: merged));
+  }
+
   /// Inserts an optimistic [Artifact] directly into the folder — called by the
   /// camera screen immediately after object detection passes, before any upload.
   void _onOptimisticArtifact(
@@ -629,6 +679,15 @@ class AppBloc extends Bloc<AppEvent, AppState> {
         userId: userId,
         artifactId: event.artifactId,
         bytes: event.imageBytes,
+      );
+
+      // Persist the artifacts row before generating: the job's artifact_id is
+      // a foreign key to it, so /api/models/generate fails without it.
+      await ModelRepository.createArtifact(
+        userId: userId,
+        artifactId: event.artifactId,
+        storagePath: imagePath,
+        title: event.title,
       );
 
       // Call /api/models/generate — returns {job_id} or {cached, output_path}
@@ -656,9 +715,12 @@ class AppBloc extends Bloc<AppEvent, AppState> {
           return a.copyWith(jobId: result.jobId);
         }).toList();
         emit(state.copyWith(capturedArtifacts: updated));
-        // Re-subscribe with the new job now in flight
-        _realtimeSub?.cancel();
-        _startRealtimeSubscription();
+        // No re-subscribe: the stream is filtered by user_id, not by job, so
+        // it already covers this job. Tearing it down and rebuilding it left
+        // a window in which the worker's UPDATE — which for a warm GPU
+        // container can land seconds after submit — arrived with nobody
+        // listening, and the artifact stayed on "Generating 3D…" forever.
+        if (_realtimeSub == null) _startRealtimeSubscription();
       }
     } catch (_) {
       // Mark the artifact as failed so the folder shows the retry UI
@@ -698,15 +760,45 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   // Saved locations & trip date
   // ---------------------------------------------------------------------------
 
-  void _onToggleSavedLocation(
-      ToggleSavedLocationEvent event, Emitter<AppState> emit) {
+  /// Toggles optimistically, then persists. If the write is rejected (no
+  /// session, or a location the catalogue doesn't have a row for) the local
+  /// change is rolled back so the bookmark icon never claims a save that
+  /// didn't happen.
+  Future<void> _onToggleSavedLocation(
+      ToggleSavedLocationEvent event, Emitter<AppState> emit) async {
+    final wasSaved = state.savedLocationIds.contains(event.id);
     final updated = Set<String>.from(state.savedLocationIds);
-    if (updated.contains(event.id)) {
+    if (wasSaved) {
       updated.remove(event.id);
     } else {
       updated.add(event.id);
     }
     emit(state.copyWith(savedLocationIds: updated));
+
+    final ok = wasSaved
+        ? await SavedLocationsRepository.remove(event.id)
+        : await SavedLocationsRepository.save(event.id);
+
+    if (!ok) {
+      final rolledBack = Set<String>.from(state.savedLocationIds);
+      if (wasSaved) {
+        rolledBack.add(event.id);
+      } else {
+        rolledBack.remove(event.id);
+      }
+      emit(state.copyWith(savedLocationIds: rolledBack));
+    }
+  }
+
+  /// Pulls the persisted bookmarks in at startup, so they survive a restart
+  /// and follow the account across devices.
+  Future<void> _onLoadSavedLocations(
+      LoadSavedLocationsEvent event, Emitter<AppState> emit) async {
+    final saved = await SavedLocationsRepository.fetchAll();
+    if (saved.isEmpty) return;
+    emit(state.copyWith(
+      savedLocationIds: {...state.savedLocationIds, ...saved},
+    ));
   }
 
   void _onSetTripDate(SetTripDateEvent event, Emitter<AppState> emit) {

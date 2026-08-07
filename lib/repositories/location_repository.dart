@@ -45,11 +45,31 @@ class LocationRepository {
     }
   }
 
+  /// Poll delays, in order; the last one repeats. A flat 2 s wait — with the
+  /// first one taken *before* the first poll — meant a route that finished in
+  /// 1.9 s was still shown as "thinking" at 4 s. Backing off keeps the tail
+  /// cheap while making a fast result feel fast.
+  static const _pollDelays = <Duration>[
+    Duration(milliseconds: 400),
+    Duration(milliseconds: 600),
+    Duration(milliseconds: 900),
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+  ];
+
   static Future<List<Location>> pollJob(String jobId) async {
+    var attempt = 0;
+    var consecutiveErrors = 0;
+
     while (true) {
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(
+        _pollDelays[attempt < _pollDelays.length ? attempt : _pollDelays.length - 1],
+      );
+      attempt++;
+
       try {
         final data = await ApiClient.get('/api/itinerary/job/$jobId');
+        consecutiveErrors = 0;
         final status = data['status'] as String?;
         if (status == 'succeeded') {
           final resultData = data['result_data'] as Map<String, dynamic>?;
@@ -60,10 +80,11 @@ class LocationRepository {
           return [];
         }
         // If queued or processing, continue polling
-      } catch (e) {
-        // If network error during polling, we can either retry or return [].
-        // Returning [] might be harsh if it's just a blip, but let's be safe.
-        return [];
+      } catch (_) {
+        // The job is running server-side regardless of this socket, so one
+        // dropped poll is not a failed route — only give up once the
+        // connection looks genuinely gone.
+        if (++consecutiveErrors >= 3) return [];
       }
     }
   }

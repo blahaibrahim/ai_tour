@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- flutter_3d_controller renders a GLB by serving the model-viewer template
+         from an in-app HttpServer bound to 127.0.0.1 and loading it in an
+         InAppWebView. WebView traffic is subject to Android's cleartext policy,
+         which blocks plain HTTP by default from API 28 on — loopback included —
+         so the viewer fails with ERR_CLEARTEXT_NOT_PERMITTED without this.
+         Scoped to loopback only: every remote host stays HTTPS-only. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

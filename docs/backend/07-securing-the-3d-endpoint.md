@@ -1,6 +1,25 @@
 # 07 — Securing the 3D Endpoint
 
-> **Status: Fully implemented.** Layers 1 through 4 are fully implemented. The Flask backend validates Supabase JWTs, enforces rate limits, consumes model credits (quota), and securely proxies requests to the Modal endpoint. The Modal worker itself verifies the file extension, ensures pixel bounds, runs NSFW image detection, and pushes directly to Supabase storage.
+> **Status: Implemented — all four layers.** `routes/models.py` validates the
+> Supabase JWT, enforces a 20/day rate limit, consumes a model credit
+> atomically (`consume_model_credit`, with `refund_model_credit` at every
+> early return), dedupes by `input_sha256` against prior succeeded jobs, and
+> proxies to Modal with the `Modal-Key`/`Modal-Secret` pair the client never
+> sees. The worker verifies extension and pixel bounds, runs NSFW detection,
+> and writes the `.glb` to Supabase Storage itself.
+>
+> **Two caveats worth carrying forward, neither of which this document
+> anticipated:**
+>
+> 1. The quota is only as strong as its ledger and its identity. Both were
+>    weaker than they looked: `rate_limit_events` was world-writable until
+>    migration `20260805203000` (doc 11), and `rate_limit.py` still **fails
+>    open** on any error checking the limit. Anonymous sign-up is unlimited, so
+>    a determined user resets their credits by reinstalling.
+> 2. Nothing in this repository can prove the Modal-side spend limit and
+>    function timeout are set. Confirm both in the Modal dashboard before
+>    launch — the app-side controls above bound *legitimate* usage, not a
+>    runaway container.
 
 ## Current exposure
 

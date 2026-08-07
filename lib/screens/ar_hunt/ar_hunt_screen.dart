@@ -30,6 +30,8 @@ import '../../blocs/app/app_event.dart';
 import '../../models/location.dart';
 import '../../services/object_detector.dart';
 import '../../theme.dart';
+import '../../utils/artifact_naming.dart';
+import '../../utils/uuid.dart';
 import '../../widgets/glass_surface.dart';
 import '../../widgets/pressable_scale.dart';
 
@@ -207,7 +209,11 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       showPlanes: _hunting,
       showFeaturePoints: false,
       showWorldOrigin: false,
-      showAnimatedGuide: true,
+      // The plugin's hand-holding-a-phone sweep animation. It is drawn by the
+      // native view on top of the camera feed, so it also lands in captured
+      // photos — and in plain capture mode there is nothing to scan for in the
+      // first place. Off in both modes.
+      showAnimatedGuide: false,
       // Taps drive both the floor probe below and catching the mascot.
       handleTaps: true,
       handlePans: false,
@@ -635,19 +641,36 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
         // 3. SHA-256 for deduplication (server will skip GPU if identical image seen before)
         final sha256hex = sha256.convert(compressed).toString();
-        final artifactId = 'capture-${DateTime.now().millisecondsSinceEpoch}';
+        // Must be a real UUID: it becomes artifacts.id and model_jobs.artifact_id,
+        // both uuid columns. A readable id like "capture-<millis>" is rejected by
+        // the column type, which failed every capture before the server even got
+        // as far as the foreign key.
+        final artifactId = uuidV4();
+        final atStop = bloc.state.accepted.isNotEmpty &&
+            bloc.state.currentStopIdx < bloc.state.accepted.length;
+        final stop = atStop ? bloc.state.accepted[bloc.state.currentStopIdx] : null;
+
+        // Name by area, numbered within it: algiers_the_casbah_1, _2, … The
+        // region is the area proper; a stop whose region the catalogue left
+        // blank falls back to its own name so the number still has something
+        // meaningful to hang off.
+        final area = stop == null
+            ? kUnplacedArea
+            : stop.region.isNotEmpty
+                ? stop.region
+                : stop.name.isNotEmpty
+                    ? stop.name
+                    : kUnplacedArea;
+        // Counts against the whole folder, which by now includes everything
+        // restored from Supabase — so numbering keeps climbing across restarts
+        // instead of restarting at 1 each launch.
+        final captureName = nextArtifactName(bloc.state.capturedArtifacts, area);
 
         // 4. Add optimistic artifact immediately so the user sees it in the folder
         final artifact = Artifact(
           id: artifactId,
-          name: bloc.state.accepted.isNotEmpty &&
-                  bloc.state.currentStopIdx < bloc.state.accepted.length
-              ? bloc.state.accepted[bloc.state.currentStopIdx].name
-              : 'Your scan',
-          region: bloc.state.accepted.isNotEmpty &&
-                  bloc.state.currentStopIdx < bloc.state.accepted.length
-              ? bloc.state.accepted[bloc.state.currentStopIdx].region
-              : 'On the go',
+          name: captureName,
+          region: area,
           kindLabel: '3D Model',
           photoUrl: jpegPath,
           isLocalFile: true,
@@ -665,6 +688,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
           localImagePath: jpegPath,
           imageBytes: compressed,
           sha256: sha256hex,
+          title: captureName,
         ));
 
         navigator.pop();

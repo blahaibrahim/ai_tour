@@ -1,0 +1,5 @@
+improve route generation
+gaussian splatting
+video generation
+3d model animation in AR
+Quest design

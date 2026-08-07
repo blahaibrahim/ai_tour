@@ -214,6 +214,14 @@ class LeaveTourEvent extends AppEvent {
   const LeaveTourEvent();
 }
 
+/// Loads the user's persisted bookmarks from Supabase into state.
+class LoadSavedLocationsEvent extends AppEvent {
+  const LoadSavedLocationsEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
 class ToggleSavedLocationEvent extends AppEvent {
   const ToggleSavedLocationEvent(this.id);
   final String id;
@@ -255,14 +263,27 @@ class RequestModelGenerationEvent extends AppEvent {
     required this.localImagePath,
     required this.imageBytes,
     required this.sha256,
+    this.title,
   });
   final String artifactId;
   final String localImagePath;
   final List<int> imageBytes;
   final String sha256;
 
+  /// Stored on the `artifacts` row so a capture is identifiable server-side.
+  final String? title;
+
   @override
   List<Object?> get props => [artifactId, localImagePath, sha256];
+}
+
+/// Rehydrates the folder from the `artifacts` table at startup, so models
+/// generated in an earlier session are still there after the app is closed.
+class LoadArtifactsEvent extends AppEvent {
+  const LoadArtifactsEvent();
+
+  @override
+  List<Object?> get props => [];
 }
 
 /// Inserts a fully-formed [Artifact] (with modelStatus etc.) into the folder

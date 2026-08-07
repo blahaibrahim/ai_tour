@@ -5,6 +5,7 @@ import '../../../blocs/app/app_event.dart';
 import '../../../models/location.dart';
 import '../../../theme.dart';
 import '../../../widgets/glass_surface.dart';
+import '../../../widgets/net_image.dart';
 
 /// List tab showing saved locations in the Folder screen.
 class SavedTab extends StatelessWidget {
@@ -37,9 +38,12 @@ class SavedTab extends StatelessWidget {
                   child: ListTile(
                     onTap: () => context.read<AppBloc>().add(OpenDetailEvent(loc)),
                     contentPadding: const EdgeInsets.all(12),
-                    leading: ClipRRect(
+                    leading: NetImage(
+                      url: loc.thumbUrl,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
                       borderRadius: AppTheme.brMd,
-                      child: Image.network(loc.thumbUrl, width: 56, height: 56, fit: BoxFit.cover),
                     ),
                     title: Text(loc.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text(loc.region, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),

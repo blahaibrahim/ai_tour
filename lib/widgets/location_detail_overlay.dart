@@ -114,6 +114,12 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                                 ),
                               ),
                             ),
+                            if (loc.photoCredit != null)
+                              Positioned(
+                                top: 12,
+                                left: 12,
+                                child: StockPhotoTag(label: loc.photoCredit!),
+                              ),
                             Positioned(
                               bottom: 16,
                               left: 16,

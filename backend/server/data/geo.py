@@ -5,6 +5,12 @@ import math
 import requests
 
 
+# The demo OSRM server is best-effort and occasionally slow. Ordering has a
+# perfectly good haversine fallback, so waiting 10 s for road times buys
+# nothing a user would notice — it just delays the whole route by that much.
+OSRM_TIMEOUT_S = 6
+
+
 def get_travel_time_matrix(coords: list[tuple[float, float]]) -> list[list[float]] | None:
     """Fetch a travel time matrix (in seconds) from public OSRM.
     coords is a list of (lat, lng) tuples.
@@ -13,13 +19,13 @@ def get_travel_time_matrix(coords: list[tuple[float, float]]) -> list[list[float
     """
     if not coords or len(coords) < 2:
         return None
-    
+
     # OSRM expects longitude,latitude
     coord_strs = [f"{lng},{lat}" for lat, lng in coords]
     url = f"http://router.project-osrm.org/table/v1/driving/{';'.join(coord_strs)}"
-    
+
     try:
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(url, timeout=OSRM_TIMEOUT_S)
         resp.raise_for_status()
         data = resp.json()
         if data.get("code") == "Ok" and "durations" in data:

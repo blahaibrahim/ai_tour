@@ -7,12 +7,18 @@ class ChatRepository {
   const ChatRepository._();
 
   /// Sends a question about a specific location and returns the AI response.
+  ///
+  /// The place details travel with the question because generated routes use
+  /// live OSM ids (`osm-way-…`) that the server's `locations` catalogue has no
+  /// row for — grounding the answer on the id alone gave a 404 for every stop.
   static Future<String> askAboutPlace({
     required String locationId,
     required String locationName,
     required String blurb,
     required String question,
     required List<ChatMessage> history,
+    String? category,
+    String? region,
   }) async {
     final historyPayload = history
         .map((m) => {'role': m.role == 'ai' ? 'assistant' : m.role, 'content': m.text})
@@ -22,6 +28,8 @@ class ChatRepository {
       'location_id': locationId,
       'location_name': locationName,
       'blurb': blurb,
+      if (category != null && category.isNotEmpty) 'category': category,
+      if (region != null && region.isNotEmpty) 'region': region,
       'question': question,
       'history': historyPayload,
     });
@@ -36,9 +44,10 @@ class ChatRepository {
     required String changeRequest,
     double radiusKm = 20,
   }) async {
-    final stopsPayload = existingStops
-        .map((l) => {'id': l.id, 'name': l.name})
-        .toList();
+    // Full stops, not just {id, name}: the backend re-offers the current route
+    // as candidates so "keep these" is expressible, and it needs lat/lng to
+    // order a kept stop and photo_url to avoid re-resolving one it already has.
+    final stopsPayload = existingStops.map((l) => l.toJson()).toList();
 
     final data = await ApiClient.post('/api/itinerary/modify', body: {
       'lat': lat,

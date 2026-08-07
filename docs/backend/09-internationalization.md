@@ -1,11 +1,24 @@
 # 09 — Internationalization
 
-> **Status: Not started.** No ARB files, no RTL work, no Flutter changes.
-> Worth flagging: the new backend (docs 02, 08, 12) hardcodes `locale='en'`
-> throughout — `location_translations`/`location_task_translations` support
-> multiple locales in schema, but only English rows exist, and the LLM
-> endpoints don't yet accept a locale parameter. Everything below is still
-> plan.
+> **Status: Not started on the app side; the backend's translation machinery
+> exists but is dormant.** No ARB files, no `flutter_localizations`, no RTL
+> work, no locale switch — the Settings screen's "Language" tile reads
+> "English" and does nothing.
+>
+> Backend: `locale='en'` is still hardcoded at every call site.
+> `data/locations_repo.py` implements proper locale fallback
+> (requested → `en` → first available) and `ingestion/rewrite.py` can produce
+> fr/ar translations at ingest time, but no endpoint accepts a locale
+> parameter, so nothing ever asks for one. `translate_curated.py` was run
+> against the curated set — those rows have since been cleared along with the
+> rest of the catalogue (doc 12), so **no translated content exists in the
+> project today.**
+>
+> Note the pipeline change in doc 12: route stops now come from live Overpass
+> with names in whatever language OSM has them, and blurbs generated in
+> English at request time. Translating *that* is a different problem from
+> translating a catalogue you control, and this document does not cover it.
+> Everything below is still plan.
 
 ## Target languages
 

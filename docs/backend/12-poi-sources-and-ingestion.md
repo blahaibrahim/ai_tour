@@ -4,10 +4,49 @@
 > [08](08-llm-and-ai-features.md) — it defines where location data comes from.
 > It's numbered last only to keep existing cross-links stable.
 
-> **Status: Substantially implemented,** as a Flask module
-> (`backend/server/ingestion/`) rather than a Supabase Edge Function — see
-> the README's architecture-update note. Live and tested against real
-> Overpass, Wikidata, Wikipedia, and Commons traffic (not mocked):
+> **Status: Implemented — but no longer in the request path. Read this first;
+> the architecture below changed after it was written.**
+>
+> This document describes a pipeline that ingests POIs into the `locations`
+> catalogue, which route generation then queries. The first half still exists
+> and still works. The second half is gone: **`/api/itinerary` and
+> `/api/itinerary/modify` now call Overpass live, per request, and never read
+> the catalogue.** See the module docstring at the top of
+> `backend/server/routes/itinerary.py` for the full reasoning. In short:
+>
+> - The catalogue made route quality depend on somebody having ingested that
+>   area first. A cold city returned only the 8 curated seed rows, which is a
+>   worse failure than a slow request.
+> - Live Overpass became fast enough for the request path once
+>   `ingestion/overpass.py` gained **mirror hedging** (three mirrors, the next
+>   started if the previous hasn't answered in 5s, first usable response wins
+>   — bounded at roughly one slow mirror's wait instead of the 50–75s floor the
+>   old sequential loop could hit) and a **10-minute bbox cache**.
+> - Ids are consequently `osm-{type}-{id}` now, not catalogue uuids. That is
+>   what forced `saved_locations.location_id` to drop its foreign key (doc 02),
+>   and it is what currently breaks `/api/chat` and `/api/tasks/generate`
+>   (doc 08).
+>
+> **The catalogue is empty as of this writing** — `locations`, `poi_tiles` and
+> `poi_source_links` all have 0 rows, including the 8 curated seeds. Nothing in
+> the running app depends on it. `POST /api/poi/ingest` still works and still
+> populates it, and `data/locations_repo.py` still serves from it, but both are
+> off the path a user request takes. **Decide deliberately whether to re-seed
+> it or retire it** rather than leaving it in this half-state: it is the only
+> home for the semantic-search embeddings, the fr/ar translations, and the
+> `describe.py` blurb work, all of which are currently built and unused.
+>
+> **A third source exists on paper:** `backend/server/scripts/ingest_geofabrik.py`
+> parses an Algeria OSM PBF extract offline (per doc 13's "offline geographic
+> data" layer). It has evidently not been run against the live project — the
+> tables it writes to are empty.
+>
+> ---
+>
+> **What was built and verified** (as a Flask module,
+> `backend/server/ingestion/`, rather than a Supabase Edge Function — see the
+> README's architecture-update note). Live and tested against real Overpass,
+> Wikidata, Wikipedia, and Commons traffic (not mocked):
 >
 > - **Fetch** — `ingestion/overpass.py` and `ingestion/wikidata.py`. A real
 >   6km-radius query around Constantine returned 11 POIs and 145 nearby

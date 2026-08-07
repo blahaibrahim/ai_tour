@@ -105,30 +105,8 @@ final List<Location> allLocations = [
       lng: 5.0921)
 ];
 
-/// Seed artifacts shown in the folder before the user has completed any tasks.
-final List<Artifact> exampleArtifacts = [
-  Artifact(
-      id: "example-casbah",
-      name: "Casbah doorway",
-      region: "Algiers & the Casbah",
-      kindLabel: "Scan",
-      photoUrl: "https://picsum.photos/seed/example-casbah/300/300"),
-  Artifact(
-      id: "example-timgad",
-      name: "Trajan's Arch",
-      region: "Djemila & Timgad",
-      kindLabel: "Video",
-      photoUrl: "https://picsum.photos/seed/example-timgad/300/300"),
-  Artifact(
-      id: "example-tassili",
-      name: "Rock-art panel",
-      region: "Tassili n'Ajjer / Sahara",
-      kindLabel: "Scan",
-      photoUrl: "https://picsum.photos/seed/example-tassili/300/300"),
-  Artifact(
-      id: "example-gouraya",
-      name: "Coastline view",
-      region: "Kabylie mountains & coast",
-      kindLabel: "Video",
-      photoUrl: "https://picsum.photos/seed/example-gouraya/300/300"),
-];
+// The folder used to be seeded with four hard-coded example artifacts. They
+// rendered as placeholder cubes indistinguishable from a real capture, and
+// outlived every genuine one because those were only ever held in bloc state.
+// The folder is now built from the user's own artifacts alone — see
+// ArtifactRepository.

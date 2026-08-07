@@ -57,12 +57,36 @@ class ItineraryList extends StatelessWidget {
                               ),
                             ),
                           ),
-                        NetImage(
-                          url: loc.thumbUrl,
-                          width: 90,
-                          height: 65,
-                          fit: BoxFit.cover,
-                          borderRadius: AppTheme.brMd,
+                        Stack(
+                          children: [
+                            NetImage(
+                              url: loc.thumbUrl,
+                              width: 90,
+                              height: 65,
+                              fit: BoxFit.cover,
+                              borderRadius: AppTheme.brMd,
+                            ),
+                            // The full "Nearby photo" wording doesn't fit a
+                            // 90x65 thumb, so the row carries the mark and the
+                            // card and detail view carry the sentence.
+                            if (loc.photoCredit != null)
+                              Positioned(
+                                left: 4,
+                                bottom: 4,
+                                child: Tooltip(
+                                  message: loc.photoCredit!,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.55),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.info_outline,
+                                        size: 10, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                         const SizedBox(width: 14),
                         Expanded(

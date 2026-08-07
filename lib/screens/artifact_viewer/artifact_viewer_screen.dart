@@ -188,23 +188,39 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
       );
     }
 
-    if (_glbFile != null) {
+    // Checked before _glbFile so a viewer that fails after the file loaded
+    // (a corrupt GLB, say) replaces itself with the message rather than
+    // sitting there blank.
+    if (_glbError == null && _glbFile != null) {
       return Flutter3DViewer(
-        src: _glbFile!.path,
+        // Must be a file:// URI, not a bare path. The viewer's local HTTP proxy
+        // branches on the scheme: anything without one is treated as a Flutter
+        // asset key and sent to rootBundle.load(), which throws for a cache
+        // path. The request for /model then never completes and <model-viewer>
+        // draws an empty canvas — a blank screen with no error.
+        src: Uri.file(_glbFile!.path).toString(),
+        onError: (error) {
+          if (!mounted) return;
+          setState(() => _glbError = 'Could not display 3D model — $error');
+        },
       );
     }
 
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.warning_amber_rounded, size: 40, color: Colors.amber),
-          const SizedBox(height: 12),
-          Text(
-            _glbError ?? 'Could not display 3D model',
-            style: const TextStyle(fontSize: 14),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.warning_amber_rounded, size: 40, color: Colors.amber),
+            const SizedBox(height: 12),
+            Text(
+              _glbError ?? 'Could not display 3D model',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
       ),
     );
   }
