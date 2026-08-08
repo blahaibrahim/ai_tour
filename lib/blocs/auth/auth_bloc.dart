@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:developer' as developer;
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:supabase_flutter/supabase_flutter.dart' as supa;
@@ -65,8 +67,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     try {
       await Supabase.instance.client.auth.signInAnonymously();
       // _handleAuthChange will be called via the stream listener.
-    } catch (e) {
-      print("DEBUG Auth Error: $e");
+    } catch (error, stack) {
+      developer.log(
+        'Anonymous sign-in failed',
+        name: 'AuthBloc',
+        error: error,
+        stackTrace: stack,
+      );
       // Non-fatal — the app still works with no session (curated fallback data).
       emit(state.copyWith(status: AuthStatus.signedOut));
     }

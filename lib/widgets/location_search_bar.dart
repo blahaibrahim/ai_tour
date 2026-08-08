@@ -1,5 +1,4 @@
-import 'dart:io';
-import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:latlong2/latlong.dart';
@@ -7,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import '../blocs/app/app_bloc.dart';
 import '../blocs/app/app_event.dart';
 import '../theme.dart';
+import '../utils/geojson_parser.dart';
 
 class LocationSearchBar extends StatefulWidget {
   const LocationSearchBar({super.key});
@@ -17,7 +17,7 @@ class LocationSearchBar extends StatefulWidget {
 
 class _LocationSearchBarState extends State<LocationSearchBar> {
   final SearchController _searchController = SearchController();
-  List<Map<String, dynamic>> _lastResults = [];
+  List<WilayaPolygon> _lastResults = [];
 
   Future<void> _handleMyLocation(BuildContext context) async {
     final bloc = context.read<AppBloc>();
@@ -61,30 +61,12 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _fetchPlaces(String query) async {
-    if (query.trim().length < 2) return [];
+  Future<List<WilayaPolygon>> _fetchPlaces(String query) async {
+    final wilayas = await loadWilayasGeoJson();
+    if (query.trim().isEmpty) return wilayas;
 
-    // Simple debounce
-    await Future.delayed(const Duration(milliseconds: 400));
-    if (_searchController.text != query) return _lastResults;
-
-    final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=${Uri.encodeComponent(query)}&format=json&addressdetails=1&limit=5');
-    final httpClient = HttpClient();
-    try {
-      final request = await httpClient.getUrl(url);
-      request.headers.set('User-Agent', 'ai_tour_app');
-      final response = await request.close();
-      if (response.statusCode == 200) {
-        final jsonString = await response.transform(utf8.decoder).join();
-        final List data = jsonDecode(jsonString);
-        _lastResults = data.cast<Map<String, dynamic>>();
-        return _lastResults;
-      }
-    } catch (e) {
-      debugPrint('Search error: $e');
-    } finally {
-      httpClient.close();
-    }
+    final q = query.toLowerCase();
+    _lastResults = wilayas.where((w) => w.name.toLowerCase().contains(q)).toList();
     return _lastResults;
   }
 
@@ -95,9 +77,11 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
     final results = await _fetchPlaces(query);
     if (results.isNotEmpty && mounted) {
       final first = results.first;
-      final lat = double.tryParse(first['lat'].toString()) ?? 0.0;
-      final lon = double.tryParse(first['lon'].toString()) ?? 0.0;
-      context.read<AppBloc>().add(SetMapCenterEvent(LatLng(lat, lon)));
+      if (first.polygons.isNotEmpty && first.polygons.first.isNotEmpty) {
+        final pt = first.polygons.first.first;
+        context.read<AppBloc>().add(SetMapCenterEvent(pt));
+        context.read<AppBloc>().add(ToggleWilayaEvent(first.id));
+      }
     }
   }
 
@@ -105,6 +89,11 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
   Widget build(BuildContext context) {
     return SearchAnchor(
       searchController: _searchController,
+      viewBackgroundColor: AppTheme.bg,
+      viewElevation: 0,
+      headerHintStyle: TextStyle(color: AppTheme.text.withValues(alpha: 0.4), fontSize: 16),
+      headerTextStyle: const TextStyle(color: AppTheme.text, fontSize: 16),
+      dividerColor: AppTheme.divider,
       builder: (BuildContext context, SearchController controller) {
         return SearchBar(
           controller: controller,
@@ -113,19 +102,16 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
           onChanged: (_) => controller.openView(),
           onSubmitted: _onSubmitted,
           leading: const Icon(Icons.search, color: AppTheme.text),
-          hintText: 'Search any location...',
-          hintStyle: WidgetStatePropertyAll(TextStyle(color: AppTheme.text.withOpacity(0.5))),
+          hintText: 'Search for a wilaya...',
+          hintStyle: WidgetStatePropertyAll(TextStyle(color: AppTheme.text.withValues(alpha: 0.5))),
           backgroundColor: const WidgetStatePropertyAll(AppTheme.surface),
           elevation: const WidgetStatePropertyAll(2.0),
+          side: const WidgetStatePropertyAll(BorderSide(color: AppTheme.divider, width: 1)),
         );
       },
       suggestionsBuilder: (BuildContext context, SearchController controller) async {
         final query = controller.text;
-
-        List<Map<String, dynamic>> places = [];
-        if (query.isNotEmpty) {
-          places = await _fetchPlaces(query);
-        }
+        final places = await _fetchPlaces(query);
 
         return [
           ListTile(
@@ -140,18 +126,20 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
           if (query.isNotEmpty && places.isEmpty)
             const Padding(
               padding: EdgeInsets.all(16.0),
-              child: Text('Searching...'),
+              child: Text('No wilayas found.'),
             ),
           ...places.map((place) {
-            final name = place['display_name'] ?? 'Unknown location';
             return ListTile(
-              leading: const Icon(Icons.place_outlined, color: AppTheme.text),
-              title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
+              leading: const Icon(Icons.map_outlined, color: AppTheme.text),
+              title: Text(place.name, maxLines: 1, overflow: TextOverflow.ellipsis),
               onTap: () {
-                controller.closeView(name.split(',').first);
-                final lat = double.tryParse(place['lat'].toString()) ?? 0.0;
-                final lon = double.tryParse(place['lon'].toString()) ?? 0.0;
-                context.read<AppBloc>().add(SetMapCenterEvent(LatLng(lat, lon)));
+                controller.closeView(place.name);
+                if (place.polygons.isNotEmpty && place.polygons.first.isNotEmpty) {
+                  final pt = place.polygons.first.first;
+                  context.read<AppBloc>().add(SetMapCenterEvent(pt));
+                  // Auto select it too!
+                  context.read<AppBloc>().add(ToggleWilayaEvent(place.id));
+                }
               },
             );
           }),

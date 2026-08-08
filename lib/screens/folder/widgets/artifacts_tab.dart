@@ -75,7 +75,7 @@ class ArtifactsTab extends StatelessWidget {
                                   fontSize: 11,
                                   color: art.modelStatus == ModelStatus.failed
                                       ? Colors.redAccent
-                                      : AppTheme.text.withOpacity(0.6),
+                                      : AppTheme.text.withValues(alpha: 0.6),
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -97,7 +97,7 @@ class ArtifactsTab extends StatelessWidget {
       return Image.file(
         File(art.photoUrl),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => ArtifactCubeThumbnail(artifact: art, size: 104),
+        errorBuilder: (_, _, _) => ArtifactCubeThumbnail(artifact: art, size: 104),
       );
     }
     // Restored from Supabase: photoUrl is a private storage key. Key on the
@@ -204,7 +204,7 @@ class ArtifactsTab extends StatelessWidget {
           Text(
             'Complete scan and video tasks on your route to fill this folder.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: AppTheme.text.withOpacity(0.7)),
+            style: TextStyle(fontSize: 13, color: AppTheme.text.withValues(alpha: 0.7)),
           ),
         ],
       ),

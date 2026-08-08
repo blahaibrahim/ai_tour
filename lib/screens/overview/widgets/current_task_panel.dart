@@ -39,7 +39,7 @@ class CurrentTaskPanel extends StatelessWidget {
           children: [
             Text(
               'CURRENT TASK',
-              style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppTheme.text.withOpacity(0.55), fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppTheme.text.withValues(alpha: 0.55), fontWeight: FontWeight.bold),
             ),
             const Spacer(),
             if (currentTask.state == 'pending' && state.taskRegenerationsLeft > 0)
@@ -49,9 +49,9 @@ class CurrentTaskPanel extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppTheme.ink.withOpacity(0.05),
+                    color: AppTheme.ink.withValues(alpha: 0.05),
                     borderRadius: AppTheme.brPill,
-                    border: Border.all(color: AppTheme.ink.withOpacity(0.1)),
+                    border: Border.all(color: AppTheme.ink.withValues(alpha: 0.1)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,

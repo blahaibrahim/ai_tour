@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
@@ -79,6 +80,10 @@ class _SwipeScreenState extends State<SwipeScreen>
   }
 
   void _flingAndCommit(bool isAccept) {
+    // Confirms the card is gone before it has finished leaving, which is what
+    // makes a flick feel decided rather than merely started.
+    HapticFeedback.lightImpact();
+
     final flyX = isAccept ? 700.0 : -700.0;
 
     _flyAnimation = Tween<Offset>(
@@ -87,6 +92,7 @@ class _SwipeScreenState extends State<SwipeScreen>
     ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
 
     _animationController.forward(from: 0).then((_) {
+      if (!mounted) return;
       context.read<AppBloc>().add(CommitSwipeEvent(isAccept));
       setState(() => _dragOffset = Offset.zero);
     });
@@ -94,6 +100,12 @@ class _SwipeScreenState extends State<SwipeScreen>
 
   void _onBtnReject() { if (!_isDragging) _flingAndCommit(false); }
   void _onBtnAccept() { if (!_isDragging) _flingAndCommit(true); }
+
+  void _onBtnUndo() {
+    HapticFeedback.selectionClick();
+    context.read<AppBloc>().add(const UndoSwipeEvent());
+  }
+
   void _onBtnInfo() {
     final loc = context.read<AppBloc>().state.currentLoc;
     if (loc != null) context.read<AppBloc>().add(OpenDetailEvent(loc));
@@ -130,51 +142,37 @@ class _SwipeScreenState extends State<SwipeScreen>
                         ),
                       ),
                       const Spacer(),
-                      if (state.wantedVisits == null || state.accepted.length >= state.wantedVisits!)
-                        Builder(builder: (context) {
-                          final target = state.wantedVisits;
-                          final canProceed = state.accepted.isNotEmpty && (target == null || state.accepted.length >= target);
-                          final label = target == null
-                              ? 'Proceed (${state.accepted.length})'
-                              : 'Proceed (${state.accepted.length}/$target)';
-                          return ElevatedButton(
-                            onPressed: canProceed
-                                ? () => context.read<AppBloc>().add(const SetScreenEvent('result'))
-                                : null,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.accent,
-                              foregroundColor: AppTheme.onAccent,
-                              disabledBackgroundColor: AppTheme.surfaceAlt,
-                              disabledForegroundColor: AppTheme.text.withValues(alpha: 0.5),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                              minimumSize: const Size(0, 36),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                                const SizedBox(width: 6),
-                                const Icon(Icons.arrow_forward_rounded, size: 16),
-                              ],
-                            ),
-                          );
-                        })
-                      else
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surfaceAlt,
-                            borderRadius: AppTheme.brPill,
+                      // The route is already generated; this step only drops
+                      // stops from it. "Skip review" therefore keeps all of
+                      // them, which is a valid answer — unlike the old flow,
+                      // where nothing was chosen until you swiped.
+                      Builder(builder: (context) {
+                        final reviewed = state.currentIndex;
+                        final total = state.queue.length;
+                        return ElevatedButton(
+                          onPressed: () => context
+                              .read<AppBloc>()
+                              .add(const ConfirmReviewedStopsEvent()),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.accent,
+                            foregroundColor: AppTheme.onAccent,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                            minimumSize: const Size(0, 36),
                           ),
-                          child: Text(
-                            '${state.accepted.length} / ${state.wantedVisits} stops',
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.text,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                reviewed >= total ? 'Done' : 'Keep the rest ($reviewed/$total)',
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.arrow_forward_rounded, size: 16),
+                            ],
                           ),
-                        ),
+                        );
+                      }),
                     ],
                   ),
                 ),
@@ -240,10 +238,9 @@ class _SwipeScreenState extends State<SwipeScreen>
                                           key: _getCardKey(loc.id),
                                           duration: const Duration(milliseconds: 350),
                                           curve: Curves.easeOutCubic,
-                                          // ignore: deprecated_member_use
                                           transform: Matrix4.identity()
-                                            ..translate(dx, dy)
-                                            ..scale(scale, scale, 1.0)
+                                            ..translateByDouble(dx, dy, 0, 1)
+                                            ..scaleByDouble(scale, scale, 1, 1)
                                             ..rotateZ(angle),
                                           transformAlignment: Alignment.center,
                                           child: SwipeCard(loc: loc, isBackground: true),
@@ -317,6 +314,8 @@ class _SwipeScreenState extends State<SwipeScreen>
                 onReject: _onBtnReject,
                 onInfo: _onBtnInfo,
                 onAccept: _onBtnAccept,
+                onUndo: _onBtnUndo,
+                canUndo: state.currentIndex > 0,
               ),
             ],
           ),

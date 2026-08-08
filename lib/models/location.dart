@@ -2,6 +2,7 @@
 ///
 /// Static seed data (allLocations, exampleArtifacts, regions) lives in
 /// location_data.dart to keep this file focused on type definitions.
+library;
 
 class Task {
   final String type;

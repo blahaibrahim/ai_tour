@@ -1,8 +1,12 @@
 import '../blocs/app/app_state.dart';
-import '../models/location.dart';
 import '../services/api_client.dart';
 
-/// Wraps /api/chat and /api/itinerary/modify.
+/// Wraps /api/chat — grounded place chat.
+///
+/// `modifyRoute` (POST /api/itinerary/modify) is gone with the rest of the old
+/// itinerary module. Route changes now go through the Route Generation
+/// module's refine call in [RouteRepository], which re-runs clustering and
+/// ordering rather than asking an LLM to re-pick stops.
 class ChatRepository {
   const ChatRepository._();
 
@@ -34,35 +38,5 @@ class ChatRepository {
       'history': historyPayload,
     });
     return data['answer'] as String? ?? "I'm not sure — try asking differently.";
-  }
-
-  /// Modifies an existing route based on a user's change request.
-  static Future<List<Location>> modifyRoute({
-    required double lat,
-    required double lng,
-    required List<Location> existingStops,
-    required String changeRequest,
-    double radiusKm = 20,
-  }) async {
-    // Full stops, not just {id, name}: the backend re-offers the current route
-    // as candidates so "keep these" is expressible, and it needs lat/lng to
-    // order a kept stop and photo_url to avoid re-resolving one it already has.
-    final stopsPayload = existingStops.map((l) => l.toJson()).toList();
-
-    final data = await ApiClient.post('/api/itinerary/modify', body: {
-      'lat': lat,
-      'lng': lng,
-      'radius_km': radiusKm,
-      'existing_stops': stopsPayload,
-      'change_request': changeRequest,
-    });
-
-    final stops = data['stops'] as List<dynamic>?;
-    if (stops == null || stops.isEmpty) return existingStops;
-
-    return stops
-        .whereType<Map<String, dynamic>>()
-        .map(Location.fromJson)
-        .toList();
   }
 }

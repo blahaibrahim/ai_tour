@@ -20,9 +20,9 @@ class SavedTab extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.bookmark_border, size: 48, color: AppTheme.text.withOpacity(0.3)),
+                Icon(Icons.bookmark_border, size: 48, color: AppTheme.text.withValues(alpha: 0.3)),
                 const SizedBox(height: 16),
-                Text('No saved locations', style: TextStyle(color: AppTheme.text.withOpacity(0.6))),
+                Text('No saved locations', style: TextStyle(color: AppTheme.text.withValues(alpha: 0.6))),
               ],
             ),
           )

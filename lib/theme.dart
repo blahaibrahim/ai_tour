@@ -53,6 +53,29 @@ class AppTheme {
   static const Color success = Color(0xFF2F7D5B);
   static const Color error = Color(0xFFC8452F);
 
+  /// Amber rather than red: a route needing a second day is information the
+  /// traveller should act on, not a failure. Rendering it in [error] made a
+  /// perfectly good route look broken.
+  static const Color warning = Color(0xFF9A6212);
+  static const Color warningSoft = Color(0xFFFBEEDA);
+  static const Color errorSoft = Color(0xFFFAE4E0);
+  static const Color successSoft = Color(0xFFDFF0E7);
+
+  // ---------------------------------------------------------------------
+  // Route semantics
+  // ---------------------------------------------------------------------
+  // A route is drive legs between walkable clusters and walk legs inside them.
+  // The two modes get their own fixed colors so the map polyline, the leg row
+  // in the itinerary and the summary chips all agree — the mode is the same
+  // fact in three places, and it should not be three different blues.
+
+  /// Inter-cluster travel. The heavier of the two, because it is the part of
+  /// the route you cannot do on foot.
+  static const Color driveColor = compassBlue;
+
+  /// Travel within a cluster.
+  static const Color walkColor = Color(0xFFB5651D);
+
   /// Scrim laid over photos so overlaid white text stays legible. Fades to
   /// [photoScrimFade] — a transparent navy rather than transparent black, so
   /// the midtones of the fade don't go grey.
@@ -75,15 +98,57 @@ class AppTheme {
   static BorderRadius get brXl => BorderRadius.circular(radiusXl);
   static BorderRadius get brPill => BorderRadius.circular(radiusPill);
 
+  // ---------------------------------------------------------------------
+  // Spacing — a 4pt scale
+  // ---------------------------------------------------------------------
+  // Gaps were previously written as literals at every call site, which is how
+  // 10/12/14/16/18/20/26 all ended up in use for the same visual step. Naming
+  // the rungs is what makes vertical rhythm reviewable.
+  static const double space1 = 4;
+  static const double space2 = 8;
+  static const double space3 = 12;
+  static const double space4 = 16;
+  static const double space5 = 20;
+  static const double space6 = 24;
+  static const double space8 = 32;
+
+  static const SizedBox gap1 = SizedBox(height: space1, width: space1);
+  static const SizedBox gap2 = SizedBox(height: space2, width: space2);
+  static const SizedBox gap3 = SizedBox(height: space3, width: space3);
+  static const SizedBox gap4 = SizedBox(height: space4, width: space4);
+  static const SizedBox gap5 = SizedBox(height: space5, width: space5);
+  static const SizedBox gap6 = SizedBox(height: space6, width: space6);
+
+  /// The smallest square a finger can reliably hit. Material and the iOS HIG
+  /// both put this at 44-48dp; several of the app's icon buttons were drawn
+  /// smaller, so this is the floor to enforce with a `SizedBox`/`constraints`
+  /// rather than a number to re-derive.
+  static const double minTapTarget = 48;
+
+  // ---------------------------------------------------------------------
+  // Motion
+  // ---------------------------------------------------------------------
+  /// Feedback on a press — must be under a tenth of a second to feel attached
+  /// to the finger.
+  static const Duration motionFast = Duration(milliseconds: 120);
+
+  /// The default for state changes: chips selecting, panels resizing.
+  static const Duration motionBase = Duration(milliseconds: 240);
+
+  /// Screen-level transitions and anything crossing a large distance.
+  static const Duration motionSlow = Duration(milliseconds: 420);
+
+  static const Curve motionCurve = Curves.easeOutCubic;
+
   // Soft, navy-tinted elevation — no hard black shadows
   static List<BoxShadow> get shadowSm => [
-        BoxShadow(color: ink.withOpacity(0.07), blurRadius: 10, offset: const Offset(0, 3)),
+        BoxShadow(color: ink.withValues(alpha: 0.07), blurRadius: 10, offset: const Offset(0, 3)),
       ];
   static List<BoxShadow> get shadowMd => [
-        BoxShadow(color: ink.withOpacity(0.09), blurRadius: 20, offset: const Offset(0, 8)),
+        BoxShadow(color: ink.withValues(alpha: 0.09), blurRadius: 20, offset: const Offset(0, 8)),
       ];
   static List<BoxShadow> get shadowLg => [
-        BoxShadow(color: ink.withOpacity(0.16), blurRadius: 32, offset: const Offset(0, 12)),
+        BoxShadow(color: ink.withValues(alpha: 0.16), blurRadius: 32, offset: const Offset(0, 12)),
       ];
 
   static ThemeData get theme {
@@ -120,9 +185,8 @@ class AppTheme {
         primary: accent,
         secondary: secondaryAccent,
         surface: surface,
-        background: bg,
-        onBackground: text,
         onSurface: text,
+        error: error,
       ),
       textTheme: textTheme,
       splashFactory: InkRipple.splashFactory,
@@ -184,8 +248,20 @@ class AppTheme {
         activeTrackColor: accent,
         inactiveTrackColor: divider,
         thumbColor: accent,
-        overlayColor: accent.withOpacity(0.12),
+        overlayColor: accent.withValues(alpha: 0.12),
         trackHeight: 4,
+      ),
+
+      // Toasts are the app's only transient feedback channel; left to the
+      // Material default they arrive as a square black bar that belongs to no
+      // part of this palette.
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: ink,
+        contentTextStyle: GoogleFonts.inter(color: onNavy, fontWeight: FontWeight.w500),
+        actionTextColor: sand,
+        behavior: SnackBarBehavior.floating,
+        insetPadding: const EdgeInsets.all(space4),
+        shape: RoundedRectangleBorder(borderRadius: brMd),
       ),
     );
   }

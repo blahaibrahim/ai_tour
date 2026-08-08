@@ -4,7 +4,8 @@ import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
 import '../../../theme.dart';
 import '../../../widgets/glass_surface.dart';
-import 'visit_count_chips.dart';
+import '../../../widgets/location_search_bar.dart';
+import '../../../utils/geojson_parser.dart';
 
 /// The slide-up glass panel at the bottom of the map screen that lets the user
 /// configure radius, prompt, and number of stops before generating a route.
@@ -21,8 +22,8 @@ class MapBottomPanel extends StatelessWidget {
       boxShadow: AppTheme.shadowLg,
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 14),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -31,14 +32,17 @@ class MapBottomPanel extends StatelessWidget {
                 'Where do you want to explore?',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 18, height: 1.1),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 16),
 
-              // Radius label + value
+              const LocationSearchBar(),
+              const SizedBox(height: 16),
+
+              // Selected Wilayas
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Search radius',
+                    'Selected Wilayas',
                     style: TextStyle(fontSize: 11.5, color: AppTheme.text.withOpacity(0.65)),
                   ),
                   Container(
@@ -48,7 +52,7 @@ class MapBottomPanel extends StatelessWidget {
                       borderRadius: AppTheme.brPill,
                     ),
                     child: Text(
-                      '${state.radiusKm.toInt()} km',
+                      '${state.selectedWilayas.length} selected',
                       style: const TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w700,
@@ -58,67 +62,104 @@ class MapBottomPanel extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+              
+              FutureBuilder<List<WilayaPolygon>>(
+                future: loadWilayasGeoJson(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const SizedBox(height: 32, child: Text('Loading wilayas...', style: TextStyle(fontSize: 12)));
 
-              // Radius slider
-              SizedBox(
-                height: 32,
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 3,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                  ),
-                  child: Slider(
-                    value: state.radiusKm,
-                    min: 5,
-                    max: 60,
-                    divisions: 11,
-                    onChanged: (v) => bloc.add(SetRadiusEvent(v)),
-                  ),
-                ),
+                  final List<String> selectedNames = [];
+                  for (final wilayaId in state.selectedWilayas) {
+                    final wp = snapshot.data!.firstWhere(
+                      (w) => w.id == wilayaId, 
+                      orElse: () => WilayaPolygon(id: '', name: 'Unknown', polygons: [])
+                    );
+                    if (wp.id.isNotEmpty) {
+                      selectedNames.add(wp.name);
+                    }
+                  }
+
+                  if (selectedNames.isEmpty) {
+                    return const SizedBox(
+                      height: 32,
+                      child: Text(
+                        'Tap on the map to select wilayas.',
+                        style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                      ),
+                    );
+                  }
+
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final name in selectedNames)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accent.withValues(alpha: 0.1),
+                                borderRadius: AppTheme.brPill,
+                                border: Border.all(color: AppTheme.accent.withValues(alpha: 0.5)),
+                              ),
+                              child: Text(
+                                name,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.accentDark,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
               Text(
                 "TELL THE AI WHAT YOU'RE AFTER",
                 style: TextStyle(
                   fontSize: 10,
                   letterSpacing: 0.8,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.text.withOpacity(0.5),
+                  color: AppTheme.text.withValues(alpha: 0.5),
                 ),
               ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 8),
 
-              // Text area + visit chips
-              Container(
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceAlt,
-                  borderRadius: AppTheme.brMd,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextField(
-                      maxLines: 2,
-                      onChanged: (v) => bloc.add(SetPromptEvent(v)),
-                      decoration: InputDecoration(
-                        hintText: "quiet Roman ruins, coastal viewpoints...",
-                        hintStyle: TextStyle(color: AppTheme.text.withOpacity(0.4), fontSize: 13),
-                        filled: false,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                // Text area + visit chips
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceAlt,
+                    borderRadius: AppTheme.brMd,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        maxLines: 2,
+                        onChanged: (v) => bloc.add(SetPromptEvent(v)),
+                        decoration: InputDecoration(
+                          hintText: "quiet Roman ruins, coastal viewpoints...",
+                          hintStyle: TextStyle(color: AppTheme.text.withValues(alpha: 0.4), fontSize: 13),
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                        ),
                       ),
-                    ),
-                    const VisitCountChips(),
-                    const SizedBox(height: 12),
-                  ],
+                      const SizedBox(height: 12),
+                    ],
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: 14),
+                const SizedBox(height: 14),
               ElevatedButton(
                 onPressed: () => bloc.add(const GenerateRouteEvent()),
                 style: ElevatedButton.styleFrom(

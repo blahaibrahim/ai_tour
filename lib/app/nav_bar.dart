@@ -39,7 +39,7 @@ class NavButton extends StatelessWidget {
               child: Icon(
                 icon,
                 size: 22,
-                color: isActive ? AppTheme.onAccent : AppTheme.ink.withOpacity(0.5),
+                color: isActive ? AppTheme.onAccent : AppTheme.ink.withValues(alpha: 0.5),
               ),
             ),
             AnimatedSize(

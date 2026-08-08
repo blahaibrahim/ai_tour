@@ -28,18 +28,25 @@ class UpcomingStopsRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 24),
-        Text(
+        const SizedBox(height: AppTheme.space6),
+        // White, not ink: this label sits directly on the page backdrop rather
+        // than on a card, and that backdrop is dark at the top of the overview.
+        const Text(
           'UPCOMING',
-          style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppTheme.text.withOpacity(0.55), fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: 11,
+            letterSpacing: 0.8,
+            color: AppTheme.textSecondary,
+            fontWeight: FontWeight.w700,
+          ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppTheme.space3),
         SizedBox(
           height: 180,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: upcoming.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, i) {
               final loc = upcoming[i];
               return StaggeredEntrance(
@@ -66,13 +73,41 @@ class UpcomingStopsRow extends StatelessWidget {
                               ),
                             ),
                           ),
+                          // The stop's position on the route. Without it a
+                          // horizontal strip of photos says nothing about
+                          // order, which is the one thing an itinerary is.
                           Positioned(
-                            bottom: 8,
-                            left: 10,
-                            right: 10,
+                            top: AppTheme.space2,
+                            left: AppTheme.space2,
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                color: AppTheme.photoScrim,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '${state.currentStopIdx + i + 2}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 11.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: AppTheme.space2,
+                            left: AppTheme.space2 + 2,
+                            right: AppTheme.space2 + 2,
                             child: Text(
                               loc.name,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12.5,
+                              ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),

@@ -3,13 +3,15 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/location.dart';
-import '../../models/location_data.dart';
+import '../../models/route.dart';
 import '../../repositories/artifact_repository.dart';
 import '../../repositories/chat_repository.dart';
-import '../../repositories/location_repository.dart';
 import '../../repositories/model_repository.dart';
+import '../../repositories/prompt_interpretation_repository.dart';
+import '../../repositories/route_repository.dart';
 import '../../repositories/saved_locations_repository.dart';
 import '../../repositories/task_repository.dart';
+import '../../services/api_client.dart';
 import '../../utils/uuid.dart';
 import 'app_event.dart';
 import 'app_state.dart';
@@ -20,37 +22,46 @@ import 'app_state.dart';
 /// the UI. The thinking-screen animation timer lives here too, so the widget
 /// layer stays completely stateless.
 ///
-/// Backend calls now go through repository classes rather than inline HTTP —
-/// see lib/repositories/. The Supabase Realtime subscription for model_jobs
-/// is started here and torn down in [close].
+/// Route generation goes through [RouteRepository] and is a single synchronous
+/// call — there is no job to submit, no polling loop and no resume-on-launch
+/// path, all of which the previous itinerary endpoint needed.
 class AppBloc extends Bloc<AppEvent, AppState> {
   AppBloc() : super(const AppState()) {
     on<SetScreenEvent>(_onSetScreen);
     on<ToggleRegionEvent>(_onToggleRegion);
-    on<SetRadiusEvent>(_onSetRadius);
-    on<SetWantedVisitsEvent>(_onSetWantedVisits);
     on<SetMapCenterEvent>(_onSetMapCenter);
+
+    on<LoadRouteOptionsEvent>(_onLoadRouteOptions);
+    on<SelectCityEvent>(_onSelectCity);
+    on<SelectThemeEvent>(_onSelectTheme);
+    on<ToggleCategoryEvent>(_onToggleCategory);
+    on<ToggleWilayaEvent>(_onToggleWilaya);
     on<SetPromptEvent>(_onSetPrompt);
+    on<InterpretPromptEvent>(_onInterpretPrompt);
+    on<SetTripDaysEvent>(_onSetTripDays);
+    on<SetTransportModeEvent>(_onSetTransportMode);
+
     on<GenerateRouteEvent>(_onGenerateRoute);
     on<ThinkTickEvent>(_onThinkTick);
-    on<FinishThinkingEvent>(_onFinishThinking);
-    on<RefreshQueueEvent>(_onRefreshQueue);
+    on<RouteGeneratedEvent>(_onRouteGenerated);
+    on<RouteGenerationFailedEvent>(_onRouteGenerationFailed);
     on<BackToMapEvent>(_onBackToMap);
+
     on<CommitSwipeEvent>(_onCommitSwipe);
+    on<UndoSwipeEvent>(_onUndoSwipe);
+    on<ConfirmReviewedStopsEvent>(_onConfirmReviewedStops);
     on<OpenDetailEvent>(_onOpenDetail);
     on<CloseDetailEvent>(_onCloseDetail);
     on<AskQuestionEvent>(_onAskQuestion);
     on<OnDetailAcceptEvent>(_onDetailAccept);
     on<OnDetailRejectEvent>(_onDetailReject);
+
     on<ToggleModifyEvent>(_onToggleModify);
-    on<ToggleAskPanelEvent>(_onToggleAskPanel);
-    on<SendAIChangeEvent>(_onSendAIChange);
-    on<MoveStopEvent>(_onMoveStop);
     on<RemoveStopEvent>(_onRemoveStop);
-    on<ReorderStopsEvent>(_onReorderStops);
     on<TogglePlayEvent>(_onTogglePlay);
     on<AcceptRouteEvent>(_onAcceptRoute);
-    on<RestoreAcceptedRouteEvent>(_onRestoreAcceptedRoute);
+
+    on<RecordCheckpointEvent>(_onRecordCheckpoint);
     on<CompleteTaskEvent>(_onCompleteTask);
     on<RegenerateTaskEvent>(_onRegenerateTask);
     on<AdvanceStopEvent>(_onAdvanceStop);
@@ -65,14 +76,13 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     // whole capture before generation was ever requested.
     on<OptimisticArtifactEvent>(_onOptimisticArtifact);
     on<RequestModelGenerationEvent>(_onRequestModelGeneration);
-    on<ResumeRouteEvent>(_onResumeRoute);
 
     on<LoadSavedLocationsEvent>(_onLoadSavedLocations);
     on<LoadArtifactsEvent>(_onLoadArtifacts);
 
     _startRealtimeSubscription();
     _watchAuth();
-    add(const ResumeRouteEvent());
+    add(const LoadRouteOptionsEvent());
     add(const LoadSavedLocationsEvent());
     add(const LoadArtifactsEvent());
   }
@@ -89,6 +99,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.session == null) return;
       if (_realtimeSub == null) _startRealtimeSubscription();
+      add(const LoadRouteOptionsEvent());
       add(const LoadSavedLocationsEvent());
       add(const LoadArtifactsEvent());
     });
@@ -130,7 +141,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   }
 
   // ---------------------------------------------------------------------------
-  // Navigation & settings
+  // Navigation
   // ---------------------------------------------------------------------------
 
   void _onSetScreen(SetScreenEvent event, Emitter<AppState> emit) {
@@ -147,167 +158,329 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     emit(state.copyWith(selectedRegions: updated));
   }
 
-  void _onSetRadius(SetRadiusEvent event, Emitter<AppState> emit) {
-    emit(state.copyWith(radiusKm: event.value));
-  }
-
-  void _onSetWantedVisits(SetWantedVisitsEvent event, Emitter<AppState> emit) {
-    emit(state.copyWith(wantedVisits: event.value));
-  }
-
+  /// Moves the region circle, and re-resolves the city it now covers.
+  ///
+  /// Dispatched when a map gesture *ends*, not while it is in progress — the
+  /// circle follows the finger locally, and only the committed position needs
+  /// to reach the bloc.
   void _onSetMapCenter(SetMapCenterEvent event, Emitter<AppState> emit) {
-    emit(state.copyWith(mapCenter: event.center));
-  }
-
-  void _onSetPrompt(SetPromptEvent event, Emitter<AppState> emit) {
-    emit(state.copyWith(prompt: event.value));
+    emit(_withResolvedCity(state.copyWith(mapCenter: event.center)));
   }
 
   // ---------------------------------------------------------------------------
-  // Route generation (thinking screen) — now calls real backend
+  // Route request building
+  // ---------------------------------------------------------------------------
+
+  /// Loads cities plus the theme/category vocabulary.
+  ///
+  /// Both come from the server rather than being hardcoded: adding a city, or
+  /// opening one that was in `planning`, is a config change on the server side
+  /// and must not need an app release.
+  Future<void> _onLoadRouteOptions(
+      LoadRouteOptionsEvent event, Emitter<AppState> emit) async {
+    if (state.isLoadingOptions) return;
+    emit(state.copyWith(isLoadingOptions: true));
+
+    try {
+      final results = await Future.wait([
+        RouteRepository.fetchCities(),
+        RouteRepository.fetchThemesAndCategories(),
+      ]);
+      final cities = results[0] as List<City>;
+      final vocab = results[1] as ({List<RouteTheme> themes, List<RouteCategory> categories});
+
+      // Open the map over a city that can actually be routed, so the region
+      // circle starts on something rather than on empty sea. A `planning` city
+      // would fail generation if landed on by default, which reads as a broken
+      // button.
+      City? firstRoutable;
+      for (final c in cities) {
+        if (c.rolloutStatus.isRoutable) {
+          firstRoutable = c;
+          break;
+        }
+      }
+
+      final alreadyPlaced =
+          state.selectedCityId != null && cities.any((c) => c.id == state.selectedCityId);
+      final centre = alreadyPlaced ? state.mapCenter : firstRoutable?.centre;
+
+      // No default theme. It arrives from interpreting the prompt, and
+      // preselecting one would let a traveller generate a route for a theme
+      // they never chose and cannot see.
+      emit(_withResolvedCity(state.copyWith(
+        cities: cities,
+        themes: vocab.themes,
+        categories: vocab.categories,
+        mapCenter: centre ?? state.mapCenter,
+        isLoadingOptions: false,
+      )));
+    } catch (_) {
+      // Not fatal — the panel shows its unavailable state and the user can
+      // retry. Nothing about the rest of the app depends on this.
+      emit(state.copyWith(isLoadingOptions: false));
+    }
+  }
+
+  void _onSelectCity(SelectCityEvent event, Emitter<AppState> emit) {
+    final city = state.cities.where((c) => c.id == event.cityId).firstOrNull;
+    emit(state.copyWith(
+      selectedCityId: event.cityId,
+      mapCenter: city?.centre ?? state.mapCenter,
+      // Categories are per-city in principle; clearing avoids carrying a
+      // selection that the new city has no POIs for.
+      selectedCategoryKeys: const {},
+      routeError: null,
+      routeErrorCode: null,
+    ));
+  }
+
+  void _onSelectTheme(SelectThemeEvent event, Emitter<AppState> emit) {
+    emit(state.copyWith(selectedTheme: event.themeKey, routeError: null, routeErrorCode: null));
+  }
+
+  void _onToggleCategory(ToggleCategoryEvent event, Emitter<AppState> emit) {
+    final updated = Set<String>.from(state.selectedCategoryKeys);
+    if (!updated.remove(event.categoryKey)) updated.add(event.categoryKey);
+    emit(state.copyWith(selectedCategoryKeys: updated));
+  }
+
+  void _onSetTripDays(SetTripDaysEvent event, Emitter<AppState> emit) {
+    emit(state.copyWith(tripDays: event.days, routeError: null, routeErrorCode: null));
+  }
+
+  void _onToggleWilaya(ToggleWilayaEvent event, Emitter<AppState> emit) {
+    final updated = Set<String>.from(state.selectedWilayas);
+    if (updated.contains(event.wilayaId)) {
+      updated.remove(event.wilayaId);
+    } else {
+      updated.add(event.wilayaId);
+    }
+    emit(state.copyWith(selectedWilayas: updated));
+  }
+
+  void _onSetPrompt(SetPromptEvent event, Emitter<AppState> emit) {
+    emit(state.copyWith(
+      prompt: event.text,
+      // The chips below the field describe the *interpreted* prompt. Once the
+      // text has moved on from what produced them they are stale, and leaving
+      // them up implies the new sentence was understood when it hasn't been
+      // read yet.
+      promptInterpreted: false,
+    ));
+  }
+
+  Future<void> _onInterpretPrompt(
+          InterpretPromptEvent event, Emitter<AppState> emit) =>
+      _interpretInto(emit);
+
+  /// Turns the prompt into a theme and categories.
+  ///
+  /// Anything the interpreter didn't match is left alone rather than cleared:
+  /// a prompt that yields no theme should not wipe the theme already in the
+  /// request, or typing an unrecognised sentence would silently narrow the
+  /// trip to nothing.
+  ///
+  /// Takes the emitter rather than an event so the generate handler can run it
+  /// inline — pressing "Plan my route" has to read the description first, and
+  /// dispatching a second event from inside a handler would let generation race
+  /// ahead of the interpretation it depends on.
+  Future<void> _interpretInto(Emitter<AppState> emit) async {
+    final prompt = state.prompt.trim();
+    if (prompt.isEmpty || state.isInterpretingPrompt) return;
+
+    emit(state.copyWith(isInterpretingPrompt: true));
+
+    final interpretation = await PromptInterpretationRepository.interpret(
+      prompt: prompt,
+      availableThemes: state.themes,
+      availableCategories: state.categories,
+    );
+
+    emit(state.copyWith(
+      isInterpretingPrompt: false,
+      promptInterpreted: !interpretation.isEmpty,
+      selectedTheme: interpretation.themeKey ?? state.selectedTheme,
+      selectedCategoryKeys: interpretation.categoryKeys.isEmpty
+          ? state.selectedCategoryKeys
+          : interpretation.categoryKeys,
+      routeError: null,
+      routeErrorCode: null,
+    ));
+  }
+
+  /// Re-resolves which city the region circle picks out.
+  ///
+  /// The traveller never chooses a city directly any more — they drag a circle
+  /// over a map. This is the one place that turns that gesture into the
+  /// `city_id` the request carries, so it runs on every change that can move
+  /// the circle or resize it.
+  AppState _withResolvedCity(AppState next) {
+    final routable = next.regionSelection.routable;
+    if (routable == null || routable.id == next.selectedCityId) return next;
+    return next.copyWith(selectedCityId: routable.id);
+  }
+
+  void _onSetTransportMode(SetTransportModeEvent event, Emitter<AppState> emit) {
+    emit(state.copyWith(transportMode: event.mode));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Generation
   // ---------------------------------------------------------------------------
 
   Future<void> _onGenerateRoute(
       GenerateRouteEvent event, Emitter<AppState> emit) async {
+    // Reading the description is part of pressing the button, not a separate
+    // step the traveller has to remember. There is no submit affordance on the
+    // field itself any more, so if a prompt has been typed but never
+    // interpreted, that happens here — otherwise the sentence would be silently
+    // discarded and the route built from the fallback theme.
+    if (state.prompt.trim().isNotEmpty && !state.promptInterpreted) {
+      await _interpretInto(emit);
+    }
+
+    final cityId = state.selectedCityId;
+    final theme = state.effectiveTheme;
+    if (cityId == null || theme == null) return;
+
     _thinkTimer?.cancel();
-    emit(state.copyWith(screen: 'thinking', thinkIdx: 0, isGeneratingRoute: true));
+    emit(state.copyWith(
+      screen: 'thinking',
+      thinkIdx: 0,
+      isGeneratingRoute: true,
+      routeError: null,
+      routeErrorCode: null,
+    ));
 
     _thinkTimer = Timer.periodic(const Duration(milliseconds: 850), (_) {
       add(const ThinkTickEvent());
     });
 
-    // Fetch from the real backend while the thinking animation plays.
-    final locations = await LocationRepository.generateItinerary(
-      lat: state.mapCenter.latitude,
-      lng: state.mapCenter.longitude,
-      radiusKm: state.radiusKm,
-      prompt: state.prompt.isNotEmpty ? state.prompt : null,
-      wantedVisits: state.wantedVisits,
-    );
-
-    _thinkTimer?.cancel();
-    add(FinishThinkingEvent(locations));
-  }
-
-  Future<void> _onResumeRoute(
-      ResumeRouteEvent event, Emitter<AppState> emit) async {
-    final job = await LocationRepository.checkLatestJob();
-    if (job == null) return;
-    
-    final status = job['status'] as String?;
-    if (status == 'succeeded') {
-      final resultData = job['result_data'] as Map<String, dynamic>?;
-      final stops = resultData?['stops'] as List<dynamic>?;
-      if (stops != null && stops.isNotEmpty) {
-        final parsed = stops.whereType<Map<String, dynamic>>().map(Location.fromJson).toList();
-        add(FinishThinkingEvent(parsed));
-      }
-    } else if (status == 'accepted') {
-      final resultData = job['result_data'] as Map<String, dynamic>?;
-      final stops = resultData?['stops'] as List<dynamic>?;
-      if (stops != null && stops.isNotEmpty) {
-        final parsed = stops.whereType<Map<String, dynamic>>().map(Location.fromJson).toList();
-        add(RestoreAcceptedRouteEvent(parsed));
-      }
-    } else if (status == 'processing' || status == 'queued') {
+    try {
+      await Future.delayed(const Duration(seconds: 5)); // Added for testing loading screen
+      final route = await RouteRepository.generateRoute(
+        cityId: cityId,
+        theme: theme,
+        timeBudgetMinutes: state.timeBudgetMinutes,
+        transportMode: state.transportMode,
+        categoryKeys: state.selectedCategoryKeys.toList(),
+      );
       _thinkTimer?.cancel();
-      emit(state.copyWith(screen: 'thinking', thinkIdx: 0, isGeneratingRoute: true));
-      _thinkTimer = Timer.periodic(const Duration(milliseconds: 850), (_) {
-        add(const ThinkTickEvent());
-      });
-      
-      final parsed = await LocationRepository.pollJob(job['id'] as String);
-      
+      add(RouteGeneratedEvent(route));
+    } on ApiException catch (e) {
       _thinkTimer?.cancel();
-      add(FinishThinkingEvent(parsed));
+      add(RouteGenerationFailedEvent(e.errorCode, e.message ?? _messageForCode(e.errorCode)));
+    } catch (_) {
+      _thinkTimer?.cancel();
+      add(const RouteGenerationFailedEvent('network_error', "Couldn't reach the route service."));
     }
   }
 
+  /// Copy for the failure modes the old repository collapsed into "no stops".
+  static String _messageForCode(String code) => switch (code) {
+        'city_not_available' => "This city isn't open for routes yet.",
+        'no_eligible_pois' => 'No published stops match that theme here yet.',
+        'time_budget_too_short' => 'That time budget is too short for any stop here.',
+        'routing_provider_unavailable' => 'The routing service is unavailable right now.',
+        'not_implemented' => 'Route generation is not built yet on this server.',
+        _ => 'Something went wrong generating your route.',
+      };
+
+  /// Advances the thinking-screen step, stopping at the last one.
+  ///
+  /// It used to wrap with `% length`, so a generation slower than the whole
+  /// sequence restarted at "Reading your time budget…" — which reads as the
+  /// work having been thrown away and begun again. Holding on the final step
+  /// says "still on the last thing", which is true.
   void _onThinkTick(ThinkTickEvent event, Emitter<AppState> emit) {
-    emit(state.copyWith(
-      thinkIdx: (state.thinkIdx + 1) % AppState.thinkingMessages.length,
-    ));
+    final last = AppState.thinkingMessages.length - 1;
+    if (state.thinkIdx >= last) return;
+    emit(state.copyWith(thinkIdx: state.thinkIdx + 1));
   }
 
-  void _onFinishThinking(FinishThinkingEvent event, Emitter<AppState> emit) {
+  /// True when the traveller left the thinking screen while a request was in
+  /// flight. The HTTP call can't be recalled, so its result is discarded on
+  /// arrival instead — without this, cancelling and then having the response
+  /// land throws the traveller into the review screen for a route they backed
+  /// out of, seconds after they chose not to have it.
+  bool get _generationWasCancelled => !state.isGeneratingRoute;
+
+  /// A route arrived. Its stops become the review queue.
+  void _onRouteGenerated(RouteGeneratedEvent event, Emitter<AppState> emit) {
+    if (_generationWasCancelled) return;
+    final regionLabel = state.selectedCity?.name ?? '';
     emit(state.copyWith(
-      queue: event.filteredLocations,
+      route: event.route,
+      queue: event.route.stops.map((s) => s.toLocation(regionLabel: regionLabel)).toList(),
       currentIndex: 0,
-      accepted: event.isRefresh ? state.accepted : const [],
-      rejected: event.isRefresh ? state.rejected : const [],
-      screen: 'swipe',
+      accepted: const [],
+      rejected: const [],
+      screen: event.route.stops.isEmpty ? 'result' : 'swipe',
       isGeneratingRoute: false,
+      routeError: null,
+      routeErrorCode: null,
     ));
   }
 
-  Future<void> _onRefreshQueue(
-      RefreshQueueEvent event, Emitter<AppState> emit) async {
-    _thinkTimer?.cancel();
-    emit(state.copyWith(screen: 'thinking', thinkIdx: 0));
-
-    _thinkTimer = Timer.periodic(const Duration(milliseconds: 850), (_) {
-      add(const ThinkTickEvent());
-    });
-
-    final all = await LocationRepository.generateItinerary(
-      lat: state.mapCenter.latitude,
-      lng: state.mapCenter.longitude,
-      radiusKm: state.radiusKm,
-      prompt: state.prompt.isNotEmpty ? state.prompt : null,
-      rejectedIds: state.rejected.map((e) => e.id).toList(),
-      acceptedIds: state.accepted.map((e) => e.id).toList(),
-    );
-
-    _thinkTimer?.cancel();
-    final newQueue = all.where((l) => 
-        !state.accepted.any((a) => a.id == l.id) &&
-        !state.rejected.any((r) => r.id == l.id)
-    ).toList();
-    
-    add(FinishThinkingEvent(
-      newQueue,
-      isRefresh: true,
+  void _onRouteGenerationFailed(
+      RouteGenerationFailedEvent event, Emitter<AppState> emit) {
+    // Same reasoning as [_onRouteGenerated]: a traveller who cancelled should
+    // not then be shown an error about the request they abandoned.
+    if (_generationWasCancelled) return;
+    emit(state.copyWith(
+      screen: 'map',
+      isGeneratingRoute: false,
+      routeError: event.message,
+      routeErrorCode: event.code,
     ));
   }
 
   void _onBackToMap(BackToMapEvent event, Emitter<AppState> emit) {
     _thinkTimer?.cancel();
-    emit(state.copyWith(screen: 'map'));
+    emit(state.copyWith(screen: 'map', isGeneratingRoute: false));
   }
 
   // ---------------------------------------------------------------------------
-  // Swipe screen
+  // Review step
   // ---------------------------------------------------------------------------
 
   void _handleSwipeNext(int nextIndex, List<Location> newAccepted,
       List<Location> newRejected, Emitter<AppState> emit) {
-    if (nextIndex >= state.queue.length) {
-      final target = state.wantedVisits;
-      final canProceed = newAccepted.isNotEmpty &&
-          (target == null || newAccepted.length >= target);
-      if (!canProceed) {
-        emit(state.copyWith(
-          accepted: newAccepted,
-          rejected: newRejected,
-          currentIndex: nextIndex,
-        ));
-        add(const RefreshQueueEvent());
-        return;
-      } else {
-        emit(state.copyWith(
-          accepted: newAccepted,
-          rejected: newRejected,
-          currentIndex: nextIndex,
-          screen: 'result',
-        ));
-        return;
-      }
-    }
-
     emit(state.copyWith(
       accepted: newAccepted,
       rejected: newRejected,
       currentIndex: nextIndex,
+    ));
+
+    // Every stop reviewed. There is no candidate pool to pull more from — the
+    // route is what the module generated — so this always moves on.
+    if (nextIndex >= state.queue.length) {
+      add(const ConfirmReviewedStopsEvent());
+    }
+  }
+
+  /// Steps the review back one card and un-files the stop it had filed.
+  ///
+  /// The stop is removed by identity from whichever list it went into rather
+  /// than by popping the tail of both: the detail overlay can accept or reject
+  /// out of band, so "the last thing added" and "the stop at the previous
+  /// index" are not always the same entry.
+  void _onUndoSwipe(UndoSwipeEvent event, Emitter<AppState> emit) {
+    if (state.currentIndex <= 0) return;
+
+    final previousIndex = state.currentIndex - 1;
+    final loc = state.queue[previousIndex];
+
+    final accepted = List<Location>.from(state.accepted)
+      ..removeWhere((l) => l.id == loc.id);
+    final rejected = List<Location>.from(state.rejected)
+      ..removeWhere((l) => l.id == loc.id);
+
+    emit(state.copyWith(
+      currentIndex: previousIndex,
+      accepted: accepted,
+      rejected: rejected,
     ));
   }
 
@@ -315,12 +488,53 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     final loc = state.currentLoc;
     if (loc == null) return;
 
-    final newAccepted =
-        event.isAccept ? [...state.accepted, loc] : state.accepted;
-    final newRejected =
-        !event.isAccept ? [...state.rejected, loc] : state.rejected;
+    final newAccepted = event.isAccept ? [...state.accepted, loc] : state.accepted;
+    final newRejected = !event.isAccept ? [...state.rejected, loc] : state.rejected;
 
     _handleSwipeNext(state.currentIndex + 1, newAccepted, newRejected, emit);
+  }
+
+  /// Re-generates without the dropped stops.
+  ///
+  /// Dropping them client-side would leave the segments, the total duration and
+  /// the day-count flag describing a route that no longer exists — the ordering
+  /// and the drive/walk split are properties of the whole stop set, not of each
+  /// stop. So the server re-runs clustering and ordering for what's left.
+  Future<void> _onConfirmReviewedStops(
+      ConfirmReviewedStopsEvent event, Emitter<AppState> emit) async {
+    final route = state.route;
+    if (route == null) {
+      emit(state.copyWith(screen: 'result'));
+      return;
+    }
+
+    if (state.rejected.isEmpty) {
+      emit(state.copyWith(screen: 'result'));
+      return;
+    }
+
+    emit(state.copyWith(screen: 'thinking', thinkIdx: 0, isGeneratingRoute: true));
+
+    try {
+      final refined = await RouteRepository.refineRoute(
+        routeId: route.id,
+        dropPoiIds: state.rejected.map((l) => l.id).toList(),
+        cityId: route.cityId,
+        theme: route.theme,
+        timeBudgetMinutes: route.timeBudgetMinutes,
+        transportMode: route.transportMode,
+        categoryKeys: state.selectedCategoryKeys.toList(),
+      );
+      emit(state.copyWith(route: refined, screen: 'result', isGeneratingRoute: false));
+    } catch (_) {
+      // Keep the route as generated rather than showing a stale one that
+      // claims stops the traveller dropped.
+      emit(state.copyWith(
+        screen: 'result',
+        isGeneratingRoute: false,
+        routeError: "Couldn't drop those stops — showing the route as generated.",
+      ));
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -328,17 +542,11 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   // ---------------------------------------------------------------------------
 
   void _onOpenDetail(OpenDetailEvent event, Emitter<AppState> emit) {
-    emit(state.copyWith(
-      detailLoc: event.loc,
-      detailConversation: const [],
-    ));
+    emit(state.copyWith(detailLoc: event.loc, detailConversation: const []));
   }
 
   void _onCloseDetail(CloseDetailEvent event, Emitter<AppState> emit) {
-    emit(state.copyWith(
-      detailLoc: null,
-      detailConversation: const [],
-    ));
+    emit(state.copyWith(detailLoc: null, detailConversation: const []));
   }
 
   /// Sends the question to /api/chat and emits the real response.
@@ -413,106 +621,85 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     emit(state.copyWith(modifyMode: !state.modifyMode));
   }
 
-  void _onToggleAskPanel(ToggleAskPanelEvent event, Emitter<AppState> emit) {
-    emit(state.copyWith(askPanelOpen: !state.askPanelOpen));
-  }
+  /// Drops one stop and re-generates, for the same reason the review step does.
+  ///
+  /// Note there is no manual reorder any more: the order is the optimizer's
+  /// output over a real travel-time matrix, and a hand-dragged order would make
+  /// every segment duration and the route total wrong without saying so.
+  Future<void> _onRemoveStop(RemoveStopEvent event, Emitter<AppState> emit) async {
+    final route = state.route;
+    if (route == null) return;
+    if (event.index < 0 || event.index >= route.stops.length) return;
 
-  /// Calls /api/itinerary/modify and updates the accepted stop list.
-  Future<void> _onSendAIChange(
-      SendAIChangeEvent event, Emitter<AppState> emit) async {
-    if (event.text.trim().isEmpty) return;
-
-    emit(state.copyWith(
-      aiConversation: [
-        ...state.aiConversation,
-        ChatMessage('user', event.text),
-      ],
-    ));
+    final dropped = route.stops[event.index];
+    emit(state.copyWith(isGeneratingRoute: true));
 
     try {
-      final newStops = await ChatRepository.modifyRoute(
-        lat: state.mapCenter.latitude,
-        lng: state.mapCenter.longitude,
-        existingStops: state.accepted,
-        changeRequest: event.text,
-        radiusKm: state.radiusKm,
+      final refined = await RouteRepository.refineRoute(
+        routeId: route.id,
+        dropPoiIds: [dropped.poiId],
+        cityId: route.cityId,
+        theme: route.theme,
+        timeBudgetMinutes: route.timeBudgetMinutes,
+        transportMode: route.transportMode,
+        categoryKeys: state.selectedCategoryKeys.toList(),
       );
-      emit(state.copyWith(
-        accepted: newStops,
-        aiConversation: [
-          ...state.aiConversation,
-          const ChatMessage('ai', 'Done — I\'ve adjusted your route.'),
-        ],
-      ));
+      emit(state.copyWith(route: refined, isGeneratingRoute: false));
     } catch (_) {
       emit(state.copyWith(
-        aiConversation: [
-          ...state.aiConversation,
-          const ChatMessage('ai',
-              "Couldn't reach the AI right now — your route is unchanged."),
-        ],
+        isGeneratingRoute: false,
+        routeError: "Couldn't remove that stop — try again.",
       ));
     }
-  }
-
-  void _onMoveStop(MoveStopEvent event, Emitter<AppState> emit) {
-    final j = event.index + event.direction;
-    if (j < 0 || j >= state.accepted.length) return;
-    final list = List<Location>.from(state.accepted);
-    final tmp = list[event.index];
-    list[event.index] = list[j];
-    list[j] = tmp;
-    emit(state.copyWith(accepted: list));
-  }
-
-  void _onRemoveStop(RemoveStopEvent event, Emitter<AppState> emit) {
-    if (event.index < 0 || event.index >= state.accepted.length) return;
-    final list = List<Location>.from(state.accepted)..removeAt(event.index);
-    emit(state.copyWith(accepted: list));
-  }
-
-  void _onReorderStops(ReorderStopsEvent event, Emitter<AppState> emit) {
-    int newIndex = event.newIndex;
-    if (event.oldIndex < newIndex) newIndex -= 1;
-    final list = List<Location>.from(state.accepted);
-    final item = list.removeAt(event.oldIndex);
-    list.insert(newIndex, item);
-    emit(state.copyWith(accepted: list));
   }
 
   void _onTogglePlay(TogglePlayEvent event, Emitter<AppState> emit) {
     emit(state.copyWith(videoPlaying: !state.videoPlaying));
   }
 
-  void _onAcceptRoute(AcceptRouteEvent event, Emitter<AppState> emit) {
-    final tasks = state.accepted
+  /// Accepts the route and starts a progress record for the walk.
+  Future<void> _onAcceptRoute(AcceptRouteEvent event, Emitter<AppState> emit) async {
+    final route = state.route;
+    if (route == null) return;
+
+    final regionLabel = state.selectedCity?.name ?? '';
+    final stopsAsLocations =
+        route.stops.map((s) => s.toLocation(regionLabel: regionLabel)).toList();
+    final tasks = stopsAsLocations
         .map((l) => Task(type: l.task.type, label: l.task.label, points: 30))
         .toList();
+
     emit(state.copyWith(
+      accepted: stopsAsLocations,
       tasks: tasks,
       screen: 'overview',
       routeAccepted: true,
       currentStopIdx: 0,
     ));
-    LocationRepository.acceptLatestItinerary(state.accepted);
-  }
 
-  void _onRestoreAcceptedRoute(RestoreAcceptedRouteEvent event, Emitter<AppState> emit) {
-    final tasks = event.acceptedLocations
-        .map((l) => Task(type: l.task.type, label: l.task.label, points: 30))
-        .toList();
-    emit(state.copyWith(
-      accepted: event.acceptedLocations,
-      tasks: tasks,
-      screen: 'overview',
-      routeAccepted: true,
-      currentStopIdx: 0,
-    ));
+    try {
+      final progress = await RouteRepository.startProgress(route.id);
+      emit(state.copyWith(progress: progress));
+    } catch (_) {
+      // The tour still works without a server-side progress record; the
+      // checkpoints simply aren't logged.
+    }
   }
 
   // ---------------------------------------------------------------------------
-  // Overview / task management
+  // Walking the route
   // ---------------------------------------------------------------------------
+
+  /// Best-effort: a dropped checkpoint must never block the tour.
+  Future<void> _onRecordCheckpoint(
+      RecordCheckpointEvent event, Emitter<AppState> emit) async {
+    final progress = state.progress;
+    if (progress == null) return;
+    await RouteRepository.recordCheckpoint(
+      progressId: progress.id,
+      poiId: event.poiId,
+    );
+  }
 
   void _onCompleteTask(CompleteTaskEvent event, Emitter<AppState> emit) {
     if (state.currentStopIdx >= state.tasks.length) return;
@@ -521,10 +708,12 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
     final updated = List<Task>.from(state.tasks);
     updated[state.currentStopIdx] = t.copyWith(state: 'done');
-    emit(state.copyWith(
-      tasks: updated,
-      points: state.points + t.points,
-    ));
+    emit(state.copyWith(tasks: updated, points: state.points + t.points));
+
+    final stops = state.routeStops;
+    if (state.currentStopIdx < stops.length) {
+      add(RecordCheckpointEvent(stops[state.currentStopIdx].poiId));
+    }
   }
 
   /// Calls /api/tasks/generate for a real LLM-generated task.
@@ -813,7 +1002,8 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     _thinkTimer?.cancel();
     emit(state.copyWith(
       screen: 'map',
-      prompt: '',
+      route: null,
+      progress: null,
       queue: const [],
       currentIndex: 0,
       accepted: const [],
@@ -821,8 +1011,6 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       detailLoc: null,
       detailConversation: const [],
       modifyMode: false,
-      askPanelOpen: false,
-      aiConversation: const [],
       routeAccepted: false,
       tripDate: null,
       tripEndDate: null,
@@ -834,6 +1022,12 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       isGeneratingRoute: false,
       isChatLoading: false,
       routeError: null,
+      routeErrorCode: null,
     ));
   }
+}
+
+/// `firstOrNull` without pulling in package:collection for two call sites.
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

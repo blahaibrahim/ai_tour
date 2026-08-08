@@ -15,11 +15,10 @@ import {
 import { internals as phi } from "../src/ingestion/photos";
 import { computeScore } from "../src/ingestion/scoring";
 import { collectFacts, compose } from "../src/ingestion/describe";
-import { internals as iti } from "../src/routes/itinerary";
 import { coveringTiles, tileBounds, tileIdFor } from "../src/ingestion/tiling";
 import { haversineKm } from "../src/data/geo";
 import { normalizeFold, roundTo } from "../src/text";
-import { Candidate, HeritageStatus, OsmTags } from "../src/types";
+import { HeritageStatus, OsmTags } from "../src/types";
 
 const STRINGS = [
   "ÎLOT 661", "ilot 661", "Sidi M'Cid", "مقام الشهيد", "أحمد", "قلعة", "Café Malakoff",
@@ -70,23 +69,6 @@ const NAMES_FOR_SCORE = [
   "Consulate General", "Chancellerie", "Snack Bar", "Ticket Office", "Casbah of Algiers",
   "Résidence d'Etat", "RESIDENCE D ETAT", "gift shop", "Giftshop",
 ];
-
-const PROMPTS = [
-  "shopping malls", "I would like to visit some Roman ruins near Algiers",
-  "musées et jardins", "شواطئ", "beaches and viewpoints", "history", "", "art",
-  "show me nice places", "théâtre", "café", "old town walking tour",
-];
-
-const CANDIDATES_FOR_PROMPT = [
-  { category: "Shopping mall", name: "Bab Ezzouar Mall" },
-  { category: "Market", name: "Souk El Fellah" },
-  { category: "Ruins", name: "Tipaza" },
-  { category: "Museum", name: "Musée National" },
-  { category: "Beach", name: "Chenoua Plage" },
-  { category: "Park", name: "Jardin d'Essai" },
-  { category: "Theatre", name: "Théâtre National" },
-  { category: "Mosque", name: "Ketchaoua" },
-] as unknown as Candidate[];
 
 const PHOTO_CASES: Array<[string, string[], OsmTags, string]> = [
   ["Ketchaoua Mosque architecture – Algiers 8.jpg", ["Ketchaoua Mosque"], { "addr:city": "Algiers" }, "Algiers"],
@@ -146,22 +128,6 @@ for (const tags of TAGSETS) {
   }
 }
 out.compose = composed;
-
-out.prompt_terms = obj(PROMPTS, (p) => [...iti.promptTerms(p)].sort());
-out.matches_prompt = PROMPTS.map((p) => {
-  const terms = iti.promptTerms(p);
-  return CANDIDATES_FOR_PROMPT.map((c) => iti.matchesPrompt(c, terms));
-});
-
-const ranks: number[] = [];
-for (const d of [0, 1, 5, 20, 100, 1000]) {
-  for (const s of [0, 25, 60]) {
-    for (const r of [1, 15, 50, 500]) {
-      ranks.push(roundTo(iti.rank({ distance_km: d, interest_score: s } as Candidate, r), 9));
-    }
-  }
-}
-out.rank = ranks;
 
 const photoTokens: unknown[] = [];
 const photoMatches: unknown[] = [];

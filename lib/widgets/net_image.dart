@@ -83,7 +83,7 @@ class StockPhotoTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.55),
+        color: Colors.black.withValues(alpha: 0.55),
         borderRadius: AppTheme.brPill,
       ),
       child: Padding(
@@ -160,7 +160,7 @@ class NetImage extends StatelessWidget {
           height: height,
           color: AppTheme.surfaceAlt,
           alignment: Alignment.center,
-          child: Icon(Icons.image_not_supported_outlined, color: AppTheme.textSecondary.withOpacity(0.6)),
+          child: Icon(Icons.image_not_supported_outlined, color: AppTheme.textSecondary.withValues(alpha: 0.6)),
         );
 
     return ClipRRect(

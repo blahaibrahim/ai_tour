@@ -54,7 +54,7 @@ class CurrentStopCard extends StatelessWidget {
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white, fontSize: 22),
                         ),
                         const SizedBox(height: 4),
-                        Text('${stop.region}', style: const TextStyle(fontSize: 13, color: Colors.white70)),
+                        Text(stop.region, style: const TextStyle(fontSize: 13, color: Colors.white70)),
                       ],
                     ),
                   ),
@@ -62,7 +62,7 @@ class CurrentStopCard extends StatelessWidget {
                     ElevatedButton(
                       onPressed: () => bloc.add(const AdvanceStopEvent()),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white.withOpacity(0.15),
+                        backgroundColor: Colors.white.withValues(alpha: 0.15),
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -73,10 +73,10 @@ class CurrentStopCard extends StatelessWidget {
                   else
                     Row(
                       children: [
-                        Icon(Icons.flag_outlined, size: 16, color: AppTheme.onNavy.withOpacity(0.8)),
+                        Icon(Icons.flag_outlined, size: 16, color: AppTheme.onNavy.withValues(alpha: 0.8)),
                         const SizedBox(width: 4),
                         Text('End of route',
-                            style: TextStyle(fontSize: 12, color: AppTheme.onNavy.withOpacity(0.8), fontWeight: FontWeight.bold)),
+                            style: TextStyle(fontSize: 12, color: AppTheme.onNavy.withValues(alpha: 0.8), fontWeight: FontWeight.bold)),
                       ],
                     ),
                 ],

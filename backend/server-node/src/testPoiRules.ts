@@ -25,9 +25,8 @@ import {
   nameVariants,
 } from "./ingestion/overpass";
 import { computeScore } from "./ingestion/scoring";
-import { dropEnclosed, encloses } from "./routes/itinerary";
 import { capitalize, normalizeFold, titleCase } from "./text";
-import { Bounds, Candidate, OsmTags, Poi } from "./types";
+import { OsmTags, Poi } from "./types";
 
 const failures: string[] = [];
 
@@ -263,51 +262,12 @@ const neighbours = [
 ];
 check("adjacent but differently-named places do NOT merge", deduplicate([...neighbours]).length, 2);
 
-// --- enclosure (route diversity) -------------------------------------------
-// Reported as duplicates: the Tipaza park plus two of its own ruins.
-const TIPAZA_SITE_BOUNDS: Bounds = {
-  minlat: 36.5905,
-  minlon: 2.438,
-  maxlat: 36.599,
-  maxlon: 2.449,
-};
-
-function stop(sid: string, name: string, lat: number, lng: number, bounds: Bounds | null = null): Candidate {
-  return {
-    id: sid,
-    name,
-    lat,
-    lng,
-    bounds,
-    category: "Ruins",
-    tags: {},
-    interest_score: 25,
-    distance_km: 2.0,
-    blurb: "",
-  };
-}
-
-const site = stop("site", "Roman Ruins of Tipaza", 36.59463, 2.44224, TIPAZA_SITE_BOUNDS);
-const theatre = stop("theatre", "Roman Theatre", 36.59265, 2.44165);
-const amphi = stop("amphi", "Amphithéâtre Romain", 36.59315, 2.44542);
-const beach = stop("beach", "Chenoua Plage", 36.575, 2.4);
-
-check("the park encloses its own theatre", encloses(site, theatre), true);
-check("a stop never encloses itself", encloses(site, site), false);
-check("a node (no bounds) encloses nothing", encloses(theatre, amphi), false);
-check("a beach outside the park is not enclosed", encloses(site, beach), false);
-
-const thinned = dropEnclosed([site, theatre, amphi, beach], [site, theatre, amphi, beach], 4);
-check(
-  "three cards for one park collapse to the park",
-  thinned.map((s) => s.id).sort(),
-  ["beach", "site"],
-);
-
-// The Casbah's landmarks are peers, not sub-features: nothing selected
-// encloses anything else, so an all-node selection must survive intact.
-const casbah = [0, 1, 2, 3].map((i) => stop(`m${i}`, `Mosque ${i}`, 36.7839 + i * 0.001, 3.0606));
-check("peer landmarks are never thinned", dropEnclosed(casbah, casbah, 8).length, 4);
+// The enclosure / route-diversity checks that used to sit here belonged to the
+// old `routes/itinerary.ts` (`_encloses` / `_drop_enclosed`). That module has
+// been removed — see `src/routeGeneration/` for the replacement, whose own
+// clustering and ordering rules get their tests once the domain layer is
+// implemented. Everything above is the POI ingestion pipeline, which the new
+// design still depends on as its `api_seeded` source.
 
 check(
   "distance helper agrees with the dedupe radius",

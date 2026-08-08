@@ -67,7 +67,7 @@ class SettingsScreen extends StatelessWidget {
             Center(
               child: Text(
                 'AI Tour v1.0.0',
-                style: TextStyle(color: AppTheme.text.withOpacity(0.5), fontSize: 12),
+                style: TextStyle(color: AppTheme.text.withValues(alpha: 0.5), fontSize: 12),
               ),
             ),
           ],
@@ -88,7 +88,7 @@ class SettingsScreen extends StatelessWidget {
               fontSize: 11,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.2,
-              color: AppTheme.text.withOpacity(0.5),
+              color: AppTheme.text.withValues(alpha: 0.5),
             ),
           ),
         ),
@@ -99,7 +99,7 @@ class SettingsScreen extends StatelessWidget {
               for (int i = 0; i < children.length; i++) ...[
                 children[i],
                 if (i < children.length - 1)
-                  Divider(height: 1, indent: 56, color: AppTheme.ink.withOpacity(0.1)),
+                  Divider(height: 1, indent: 56, color: AppTheme.ink.withValues(alpha: 0.1)),
               ],
             ],
           ),
@@ -119,8 +119,8 @@ class SettingsScreen extends StatelessWidget {
     return ListTile(
       leading: Icon(icon, color: iconColor ?? AppTheme.textSecondary),
       title: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textColor)),
-      subtitle: subtitle != null ? Text(subtitle, style: TextStyle(fontSize: 12, color: AppTheme.text.withOpacity(0.6))) : null,
-      trailing: Icon(Icons.chevron_right, size: 20, color: AppTheme.text.withOpacity(0.3)),
+      subtitle: subtitle != null ? Text(subtitle, style: TextStyle(fontSize: 12, color: AppTheme.text.withValues(alpha: 0.6))) : null,
+      trailing: Icon(Icons.chevron_right, size: 20, color: AppTheme.text.withValues(alpha: 0.3)),
       onTap: onTap ?? () {},
     );
   }

@@ -1,0 +1,3 @@
+# Local side only — everything heavy (torch, gsplat, pycolmap, ffmpeg) lives in
+# the Modal images and is never installed on your machine.
+modal>=1.5.1

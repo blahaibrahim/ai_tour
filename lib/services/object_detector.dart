@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 
 /// On-device object detection using Google ML Kit image labeling.

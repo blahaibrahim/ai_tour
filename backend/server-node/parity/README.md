@@ -35,13 +35,17 @@ Pure functions only — no network, no Supabase, so it is fast and deterministic
 | `score` | 17 names × 20 tag sets = 340 scores, each with its full breakdown |
 | `score_pageviews` | the log-scaled pageview curve at 7 magnitudes |
 | `compose` | 47 tag sets × 3 heritage statuses = 141 generated blurbs |
-| `prompt_terms`, `matches_prompt` | 12 prompts (EN/FR/AR) × 8 candidates |
-| `rank` | 72 distance/score/radius combinations |
 | `photo_tokens`, `photo_matches`, `tag_dump`, `photos_name_variants` | the 10 measured false-positive cases from `photos.ts`'s docstring |
 | `tiles` | tile ids, bounds and coverings at 5 latitudes including the equator and the southern hemisphere |
 | `haversine` | 5 distances, to 9 decimal places |
 
-Last run: **identical across all 19 sections**.
+Last run: **identical across all 16 sections**.
+
+The prompt-ranking sections that used to be here went with `routes/itinerary.py`'s
+replacement — those rules belonged to the removed LLM candidate-ranking path and
+have no counterpart in the Route Generation module. Everything left is the POI
+ingestion pipeline, which the new design still depends on as its `api_seeded`
+source.
 
 ## Adding cases
 

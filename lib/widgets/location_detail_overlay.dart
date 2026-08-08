@@ -45,7 +45,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
               child: GestureDetector(
                 onTap: () => context.read<AppBloc>().add(const CloseDetailEvent()),
                 child: Container(
-                  color: AppTheme.text.withOpacity(0.65),
+                  color: AppTheme.text.withValues(alpha: 0.65),
                 ),
               ),
             ),
@@ -139,7 +139,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                                       Expanded(
                                         child: Text(
                                           loc.region,
-                                          style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w500),
+                                          style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13, fontWeight: FontWeight.w500),
                                         ),
                                       ),
                                     ],
@@ -147,7 +147,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                                   const SizedBox(height: 12),
                                   Text(
                                     loc.blurb,
-                                    style: TextStyle(fontSize: 12.5, color: AppTheme.onNavy.withOpacity(0.9), height: 1.4),
+                                    style: TextStyle(fontSize: 12.5, color: AppTheme.onNavy.withValues(alpha: 0.9), height: 1.4),
                                   ),
                                 ],
                               ),
@@ -167,7 +167,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
 
                     Text(
                       'ASK THE AI',
-                      style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppTheme.text.withOpacity(0.55)),
+                      style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppTheme.text.withValues(alpha: 0.55)),
                     ),
                     const SizedBox(height: 8),
 
@@ -227,7 +227,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                             ],
                           ),
                         );
-                      }).toList(),
+                      }),
                     ],
                   ],
                 ),
@@ -254,7 +254,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                       },
                       decoration: InputDecoration(
                         hintText: "Ask anything about this spot...",
-                        hintStyle: TextStyle(color: AppTheme.text.withOpacity(0.4), fontSize: 13),
+                        hintStyle: TextStyle(color: AppTheme.text.withValues(alpha: 0.4), fontSize: 13),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,

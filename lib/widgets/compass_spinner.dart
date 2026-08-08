@@ -92,7 +92,7 @@ class _CompassPainter extends CustomPainter {
     // Blue face, inset so the brass reads as a rim.
     final faceR = r * 0.76;
     canvas.drawCircle(center, faceR, fill(AppTheme.compassBlue));
-    canvas.drawCircle(center, faceR, line(AppTheme.cocoa.withOpacity(0.55), s * 0.022));
+    canvas.drawCircle(center, faceR, line(AppTheme.cocoa.withValues(alpha: 0.55), s * 0.022));
 
     // Needle — a slim lens split down its long axis: cream on the leading
     // side, brass on the trailing side, exactly as in the icon.
@@ -113,7 +113,7 @@ class _CompassPainter extends CustomPainter {
       ..quadraticBezierTo(waist * 2, 0, 0, tip)
       ..close();
 
-    final needleEdge = line(AppTheme.cocoa.withOpacity(0.75), s * 0.016);
+    final needleEdge = line(AppTheme.cocoa.withValues(alpha: 0.75), s * 0.016);
     canvas.drawPath(leading, fill(AppTheme.cream));
     canvas.drawPath(trailing, fill(AppTheme.amber));
     canvas.drawPath(leading, needleEdge);

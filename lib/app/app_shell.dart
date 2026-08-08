@@ -25,18 +25,6 @@ import 'nav_bar.dart';
 class AppShell extends StatelessWidget {
   const AppShell({super.key});
 
-  /// Opens the app's own camera — the same viewfinder, chrome and shutter the
-  /// fennec hunt uses, minus the fennec. It files the shot through
-  /// [AddCapturedArtifactEvent] itself, so there is nothing to do here but push it.
-  void _openCamera(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const ArHuntScreen(mode: ArCameraMode.capture),
-        fullscreenDialog: true,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final authState = context.watch<AuthBloc>().state;

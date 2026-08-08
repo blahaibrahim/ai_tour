@@ -4,9 +4,9 @@ import { getLogger } from "./logger";
 import { authRouter } from "./routes/auth";
 import { chatRouter } from "./routes/chat";
 import { healthRouter } from "./routes/health";
-import { itineraryRouter } from "./routes/itinerary";
 import { modelsRouter } from "./routes/models";
 import { poiRouter } from "./routes/poi";
+import { routesRouter } from "./routes/routes";
 import { tasksRouter } from "./routes/tasks";
 
 const logger = getLogger("app");
@@ -28,7 +28,9 @@ export function createApp(): Express {
   });
 
   app.use(healthRouter);
-  app.use(itineraryRouter);
+  // Route generation. Replaces the old /api/itinerary job-and-poll endpoints —
+  // see src/routeGeneration/README.md for what changed and why.
+  app.use(routesRouter);
   app.use(chatRouter);
   app.use(tasksRouter);
   app.use(poiRouter);

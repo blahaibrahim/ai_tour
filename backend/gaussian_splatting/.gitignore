@@ -1,0 +1,14 @@
+# Splat outputs and captures never belong in git — a single .ply is 50-500 MB.
+*.ply
+*.splat
+*.mp4
+*.mov
+*.MP4
+*.MOV
+outputs/
+results/
+
+__pycache__/
+*.pyc
+venv/
+.venv/

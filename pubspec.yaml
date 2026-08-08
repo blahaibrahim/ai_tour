@@ -52,6 +52,7 @@ flutter:
     # Shown by NetImage when a location has no real photo, in place of the
     # random stock image the old picsum.photos fallback pulled in.
     - assets/icon/app-icon-transparent.png
+    - assets/dz_wilayas.geojson
     - .env
 
 flutter_launcher_icons:

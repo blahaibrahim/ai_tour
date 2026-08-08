@@ -21,7 +21,7 @@ List<Widget> artifactCubeFaces(Artifact artifact, {double iconSize = 28}) {
   Widget face(Color color, {Widget? child}) => ColoredBox(color: color, child: Center(child: child));
 
   return [
-    face(base, child: Icon(icon, color: Colors.white.withOpacity(0.85), size: iconSize)), // front
+    face(base, child: Icon(icon, color: Colors.white.withValues(alpha: 0.85), size: iconSize)), // front
     face(shade(-0.28)), // back
     face(shade(-0.16)), // left
     face(shade(-0.16)), // right

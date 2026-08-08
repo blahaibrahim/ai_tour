@@ -49,7 +49,7 @@ class _ScreenSwitcherState extends State<ScreenSwitcher> {
       layoutBuilder: (currentChild, previousChildren) => Stack(
         children: [
           ...previousChildren,
-          if (currentChild != null) currentChild,
+          ?currentChild,
         ],
       ),
       transitionBuilder: (child, animation) {

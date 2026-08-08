@@ -1,8 +1,12 @@
 # ai_tour server — TypeScript
 
-A port of [`backend/server`](../server) (Flask) to Node + TypeScript. **The HTTP
-contract is unchanged**, so the Flutter client needs no changes and the two
-servers can run side by side and be diffed.
+A port of [`backend/server`](../server) (Flask) to Node + TypeScript, plus the
+skeleton of the new Route Generation module that replaces the old itinerary
+endpoints.
+
+Everything except route generation kept its HTTP contract exactly, so those
+routes can be run side by side against the Flask server and diffed. Route
+generation is a deliberate break — see below.
 
 ```sh
 npm install
@@ -30,6 +34,7 @@ the other while both exist.
 | `data/*.py` | `src/data/*.ts` |
 | `ingestion/*.py` | `src/ingestion/*.ts` |
 | `routes/*.py` | `src/routes/*.ts` |
+| `routes/itinerary.py` | **removed** — replaced by `src/routeGeneration/` |
 | `test_poi_rules.py` | `src/testPoiRules.ts` |
 | `backfill_photos.py`, `backfill_descriptions.py`, `translate_curated.py` | `src/scripts/*.ts` |
 | — | `src/http.ts`, `src/async.ts`, `src/text.ts`, `src/supabase.ts`, `src/types.ts` |
@@ -40,21 +45,37 @@ raise-on-error behaviour, and the shared data shapes.
 
 ## Endpoints
 
-All eight, unchanged in path, method, request body and response body:
+Everything except route generation is unchanged in path, method, request body
+and response body from the Flask server:
 
 ```
 GET  /api/health
-POST /api/itinerary
-GET  /api/itinerary/job/latest
-GET  /api/itinerary/job/:jobId
-POST /api/itinerary/modify
-POST /api/itinerary/accept
 POST /api/chat
 POST /api/tasks/generate
 POST /api/poi/ingest
 POST /api/models/generate
 POST /api/auth/delete-account
 ```
+
+Route generation was replaced wholesale by the Route Generation module — see
+[`src/routeGeneration/README.md`](src/routeGeneration/README.md). The old
+`/api/itinerary*` endpoints are gone:
+
+```
+GET  /api/cities                        list + rollout status
+GET  /api/categories                    themes and categories
+POST /api/routes                        generate (synchronous)
+GET  /api/routes/:routeId
+POST /api/routes/:routeId/refine        NOT IN SPEC — see the module README
+POST /api/routes/:routeId/progress      start a walk
+GET  /api/progress/:progressId
+POST /api/progress/:progressId/checkpoint
+```
+
+**Nothing below Layer 1 is implemented.** `ROUTE_GENERATION_MODE` defaults to
+`fixture`, which serves a placeholder Algiers route so the app is buildable;
+`real` calls the orchestrator, which throws `501 not_implemented` naming the
+first missing component.
 
 ## What is deliberately not here
 
@@ -69,7 +90,7 @@ request path, so leaving it where it is costs nothing.
 
 Behavioural parity is verified by [`parity/`](parity/README.md) — a differential
 harness that runs both implementations over the same corpus and diffs the
-results (currently identical across all 19 sections). What follows is the list
+results (currently identical across all 16 sections). What follows is the list
 of places where the two languages genuinely required a decision.
 
 **Unicode.** The single largest risk, and the reason `src/text.ts` exists.
@@ -84,9 +105,8 @@ pinned in both `npm test` and the parity harness.
 they became promises plus a semaphore (`src/async.ts`). Three consequences:
 the JWT cache and the Overpass bbox cache no longer need locks; the
 `PHOTO_WAIT_S` deadline is a `Promise.race` rather than `future.result(timeout)`;
-and the fire-and-forget route-generation job is an un-awaited async function
-with exactly the same caveat as the thread it replaces — a process restart
-loses it.
+and the limiter replaces the pools outright. (The fire-and-forget generation
+thread went with the old itinerary route — generation is synchronous now.)
 
 **Overpass hedging** gained one thing the Python could not do: abandoned mirror
 requests are actually cancelled via `AbortController`, where

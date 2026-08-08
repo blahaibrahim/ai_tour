@@ -24,7 +24,6 @@ from ingestion.overpass import (
 from ingestion.photos import _tokens, _matches_subject, _place_stopwords, _normalize, _is_tag_dump, _name_variants as p_name_variants
 from ingestion.scoring import compute_score
 from ingestion.describe import collect_facts, compose, _kind, _qualifiers
-from routes.itinerary import _prompt_terms, _matches_prompt, _rank
 from ingestion.tiling import covering_tiles, tile_id_for, tile_bounds
 from data.geo import haversine_km
 
@@ -78,23 +77,6 @@ NAMES_FOR_SCORE = [
     "Résidence d'Etat", "RESIDENCE D ETAT", "gift shop", "Giftshop",
 ]
 
-PROMPTS = [
-    "shopping malls", "I would like to visit some Roman ruins near Algiers",
-    "musées et jardins", "شواطئ", "beaches and viewpoints", "history", "", "art",
-    "show me nice places", "théâtre", "café", "old town walking tour",
-]
-
-CANDIDATES_FOR_PROMPT = [
-    {"category": "Shopping mall", "name": "Bab Ezzouar Mall"},
-    {"category": "Market", "name": "Souk El Fellah"},
-    {"category": "Ruins", "name": "Tipaza"},
-    {"category": "Museum", "name": "Musée National"},
-    {"category": "Beach", "name": "Chenoua Plage"},
-    {"category": "Park", "name": "Jardin d'Essai"},
-    {"category": "Theatre", "name": "Théâtre National"},
-    {"category": "Mosque", "name": "Ketchaoua"},
-]
-
 PHOTO_CASES = [
     ("Ketchaoua Mosque architecture – Algiers 8.jpg", ["Ketchaoua Mosque"], {"addr:city": "Algiers"}, "Algiers"),
     ("Streets in Algiers 2024 06.jpg", ["Museum of Modern Art of Algiers"], {"addr:city": "Algiers"}, "Algiers"),
@@ -139,15 +121,6 @@ for tags in TAGSETS:
         facts = collect_facts(name="Test Place", category=_category_from_tags(tags) or "Attraction",
                               tags=tags, heritage_status=hs, place="Algiers")
         out["compose"].append([facts["kind"], facts["embassy"], facts["qualifiers"], compose(facts)])
-
-out["prompt_terms"] = {p: sorted(_prompt_terms(p)) for p in PROMPTS}
-out["matches_prompt"] = []
-for p in PROMPTS:
-    terms = _prompt_terms(p)
-    out["matches_prompt"].append([_matches_prompt(c, terms) for c in CANDIDATES_FOR_PROMPT])
-
-out["rank"] = [round(_rank({"distance_km": d, "interest_score": s}, r), 9)
-               for d in [0, 1, 5, 20, 100, 1000] for s in [0, 25, 60] for r in [1, 15, 50, 500]]
 
 out["photo_tokens"] = []
 out["photo_matches"] = []

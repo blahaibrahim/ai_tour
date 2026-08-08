@@ -76,12 +76,15 @@ class _FolderScreenState extends State<FolderScreen> {
       length: 2,
       child: Scaffold(
         body: AppBackdrop(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 60, 20, 16),
-                child: Column(
+          variant: AppBackdropVariant.deep,
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(AppTheme.space5, AppTheme.space4, AppTheme.space5, 16),
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('YOUR FOLDER', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white70, fontWeight: FontWeight.bold)),
@@ -115,7 +118,7 @@ class _FolderScreenState extends State<FolderScreen> {
                               onChanged: (_) => setState(() {}),
                               decoration: InputDecoration(
                                 hintText: 'Search your scans',
-                                prefixIcon: Icon(Icons.search, color: AppTheme.text.withOpacity(0.5)),
+                                prefixIcon: Icon(Icons.search, color: AppTheme.text.withValues(alpha: 0.5)),
                                 filled: false,
                                 border: InputBorder.none,
                                 enabledBorder: InputBorder.none,
@@ -142,7 +145,7 @@ class _FolderScreenState extends State<FolderScreen> {
                               onChanged: (_) => setState(() {}),
                               decoration: InputDecoration(
                                 hintText: 'Search saved locations',
-                                prefixIcon: Icon(Icons.search, color: AppTheme.text.withOpacity(0.5)),
+                                prefixIcon: Icon(Icons.search, color: AppTheme.text.withValues(alpha: 0.5)),
                                 filled: false,
                                 border: InputBorder.none,
                                 enabledBorder: InputBorder.none,
@@ -164,6 +167,7 @@ class _FolderScreenState extends State<FolderScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }
