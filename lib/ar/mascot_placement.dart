@@ -20,6 +20,27 @@ const double kAssumedPhoneHeight = 1.4;
 class MascotSpot {
   const MascotSpot({this.bearing = 0.35, this.distance = 1.6});
 
+  /// Builds a spot from the real-world geometry instead of the placeholder
+  /// default: the true bearing from the visitor to the spawn point, and the
+  /// device's compass heading when the AR session started.
+  ///
+  /// This is §5.5's "bearing-preserving AR placement, not survey-grade
+  /// geo-anchoring" — `yaw = θ − H₀`. Only the bearing survives the transition
+  /// into AR-world coordinates: consumer GPS is ±5–15 m and urban compass
+  /// error is ±10–15°, so placing the mascot at its true geographic distance
+  /// would put it inside a wall as often as not. [presentationDistance] is
+  /// deliberately fixed and clamped to the plan's `[2.5 m, 6 m]` range instead.
+  factory MascotSpot.towardsBearing({
+    required double trueBearingRadians,
+    required double headingRadians,
+    double presentationDistance = 4.0,
+  }) {
+    return MascotSpot(
+      bearing: trueBearingRadians - headingRadians,
+      distance: presentationDistance.clamp(2.5, 6.0),
+    );
+  }
+
   /// Radians clockwise from the direction the camera faced at session start.
   /// Zero is dead ahead; pi puts the mascot behind the visitor.
   final double bearing;

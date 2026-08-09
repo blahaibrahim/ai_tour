@@ -157,7 +157,9 @@ function stop(
 /** Two clusters: the Casbah on foot, then a drive up to the Riadh El Feth
  * plateau and another walking loop. Exactly the shape the hybrid transport
  * model exists to produce. */
-const FIXTURE_STOPS: RouteStop[] = [
+// Exported so arCapture/fixtures.ts can key its own fixture spawn to a real
+// fixture POI id — see that file's module docstring.
+export const FIXTURE_STOPS: RouteStop[] = [
   stop(0, 0, "e0000000-0000-4000-8000-00000000000a", "Ketchaoua Mosque", "religious",
     36.7839, 3.0606, 25,
     "Ottoman mosque at the foot of the Casbah, rebuilt in the 1840s and returned to worship in 1962."),

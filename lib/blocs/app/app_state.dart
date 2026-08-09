@@ -65,6 +65,8 @@ class AppState extends Equatable {
     this.isChatLoading = false,
     this.routeError,
     this.routeErrorCode,
+    this.arTestingMode = true,
+    this.testMascotSpawn,
   })  : selectedRegions = selectedRegions ?? regions,
         selectedCategoryKeys = selectedCategoryKeys ?? const {},
         savedLocationIds = savedLocationIds ?? const {};
@@ -172,6 +174,15 @@ class AppState extends Equatable {
   /// The server's machine-readable error code, so the UI can distinguish
   /// `city_not_available` from `no_eligible_pois` from a transport failure.
   final String? routeErrorCode;
+
+  /// Whether the mascot hunt spawns near the device's own position instead of
+  /// a route stop's real coordinates. Seeded from [AppConfig.arTestingMode]
+  /// at startup; toggleable live from Settings.
+  final bool arTestingMode;
+
+  /// A mascot spawn point generated near wherever the app was at launch, for
+  /// [arTestingMode]. Null until [AppBloc] resolves a GPS fix.
+  final LatLng? testMascotSpawn;
 
   /// The location currently being reviewed, or null if the queue is exhausted.
   Location? get currentLoc {
@@ -320,6 +331,8 @@ class AppState extends Equatable {
     bool? isChatLoading,
     Object? routeError = _sentinel,
     Object? routeErrorCode = _sentinel,
+    bool? arTestingMode,
+    Object? testMascotSpawn = _sentinel,
   }) {
     return AppState(
       screen: screen ?? this.screen,
@@ -365,6 +378,9 @@ class AppState extends Equatable {
       routeError: routeError == _sentinel ? this.routeError : routeError as String?,
       routeErrorCode:
           routeErrorCode == _sentinel ? this.routeErrorCode : routeErrorCode as String?,
+      arTestingMode: arTestingMode ?? this.arTestingMode,
+      testMascotSpawn:
+          testMascotSpawn == _sentinel ? this.testMascotSpawn : testMascotSpawn as LatLng?,
     );
   }
 
@@ -411,6 +427,8 @@ class AppState extends Equatable {
         isChatLoading,
         routeError,
         routeErrorCode,
+        arTestingMode,
+        testMascotSpawn,
       ];
 }
 

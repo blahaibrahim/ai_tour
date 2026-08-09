@@ -9,7 +9,7 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/testPoiRules.ts",
+    "test": "tsx src/testPoiRules.ts && tsx src/testArCapture.ts",
     "backfill:photos": "tsx src/scripts/backfillPhotos.ts",
     "backfill:descriptions": "tsx src/scripts/backfillDescriptions.ts",
     "translate:curated": "tsx src/scripts/translateCurated.ts"

@@ -30,4 +30,22 @@ class AppConfig {
     if (fromDotenv != null && fromDotenv.isNotEmpty) return fromDotenv;
     return const String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8000');
   }
+
+  /// Whether the AR mascot hunt spawns near the device's own position instead
+  /// of a route stop's real coordinates.
+  ///
+  /// There is no way to get near the pilot city's actual POIs during ordinary
+  /// development, so this defaults on: it lets the whole hunt loop (§5.3–§5.5
+  /// of the AR capture plan) be exercised by walking around wherever the
+  /// tester actually is. Flip off with `AR_TESTING_MODE=false` in `.env` — or
+  /// toggle it live from Settings — once real POIs are reachable.
+  static bool get arTestingMode {
+    final fromDotenv = dotenv.maybeGet('AR_TESTING_MODE');
+    if (fromDotenv != null && fromDotenv.isNotEmpty) {
+      return fromDotenv.trim().toLowerCase() != 'false';
+    }
+    return const String.fromEnvironment('AR_TESTING_MODE', defaultValue: 'true')
+            .toLowerCase() !=
+        'false';
+  }
 }

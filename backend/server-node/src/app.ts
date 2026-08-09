@@ -4,6 +4,7 @@ import { getLogger } from "./logger";
 import { authRouter } from "./routes/auth";
 import { chatRouter } from "./routes/chat";
 import { healthRouter } from "./routes/health";
+import { mascotsRouter } from "./routes/mascots";
 import { modelsRouter } from "./routes/models";
 import { poiRouter } from "./routes/poi";
 import { routesRouter } from "./routes/routes";
@@ -31,6 +32,8 @@ export function createApp(): Express {
   // Route generation. Replaces the old /api/itinerary job-and-poll endpoints —
   // see src/routeGeneration/README.md for what changed and why.
   app.use(routesRouter);
+  // AR mascot hunt — see src/arCapture/README.md.
+  app.use(mascotsRouter);
   app.use(chatRouter);
   app.use(tasksRouter);
   app.use(poiRouter);

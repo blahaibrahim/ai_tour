@@ -157,6 +157,7 @@ to keep existing cross-links stable.
 | 10 | [Theming — light & dark](10-theming-light-dark.md) | Migrating 241 static const references to a themeable system | Not started |
 | 11 | [Security checklist](11-security-checklist.md) | Consolidated review, threat model, pre-launch gate | **Critical items closed**; fail-open rate limiting is now the weakest link |
 | 13 | [Route generation architecture](13-route-generation-architecture.md) | Intent extraction, offline geo data, hybrid ranking, travel-time optimization | **Partially implemented** — back half built, intent/ranking layers dormant |
+| 14 | [AR capture module setup](14-ar-capture-module-setup.md) | Applying `backend/server-node/sql/001_route_generation.sql` + `002_ar_capture.sql` via the Supabase CLI | **Schema only, via `npx supabase`** — the module itself (`backend/server-node/src/arCapture/`) is a skeleton; see its own README |
 
 "Not started" means no Flutter or backend code exists for that doc yet — it's
 still exactly a plan. Where a doc is marked implemented, **its own top-of-file

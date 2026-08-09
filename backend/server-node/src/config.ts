@@ -58,6 +58,11 @@ export const Config = {
   MODAL_PROXY_KEY: process.env.MODAL_PROXY_KEY,
   MODAL_PROXY_SECRET: process.env.MODAL_PROXY_SECRET,
   MODAL_SUBMIT_URL: process.env.MODAL_SUBMIT_URL,
+
+  // Signs capture tokens — see src/arCapture/domain/captureToken.ts. Any
+  // long random string; rotating it invalidates every token in flight
+  // (5 minute TTL, so that is never a real outage).
+  AR_CAPTURE_TOKEN_SECRET: process.env.AR_CAPTURE_TOKEN_SECRET,
 } as const;
 
 /**
@@ -84,6 +89,13 @@ export function requireGeminiKey(): string {
     throw new ConfigurationError("GEMINI_API_KEY is not set. Add it to backend/.env.");
   }
   return Config.GEMINI_API_KEY;
+}
+
+export function requireArCaptureTokenSecret(): string {
+  if (!Config.AR_CAPTURE_TOKEN_SECRET) {
+    throw new ConfigurationError("AR_CAPTURE_TOKEN_SECRET is not set. Add it to backend/.env.");
+  }
+  return Config.AR_CAPTURE_TOKEN_SECRET;
 }
 
 export function requireServiceRoleKey(): string {

@@ -10,6 +10,8 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = context.watch<AppBloc>().state;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -35,6 +37,20 @@ class SettingsScreen extends StatelessWidget {
                     context.read<AppBloc>().add(const LeaveTourEvent());
                     Navigator.of(context).pop();
                   },
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            _buildSettingSection(
+              title: 'AR HUNT',
+              children: [
+                _buildSwitchTile(
+                  icon: Icons.science_outlined,
+                  title: 'Testing mode',
+                  subtitle: 'Spawn the mascot near your current location',
+                  value: state.arTestingMode,
+                  onChanged: (_) =>
+                      context.read<AppBloc>().add(const ToggleArTestingModeEvent()),
                 ),
               ],
             ),
@@ -105,6 +121,22 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: AppTheme.textSecondary),
+      title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: AppTheme.text.withValues(alpha: 0.6))),
+      trailing: Switch(value: value, onChanged: onChanged, activeThumbColor: AppTheme.accent),
+      onTap: () => onChanged(!value),
     );
   }
 

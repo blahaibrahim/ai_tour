@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
+import '../../../blocs/app/app_state.dart';
 import '../../../models/location.dart';
 import '../../../theme.dart';
-import '../../ar_hunt/ar_hunt_screen.dart';
+import '../../ar_hunt/hunt_radar_screen.dart';
 
 /// Task row for the current stop — shows label, points, and action buttons
 /// (Record / Scan / Hunt, and an optional Regenerate button).
@@ -13,10 +15,26 @@ class CurrentTaskPanel extends StatelessWidget {
 
   final Location stop;
 
-  static void _openMascotHunt(BuildContext context, String stopName) {
+  /// Opens the proximity hunt for [stop]'s mascot.
+  ///
+  /// In testing mode the hunt targets a spawn point generated near the
+  /// tester's own position at app start ([AppState.testMascotSpawn]) instead
+  /// of the stop's real coordinates — so the hunt is playable without
+  /// travelling to an actual POI. See `AppConfig.arTestingMode`.
+  static void _openMascotHunt(BuildContext context, AppState state, Location stop) {
+    final testSpawn = state.testMascotSpawn;
+    final useTestSpawn = state.arTestingMode && testSpawn != null;
+    final spawnLocation = useTestSpawn ? testSpawn : LatLng(stop.lat, stop.lng);
+
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ArHuntScreen(stopName: stopName),
+        builder: (_) => HuntRadarScreen(
+          spawnLocation: spawnLocation,
+          stopName: stop.name,
+          isTestSpawn: useTestSpawn,
+          routeId: state.route?.id,
+          poiId: stop.id,
+        ),
         fullscreenDialog: true,
       ),
     );
@@ -92,7 +110,7 @@ class CurrentTaskPanel extends StatelessWidget {
                   ? ElevatedButton(
                       key: const ValueKey('pending'),
                       onPressed: currentTask.type == 'mascot'
-                          ? () => _openMascotHunt(context, stop.name)
+                          ? () => _openMascotHunt(context, state, stop)
                           : () => context.read<AppBloc>().add(const CompleteTaskEvent()),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

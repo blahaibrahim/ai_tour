@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../ar/spawn_point.dart';
+import '../../config/app_config.dart';
 import '../../models/location.dart';
 import '../../models/route.dart';
 import '../../repositories/artifact_repository.dart';
@@ -26,7 +30,7 @@ import 'app_state.dart';
 /// call — there is no job to submit, no polling loop and no resume-on-launch
 /// path, all of which the previous itinerary endpoint needed.
 class AppBloc extends Bloc<AppEvent, AppState> {
-  AppBloc() : super(const AppState()) {
+  AppBloc() : super(AppState(arTestingMode: AppConfig.arTestingMode)) {
     on<SetScreenEvent>(_onSetScreen);
     on<ToggleRegionEvent>(_onToggleRegion);
     on<SetMapCenterEvent>(_onSetMapCenter);
@@ -80,11 +84,15 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<LoadSavedLocationsEvent>(_onLoadSavedLocations);
     on<LoadArtifactsEvent>(_onLoadArtifacts);
 
+    on<InitTestMascotSpawnEvent>(_onInitTestMascotSpawn);
+    on<ToggleArTestingModeEvent>(_onToggleArTestingMode);
+
     _startRealtimeSubscription();
     _watchAuth();
     add(const LoadRouteOptionsEvent());
     add(const LoadSavedLocationsEvent());
     add(const LoadArtifactsEvent());
+    if (state.arTestingMode) add(const InitTestMascotSpawnEvent());
   }
 
   Timer? _thinkTimer;
@@ -768,6 +776,47 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
   void _onNavHome(NavHomeEvent event, Emitter<AppState> emit) {
     emit(state.copyWith(screen: state.routeAccepted ? 'overview' : 'map'));
+  }
+
+  // ---------------------------------------------------------------------------
+  // AR mascot hunt — testing mode
+  // ---------------------------------------------------------------------------
+
+  /// Best-effort, mirroring `LocationSearchBar`'s permission flow: a tester
+  /// who never grants location just falls back to hunting a stop's real
+  /// coordinates, same as when testing mode is off.
+  Future<void> _onInitTestMascotSpawn(
+      InitTestMascotSpawnEvent event, Emitter<AppState> emit) async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      final spawn = generateTestSpawnPoint(LatLng(position.latitude, position.longitude));
+      emit(state.copyWith(testMascotSpawn: spawn));
+    } catch (_) {
+      // No fix, no permission, plugin unavailable — the hunt falls back to
+      // real POI coordinates either way.
+    }
+  }
+
+  void _onToggleArTestingMode(
+      ToggleArTestingModeEvent event, Emitter<AppState> emit) {
+    final enabled = !state.arTestingMode;
+    emit(state.copyWith(arTestingMode: enabled));
+    if (enabled && state.testMascotSpawn == null) {
+      add(const InitTestMascotSpawnEvent());
+    }
   }
 
   // ---------------------------------------------------------------------------

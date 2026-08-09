@@ -1,0 +1,21 @@
+{
+  "$comment": "AR capture plan §5.3/§11 — proximity-band classifier cross-language parity fixture. Executed by both backend/server-node/test/arCaptureParity.ts (TypeScript) and test/proximity_parity_test.dart (Dart). All cases use the plan's default band thresholds (cold=300, warm=150, hot=60, burning=25) and ProximityBandCalculator.classify's signature: classify(distanceMeters, thresholds, previousBand) -> band. Do not edit one language's copy without re-running both suites.",
+  "thresholds": { "coldMeters": 300, "warmMeters": 150, "hotMeters": 60, "burningMeters": 25 },
+  "cases": [
+    { "label": "far away stays frozen", "distanceMeters": 500, "previousBand": "frozen", "expectedBand": "frozen" },
+    { "label": "just past the frozen/cold boundary is cold", "distanceMeters": 300, "previousBand": "frozen", "expectedBand": "cold" },
+    { "label": "just past the cold/warm boundary is warm", "distanceMeters": 150, "previousBand": "frozen", "expectedBand": "warm" },
+    { "label": "just past the warm/hot boundary is hot", "distanceMeters": 60, "previousBand": "frozen", "expectedBand": "hot" },
+    { "label": "at the capture radius is burning", "distanceMeters": 25, "previousBand": "frozen", "expectedBand": "burning" },
+    { "label": "moving hotter is immediate, no margin", "distanceMeters": 40, "previousBand": "warm", "expectedBand": "hot" },
+    { "label": "moving from frozen straight to burning is immediate", "distanceMeters": 10, "previousBand": "frozen", "expectedBand": "burning" },
+    { "label": "small drift past a boundary while cooling stays in the old band (margin)", "distanceMeters": 65, "previousBand": "hot", "expectedBand": "hot" },
+    { "label": "clearing the hot boundary by more than the margin demotes to warm", "distanceMeters": 70, "previousBand": "hot", "expectedBand": "warm" },
+    { "label": "small drift past the cold boundary while cooling stays cold (15% margin dominates at this range)", "distanceMeters": 310, "previousBand": "cold", "expectedBand": "cold" },
+    { "label": "clearing the cold boundary by more than the margin demotes to frozen", "distanceMeters": 350, "previousBand": "cold", "expectedBand": "frozen" },
+    { "label": "staying exactly put reclassifies to the same band", "distanceMeters": 25, "previousBand": "burning", "expectedBand": "burning" },
+    { "label": "leaving burning requires clearing its margin (max(8, 15%) = 8m)", "distanceMeters": 30, "previousBand": "burning", "expectedBand": "burning" },
+    { "label": "clearing burning's margin demotes to hot", "distanceMeters": 34, "previousBand": "burning", "expectedBand": "hot" },
+    { "label": "zero distance is always burning regardless of history", "distanceMeters": 0, "previousBand": "frozen", "expectedBand": "burning" }
+  ]
+}

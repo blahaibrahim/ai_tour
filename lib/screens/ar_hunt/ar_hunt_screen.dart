@@ -18,15 +18,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 
 import '../../ar/ar_session_host.dart';
+import '../../ar/geo_math.dart';
 import '../../ar/glb_bounds.dart';
 import '../../ar/mascot_placement.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
 import '../../models/location.dart';
+import '../../repositories/mascot_repository.dart';
+import '../../services/heading_service.dart';
 import '../../services/object_detector.dart';
 import '../../theme.dart';
 import '../../utils/artifact_naming.dart';
@@ -63,16 +68,38 @@ class ArHuntScreen extends StatefulWidget {
     this.stopName,
     this.spot = const MascotSpot(),
     this.mode = ArCameraMode.hunt,
+    this.spawnLocation,
+    this.spawnId,
+    this.captureToken,
   });
 
   /// Name of the stop being explored, shown in the header.
   final String? stopName;
 
-  /// Where the mascot is hiding. Fixed for now; backend-supplied later.
+  /// Where the mascot is hiding when there is no real-world geometry to place
+  /// it from — either [spawnLocation] is null, or the GPS fix / compass
+  /// heading needed to resolve it never arrived in time.
   final MascotSpot spot;
 
   /// Whether to run the hunt or just take a photo.
   final ArCameraMode mode;
+
+  /// The mascot's real geographic spawn point, from the proximity hunt
+  /// (`HuntRadarScreen`) that led here. When set, [spot] is replaced at
+  /// session start by the true bearing to this point combined with the
+  /// device's heading — §5.5's bearing-preserving placement — rather than the
+  /// fixed default.
+  final LatLng? spawnLocation;
+
+  /// The backend spawn id, forwarded from [HuntRadarScreen] when a real
+  /// manifest was loaded. Used to submit the capture after the mascot is caught.
+  final String? spawnId;
+
+  /// A short-lived signed capture token, pre-fetched when the device entered
+  /// the burning proximity band. May be null if proximity-gating was skipped
+  /// (test mode, network error, etc.) — in that case the capture screen will
+  /// skip the server submission gracefully.
+  final String? captureToken;
 
   @override
   State<ArHuntScreen> createState() => _ArHuntScreenState();
@@ -159,6 +186,23 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   /// Live bearing to the mascot, for the on-screen hint.
   _MascotBearing? _bearing;
 
+  /// Geographic offset to [ArHuntScreen.spawnLocation], resolved from an
+  /// early GPS fix so it's usually ready by the time the AR session starts.
+  GeoOffset? _geoOffset;
+  Future<void>? _geoOffsetFuture;
+
+  /// The real-geometry placement, once both the GPS fix and a compass heading
+  /// have resolved. Falls back to [ArHuntScreen.spot] until then, or forever
+  /// if either never arrives.
+  MascotSpot? _resolvedSpot;
+
+  /// True while placement is waiting on [_resolveHeadingAndSpot] — plane
+  /// detection must not place the mascot on the placeholder spot underneath
+  /// geo resolution's feet.
+  bool _geoPending = false;
+
+  MascotSpot get _effectiveSpot => _resolvedSpot ?? widget.spot;
+
   /// True while this screen is running the fennec hunt rather than acting as
   /// a plain camera.
   bool get _hunting => widget.mode == ArCameraMode.hunt;
@@ -172,6 +216,9 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   void initState() {
     super.initState();
     if (_hunting) _loadBounds();
+    if (_hunting && widget.spawnLocation != null) {
+      _geoOffsetFuture = _resolveGeoOffset();
+    }
   }
 
   @override
@@ -181,6 +228,50 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     _refineTimer?.cancel();
     _ar?.dispose();
     super.dispose();
+  }
+
+  /// Takes an early GPS fix so the geographic offset to the spawn point is
+  /// usually already known by the time the AR session starts and asks for a
+  /// compass heading — only the heading, which needs a live session, is left
+  /// to resolve there.
+  Future<void> _resolveGeoOffset() async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      ).timeout(const Duration(seconds: 3));
+      if (!mounted) return;
+      setState(() {
+        _geoOffset =
+            geoOffset(LatLng(position.latitude, position.longitude), widget.spawnLocation!);
+      });
+    } catch (_) {
+      // No fix in time — placement falls back to widget.spot, same as any
+      // other rung of the plan's degradation ladder.
+    }
+  }
+
+  /// Combines [_geoOffset] with the heading at AR session start into a real
+  /// [MascotSpot] (§5.5). Placement waits on this — see [_geoPending] — so the
+  /// mascot never gets dropped at the placeholder spot while this is still
+  /// resolving.
+  Future<void> _resolveHeadingAndSpot() async {
+    setState(() => _geoPending = true);
+    // The GPS fix from initState is usually already in by now; give it a
+    // little more time to land before giving up on it too.
+    if (_geoOffset == null) await _geoOffsetFuture;
+    final heading = await HeadingService.currentHeading();
+    if (!mounted) return;
+
+    final offset = _geoOffset;
+    setState(() {
+      _geoPending = false;
+      if (offset != null && heading != null) {
+        _resolvedSpot = MascotSpot.towardsBearing(
+          trueBearingRadians: offset.bearingRadians,
+          headingRadians: heading,
+        );
+      }
+    });
   }
 
   Future<void> _loadBounds() async {
@@ -233,14 +324,24 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
     if (!_hunting) return;
 
-    // However the room turns out, the mascot gets placed.
+    if (widget.spawnLocation != null) {
+      // Placement waits on the real bearing when there's real geometry to
+      // wait on — see [_geoPending] — then arms the usual scan timeout.
+      _resolveHeadingAndSpot().whenComplete(_armScanTimeout);
+    } else {
+      _armScanTimeout();
+    }
+  }
+
+  /// However the room turns out, the mascot gets placed.
+  void _armScanTimeout() {
     _scanTimeout = Timer(_scanPatience, () {
       if (_stage == _Stage.scanning) _placeMascot();
     });
   }
 
   void _onPlaneDetected(int planeCount) {
-    if (!mounted || !_hunting || planeCount <= 0) return;
+    if (!mounted || !_hunting || planeCount <= 0 || _geoPending) return;
     if (_stage == _Stage.scanning) _placeMascot();
   }
 
@@ -330,7 +431,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     if (!mounted) return;
 
     final anchor = ARPlaneAnchor(
-      transformation: widget.spot.anchorTransform(
+      transformation: _effectiveSpot.anchorTransform(
         floorY: floorY,
         baseOffset: bounds.baseOffsetRatio * _mascotSize,
       ),
@@ -349,7 +450,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
         _anchor = anchor;
         _node = node;
         // Aim the hint at its body rather than its feet.
-        _mascotPosition = widget.spot.floorPosition(floorY) +
+        _mascotPosition = _effectiveSpot.floorPosition(floorY) +
             vm.Vector3(0, bounds.heightRatio * _mascotSize / 2, 0);
         _floorY = floorY;
         _floorMeasured = measured != null;
@@ -452,7 +553,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     }
 
     final anchor = ARPlaneAnchor(
-      transformation: widget.spot.anchorTransform(
+      transformation: _effectiveSpot.anchorTransform(
         floorY: floorY,
         baseOffset: bounds.baseOffsetRatio * _mascotSize,
       ),
@@ -470,7 +571,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     setState(() {
       _anchor = anchor;
       _node = node;
-      _mascotPosition = widget.spot.floorPosition(floorY) +
+      _mascotPosition = _effectiveSpot.floorPosition(floorY) +
           vm.Vector3(0, bounds.heightRatio * _mascotSize / 2, 0);
       _floorY = floorY;
       _floorMeasured = true;
@@ -696,8 +797,38 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
           duration: Duration(seconds: 4),
         ));
       } else {
-        // Hunt mode: plain capture, no 3D generation
+        // Hunt mode: save photo locally first so the folder is updated
+        // immediately regardless of network state.
         bloc.add(AddCapturedArtifactEvent(rawPath));
+
+        // Submit the capture to the backend when we have a real spawn + token.
+        // Best-effort: a network failure never blocks the folder or the pop.
+        final spawnId = widget.spawnId;
+        final captureToken = widget.captureToken;
+        if (spawnId != null && captureToken != null) {
+          try {
+            final pos = await Geolocator.getCurrentPosition(
+              locationSettings:
+                  const LocationSettings(accuracy: LocationAccuracy.best),
+            ).timeout(const Duration(seconds: 3));
+            await MascotRepository.submitCapture(
+              spawnId: spawnId,
+              captureToken: captureToken,
+              fix: LatLng(pos.latitude, pos.longitude),
+              accuracyMeters: pos.accuracy,
+              clientTs: DateTime.now().toUtc().toIso8601String(),
+              nonce: uuidV4(),
+              arTelemetry: {
+                'stage': _stage.name,
+                'floor_measured': _floorMeasured,
+              },
+            );
+          } catch (_) {
+            // Non-fatal — the photo is already saved locally.
+          }
+        }
+
+        if (!mounted) return;
         navigator.pop();
         messenger.showSnackBar(const SnackBar(
           content: Text('Fennec caught — saved to your folder'),

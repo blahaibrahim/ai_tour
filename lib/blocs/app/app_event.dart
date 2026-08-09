@@ -368,6 +368,23 @@ class LoadArtifactsEvent extends AppEvent {
   List<Object?> get props => [];
 }
 
+// ---------------------------------------------------------------------------
+// AR mascot hunt — testing mode
+// ---------------------------------------------------------------------------
+
+/// Generates [AppState.testMascotSpawn] near the device's current position.
+/// Dispatched once at startup when [AppState.arTestingMode] is on, and again
+/// whenever testing mode is switched on with no spawn yet.
+class InitTestMascotSpawnEvent extends AppEvent {
+  const InitTestMascotSpawnEvent();
+}
+
+/// Flips [AppState.arTestingMode] — whether the hunt spawns near the device
+/// instead of a stop's real coordinates.
+class ToggleArTestingModeEvent extends AppEvent {
+  const ToggleArTestingModeEvent();
+}
+
 /// Inserts a fully-formed [Artifact] (with modelStatus etc.) into the folder
 /// without going through the AddCapturedArtifactEvent path-only constructor.
 /// Used by the camera screen after object detection passes.

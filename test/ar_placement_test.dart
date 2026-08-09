@@ -92,6 +92,44 @@ void main() {
       expect(spot.distance, greaterThan(0.8));
     });
 
+    test('towardsBearing turns the true bearing into a yaw relative to heading',
+        () {
+      // Facing north (heading 0), target due east (bearing pi/2): the mascot
+      // should sit to the right, i.e. yaw = pi/2.
+      final spot = MascotSpot.towardsBearing(
+        trueBearingRadians: math.pi / 2,
+        headingRadians: 0,
+      );
+      expect(spot.bearing, closeTo(math.pi / 2, 1e-9));
+
+      // Facing east (heading pi/2) with the same target: now it's dead ahead.
+      final aligned = MascotSpot.towardsBearing(
+        trueBearingRadians: math.pi / 2,
+        headingRadians: math.pi / 2,
+      );
+      expect(aligned.bearing, closeTo(0, 1e-9));
+    });
+
+    test('towardsBearing clamps presentation distance to [2.5, 6] metres', () {
+      final tooClose = MascotSpot.towardsBearing(
+        trueBearingRadians: 0,
+        headingRadians: 0,
+        presentationDistance: 1.0,
+      );
+      expect(tooClose.distance, 2.5);
+
+      final tooFar = MascotSpot.towardsBearing(
+        trueBearingRadians: 0,
+        headingRadians: 0,
+        presentationDistance: 20,
+      );
+      expect(tooFar.distance, 6.0);
+
+      final defaultSpot =
+          MascotSpot.towardsBearing(trueBearingRadians: 0, headingRadians: 0);
+      expect(defaultSpot.distance, 4.0);
+    });
+
     test('anchor transform lifts the model onto the floor and nothing else',
         () {
       const spot = MascotSpot(bearing: 0.35, distance: 1.6);

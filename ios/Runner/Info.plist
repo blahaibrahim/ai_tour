@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to capture photos for your scan and video tasks.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Used to guide you to nearby stops and hidden mascots.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

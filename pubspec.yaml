@@ -14,6 +14,7 @@ dependencies:
     sdk: flutter
   flutter_3d_controller: ^2.0.0
   flutter_bloc: ^9.1.1
+  flutter_compass: ^0.8.1
   flutter_dotenv: ^5.2.0
   flutter_image_compress: ^2.3.0
   flutter_map: ^8.3.1
