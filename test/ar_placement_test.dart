@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:ai_tour/ar/glb_bounds.dart';
-import 'package:ai_tour/ar/mascot_placement.dart';
+import 'package:massar/ar/glb_bounds.dart';
+import 'package:massar/ar/mascot_placement.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

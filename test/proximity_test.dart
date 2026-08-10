@@ -1,4 +1,4 @@
-import 'package:ai_tour/ar/proximity.dart';
+import 'package:massar/ar/proximity.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

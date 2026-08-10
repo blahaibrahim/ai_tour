@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:ai_tour/services/heading_service.dart';
+import 'package:massar/services/heading_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

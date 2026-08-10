@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ai_tour/models/location.dart';
-import 'package:ai_tour/utils/artifact_naming.dart';
+import 'package:massar/models/location.dart';
+import 'package:massar/utils/artifact_naming.dart';
 
 Artifact named(String name) =>
     Artifact(id: name, name: name, region: '', kindLabel: '3D Model', photoUrl: '');

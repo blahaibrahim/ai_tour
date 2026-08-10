@@ -16,7 +16,7 @@
          unsupported case before opening ArHuntScreen. -->
     <uses-feature android:name="android.hardware.camera.ar" android:required="true"/>
     <application
-        android:label="ai_tour"
+        android:label="Massar"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:networkSecurityConfig="@xml/network_security_config">

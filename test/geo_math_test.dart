@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:ai_tour/ar/geo_math.dart';
+import 'package:massar/ar/geo_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 

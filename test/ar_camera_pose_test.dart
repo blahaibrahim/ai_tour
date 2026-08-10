@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:ai_tour/ar/ar_session_host.dart';
+import 'package:massar/ar/ar_session_host.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 

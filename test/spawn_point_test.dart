@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:ai_tour/ar/geo_math.dart';
-import 'package:ai_tour/ar/spawn_point.dart';
+import 'package:massar/ar/geo_math.dart';
+import 'package:massar/ar/spawn_point.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 

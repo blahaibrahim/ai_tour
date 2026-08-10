@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:ai_tour/ar/proximity.dart';
+import 'package:massar/ar/proximity.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Cross-language parity for the proximity band classifier — AR capture plan
