@@ -57,3 +57,16 @@ backend/**/*.pyc
 backend/**/results/
 backend/**/*.glb
 backend/server/instance/
+
+# AI, Agents, and MCP related
+.agents/
+.claude/
+.mcp.json
+skills-lock.json
+.cline/
+.cursor/
+.cursorrules
+.codeium/
+.windsurf/
+docs/
+.vscode/
