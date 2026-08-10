@@ -20,27 +20,27 @@ class SamplingProfile {
 /// the hunt is close.
 const Map<ProximityBand, SamplingProfile> kSamplingTable = {
   ProximityBand.frozen: SamplingProfile(
-    distanceFilterMeters: 100,
-    minInterval: Duration(seconds: 60),
+    distanceFilterMeters: 0,
+    minInterval: Duration(seconds: 10),
     highAccuracy: false,
   ),
   ProximityBand.cold: SamplingProfile(
-    distanceFilterMeters: 40,
-    minInterval: Duration(seconds: 30),
+    distanceFilterMeters: 0,
+    minInterval: Duration(seconds: 5),
     highAccuracy: false,
   ),
   ProximityBand.warm: SamplingProfile(
-    distanceFilterMeters: 15,
-    minInterval: Duration(seconds: 10),
-    highAccuracy: true,
-  ),
-  ProximityBand.hot: SamplingProfile(
-    distanceFilterMeters: 5,
+    distanceFilterMeters: 0,
     minInterval: Duration(seconds: 3),
     highAccuracy: true,
   ),
+  ProximityBand.hot: SamplingProfile(
+    distanceFilterMeters: 0,
+    minInterval: Duration(seconds: 2),
+    highAccuracy: true,
+  ),
   ProximityBand.burning: SamplingProfile(
-    distanceFilterMeters: 2,
+    distanceFilterMeters: 0,
     minInterval: Duration(seconds: 1),
     highAccuracy: true,
   ),

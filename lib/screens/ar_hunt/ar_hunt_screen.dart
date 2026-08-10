@@ -121,7 +121,7 @@ enum _Stage {
 
 class _ArHuntScreenState extends State<ArHuntScreen> {
   /// Asset the mascot is loaded from. Rendered natively by the AR engine.
-  static const String _modelAsset = 'assets/3d/fennec.glb';
+  static const String _modelAsset = 'assets/3d/rigged_animated_fennec.glb';
 
   /// Size of the mascot along its longest axis, in metres. A real fennec is
   /// smaller, but it has to stay readable from across a room.
@@ -638,28 +638,36 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     // not as a multiplier.
     final scale = vm.Vector3.all(_mascotSize);
 
+    ARNode? attachedNode;
     final assetNode = ARNode(
       type: NodeType.localGLTF2,
       uri: _modelAsset,
       scale: scale,
     );
     if (await objects.addNode(assetNode, planeAnchor: anchor) == true) {
-      return assetNode;
+      attachedNode = assetNode;
     }
 
-    try {
-      final fileNode = ARNode(
-        type: NodeType.fileSystemAppFolderGLB,
-        uri: 'file://${await _unpackModel()}',
-        scale: scale,
-      );
-      if (await objects.addNode(fileNode, planeAnchor: anchor) == true) {
-        return fileNode;
+    if (attachedNode == null) {
+      try {
+        final fileNode = ARNode(
+          type: NodeType.fileSystemAppFolderGLB,
+          uri: 'file://${await _unpackModel()}',
+          scale: scale,
+        );
+        if (await objects.addNode(fileNode, planeAnchor: anchor) == true) {
+          attachedNode = fileNode;
+        }
+      } catch (_) {
+        // Fall through — the caller reports the failure to the visitor.
       }
-    } catch (_) {
-      // Fall through — the caller reports the failure to the visitor.
     }
-    return null;
+
+    if (attachedNode != null) {
+      await objects.playAnimation(nodeName: attachedNode.name, animationName: 'Sit', loop: true);
+    }
+    
+    return attachedNode;
   }
 
   /// Copies the bundled model out of the asset bundle, once per install.
@@ -680,6 +688,10 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     if (_stage != _Stage.placed || !mounted) return;
     HapticFeedback.mediumImpact();
     setState(() => _stage = _Stage.caught);
+    
+    if (_node != null && _objects != null) {
+      _objects!.playAnimation(nodeName: _node!.name, animationName: 'Jump', loop: true);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -829,6 +841,14 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
         }
 
         if (!mounted) return;
+        
+        if (_node != null && _objects != null) {
+          _objects!.playAnimation(nodeName: _node!.name, animationName: 'Death', loop: false);
+          // Let the user see the death animation before popping
+          await Future.delayed(const Duration(milliseconds: 1500));
+          if (!mounted) return;
+        }
+        
         navigator.pop();
         messenger.showSnackBar(const SnackBar(
           content: Text('Fennec caught — saved to your folder'),

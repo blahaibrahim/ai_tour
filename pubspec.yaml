@@ -7,7 +7,8 @@ environment:
   sdk: ^3.11.0
 
 dependencies:
-  ar_flutter_plugin_2: ^0.0.3
+  ar_flutter_plugin_2:
+    path: packages/ar_flutter_plugin_2
   crypto: ^3.0.3
   equatable: ^2.1.0
   flutter:
@@ -50,6 +51,7 @@ flutter:
 
   assets:
     - assets/3d/fennec.glb
+    - assets/3d/rigged_animated_fennec.glb
     # Shown by NetImage when a location has no real photo, in place of the
     # random stock image the old picsum.photos fallback pulled in.
     - assets/icon/app-icon-transparent.png

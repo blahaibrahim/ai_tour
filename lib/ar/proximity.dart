@@ -39,7 +39,7 @@ class BandThresholds {
 }
 
 /// Fixes worse than this are dropped outright rather than mis-scored (§5.3).
-const double kAccuracyGateMeters = 50;
+const double kAccuracyGateMeters = 500;
 
 /// The band [distanceMeters] falls into on its own, ignoring hysteresis.
 ProximityBand rawBand(double distanceMeters, BandThresholds thresholds) {
