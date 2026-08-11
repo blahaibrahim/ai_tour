@@ -162,7 +162,17 @@ class _InlineMascotHuntState extends State<InlineMascotHunt> {
     if (availability != HuntAvailability.ready) {
       _huntSub?.cancel();
       _huntSub = null;
+      return;
     }
+
+    // `_hunt.start()` only ever asks for while-in-use — the OS treats
+    // "always" as a second, separate grant on both platforms. Without it,
+    // location delivery (and therefore the whole band tracker) goes dead the
+    // moment the traveller backgrounds the app, which is exactly the "hot/
+    // warm" trigger's reason to exist (docs/backend/15-notifications-and-fcm.md,
+    // "backgrounded-but-alive"). Best-effort: a denial here just means the
+    // hunt keeps working in the foreground, same as before this was added.
+    unawaited(Permission.locationAlways.request());
   }
 
   void _onHuntState(HuntState state) {

@@ -3,6 +3,15 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- The fennec hunt (InlineMascotHunt/HuntSessionController) is meant to
+         keep tracking proximity while the app is backgrounded-but-alive — see
+         docs/backend/15-notifications-and-fcm.md's "covers foreground and
+         backgrounded-but-alive". Without this, Android 10+ silently stops
+         delivering location updates the moment the app leaves the foreground,
+         regardless of what ACCESS_FINE_LOCATION was granted, and the hunt
+         goes dead with no error. Requested at runtime as `Permission.locationAlways`
+         in inline_mascot_hunt.dart, on top of the ACCESS_FINE_LOCATION grant. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- Android 13+ gates notifications behind a runtime prompt. Without this
          declaration the request in NotificationService.enable() returns denied
          immediately and nothing is ever shown — on 12 and below the permission

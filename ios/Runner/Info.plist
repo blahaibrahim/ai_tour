@@ -30,14 +30,24 @@
 	<string>Used to capture photos for your scan and video tasks.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Used to guide you to nearby stops and hidden mascots.</string>
+	<!-- The fennec hunt keeps tracking proximity while the app is backgrounded
+	     but still running (docs/backend/15-notifications-and-fcm.md). iOS asks
+	     this question as a second, separate prompt after "when in use" is
+	     granted — see Permission.locationAlways in inline_mascot_hunt.dart. -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Used to alert you when a hidden mascot is nearby, even while your phone is in your pocket.</string>
 	<!-- `remote-notification` lets a push wake the app briefly when it arrives
 	     with the app backgrounded, which is what the 3D-generation completion
-	     message needs. The Push Notifications *capability* is a separate thing
-	     and has to be added in Xcode against a paid Apple Developer account —
-	     see docs/backend/15-notifications-and-fcm.md. -->
+	     message needs. `location` is what keeps the fennec-proximity GPS stream
+	     alive while backgrounded — without it iOS suspends location delivery
+	     the moment the app leaves the foreground, same as Android without
+	     ACCESS_BACKGROUND_LOCATION. The Push Notifications *capability* is a
+	     separate thing and has to be added in Xcode against a paid Apple
+	     Developer account — see docs/backend/15-notifications-and-fcm.md. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>location</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
