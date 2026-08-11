@@ -9,6 +9,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Every method degrades to a no-op / empty result rather than throwing. A
 /// bookmark failing to sync should never break the screen the user is on — the
 /// bloc keeps its optimistic local state either way.
+///
+/// [save] and [remove] report success when the failure was Supabase being
+/// unreachable rather than the write actually being rejected: the bloc rolls
+/// an optimistic toggle back on `false`, and rolling it back because there is
+/// no backend right now — rather than because the save was genuinely invalid
+/// — would make bookmarking silently not work in demo mode.
 class SavedLocationsRepository {
   const SavedLocationsRepository._();
 
@@ -32,11 +38,10 @@ class SavedLocationsRepository {
     }
   }
 
-  /// Returns true if the write landed, false if it was dropped.
-  ///
-  /// `location_id` is a foreign key to `locations`, so saving a location the
-  /// catalogue doesn't know about (a locally-seeded one, say) is rejected —
-  /// hence the boolean rather than a bare void.
+  /// Returns true if the write landed (or was assumed to, offline). Returns
+  /// false only when a reachable server actually rejected it — `location_id`
+  /// is a foreign key to `locations`, so saving one the catalogue doesn't
+  /// know about (a locally-seeded one, say) is a real rejection.
   static Future<bool> save(String locationId) async {
     final userId = _userId;
     if (userId == null) return false;
@@ -46,8 +51,8 @@ class SavedLocationsRepository {
         onConflict: 'user_id,location_id',
       );
       return true;
-    } catch (_) {
-      return false;
+    } catch (e) {
+      return _isBackendUnreachable(e);
     }
   }
 
@@ -61,8 +66,14 @@ class SavedLocationsRepository {
           .eq('user_id', userId)
           .eq('location_id', locationId);
       return true;
-    } catch (_) {
-      return false;
+    } catch (e) {
+      return _isBackendUnreachable(e);
     }
   }
 }
+
+/// True when [error] means Supabase couldn't be reached at all, as opposed to
+/// answering with a genuine rejection (e.g. a `PostgrestException` from a
+/// constraint violation).
+bool _isBackendUnreachable(Object error) =>
+    error is! PostgrestException && error is! AuthException;

@@ -11,6 +11,8 @@ dependencies:
     path: packages/ar_flutter_plugin_2
   crypto: ^3.0.3
   equatable: ^2.1.0
+  firebase_core: ^3.8.1
+  firebase_messaging: ^15.1.6
   flutter:
     sdk: flutter
   flutter_3d_controller: ^2.0.0
@@ -18,6 +20,7 @@ dependencies:
   flutter_compass: ^0.8.1
   flutter_dotenv: ^5.2.0
   flutter_image_compress: ^2.3.0
+  flutter_local_notifications: ^18.0.1
   flutter_map: ^8.3.1
   flutter_secure_storage: ^10.3.1
   geolocator: ^14.0.3
@@ -29,6 +32,7 @@ dependencies:
   path_provider: ^2.1.6
   permission_handler: ^11.4.0
   provider: ^6.1.5+1
+  shared_preferences: ^2.3.4
   supabase_flutter: ^2.8.4
   table_calendar: ^3.2.0
   vector_math: ^2.2.0

@@ -5,6 +5,7 @@ import '../blocs/app/app_event.dart';
 import '../blocs/app/app_state.dart';
 import '../blocs/auth/auth_bloc.dart';
 import '../blocs/auth/auth_state.dart';
+import '../services/notification_service.dart';
 import '../theme.dart';
 import '../widgets/glass_surface.dart';
 import '../widgets/pressable_scale.dart';
@@ -30,9 +31,13 @@ class AppShell extends StatelessWidget {
     final authState = context.watch<AuthBloc>().state;
     final state = context.watch<AppBloc>().state;
 
-    // Show a minimal splash while the session is being restored from secure
-    // storage. This prevents the map from flashing before auth is resolved.
-    if (authState.status == AuthStatus.unknown) {
+    // Show a minimal splash while either the auth session is being restored
+    // from secure storage, or the tour session (which screen, which route)
+    // is being restored from SharedPreferences. Gating on both — not just
+    // auth — is what stops a cold start from painting the map screen first
+    // and then swapping to the real one a frame or two later, once
+    // RestoreSessionEvent's async read finishes.
+    if (authState.status == AuthStatus.unknown || state.isRestoringSession) {
       return const Scaffold(
         backgroundColor: AppTheme.ink,
         body: Center(
@@ -47,9 +52,65 @@ class AppShell extends StatelessWidget {
         // Sign-out clears all tour state — per doc 01 "sign-out must clear local data".
         context.read<AppBloc>().add(const LeaveTourEvent());
       },
-      child: _AppShellBody(state: state),
+      child: _NotificationTapListener(child: _AppShellBody(state: state)),
     );
   }
+}
+
+/// Acts on a tapped notification once there is a widget tree to act in.
+///
+/// A tap can land long before this exists — tapping one from the tray is what
+/// cold-starts the app — so [NotificationService.pendingDeepLink] holds it
+/// until something is ready to consume it, rather than firing a callback into
+/// nothing. This is that consumer.
+class _NotificationTapListener extends StatefulWidget {
+  const _NotificationTapListener({required this.child});
+  final Widget child;
+
+  @override
+  State<_NotificationTapListener> createState() =>
+      _NotificationTapListenerState();
+}
+
+class _NotificationTapListenerState extends State<_NotificationTapListener> {
+  @override
+  void initState() {
+    super.initState();
+    NotificationService.instance.pendingDeepLink.addListener(_onTap);
+    // Drains anything that arrived before this listener attached — the cold
+    // start case, which is the common one for a tapped notification.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onTap());
+  }
+
+  @override
+  void dispose() {
+    NotificationService.instance.pendingDeepLink.removeListener(_onTap);
+    super.dispose();
+  }
+
+  void _onTap() {
+    final tap = NotificationService.instance.consumeDeepLink();
+    if (tap == null || !mounted) return;
+
+    switch (tap.type) {
+      case 'route_ready':
+        // Without the id there is nothing to open: after a cold start this
+        // process has no memory of the route, so landing on the map is the
+        // honest outcome rather than a screen that pretends to have it.
+        if (tap.id != null) {
+          context.read<AppBloc>().add(OpenRouteByIdEvent(tap.id!));
+        }
+      case 'model_ready':
+        context.read<AppBloc>().add(const SetScreenEvent('folder'));
+      case 'mascot_nearby':
+        // The hunt lives inside the current-task card on the overview screen,
+        // which is where the traveller was when this fired.
+        context.read<AppBloc>().add(const NavHomeEvent());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _AppShellBody extends StatelessWidget {

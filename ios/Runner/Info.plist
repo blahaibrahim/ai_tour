@@ -30,6 +30,15 @@
 	<string>Used to capture photos for your scan and video tasks.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Used to guide you to nearby stops and hidden mascots.</string>
+	<!-- `remote-notification` lets a push wake the app briefly when it arrives
+	     with the app backgrounded, which is what the 3D-generation completion
+	     message needs. The Push Notifications *capability* is a separate thing
+	     and has to be added in Xcode against a paid Apple Developer account —
+	     see docs/backend/15-notifications-and-fcm.md. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -4,12 +4,17 @@ import 'package:latlong2/latlong.dart';
 
 import 'geo_math.dart';
 
-/// Default spawn ring around the tester, metres. Deliberately starts past the
-/// default HOT/BURNING boundary (25 m) so the hunt loop — hysteresis, the
+/// Default spawn ring around the tester, metres. Deliberately starts well past
+/// the default HOT/BURNING boundary (25 m) so the hunt loop — hysteresis, the
 /// thermometer, the walk itself — actually gets exercised instead of the
 /// mascot being caught the instant the screen opens.
+///
+/// The ring sits inside the WARM band (<= 150 m) so a tester walks down through
+/// WARM → HOT → BURNING. It also has to clear typical GPS error by a wide
+/// margin: spawn a mascot 5–10 m away and every reading is noise, so the
+/// distance readout looks frozen no matter how far you walk.
 const double kTestSpawnMinRadiusMeters = 5;
-const double kTestSpawnMaxRadiusMeters = 10;
+const double kTestSpawnMaxRadiusMeters = 15;
 
 /// Generates a mascot spawn point near [origin], for AR-hunt testing mode.
 ///

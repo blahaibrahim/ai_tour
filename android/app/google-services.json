@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "522553609599",
+    "project_id": "massar-bfa62",
+    "storage_bucket": "massar-bfa62.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:522553609599:android:9e2ff0e8ecb38d40225e4a",
+        "android_client_info": {
+          "package_name": "com.massar.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCpiOsBSF3yvCT9ldNkKIW4tfh9gV_t80I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

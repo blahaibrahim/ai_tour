@@ -96,17 +96,29 @@ class ModelRepository {
   }
 
   /// Submits the generation job to the Flask backend.
+  ///
+  /// Uses a longer deadline than [ApiClient]'s default: the backend's own
+  /// call to Modal's `/submit` endpoint is budgeted at 30s (models.ts), so a
+  /// client timeout any lower than that races a request that is still
+  /// legitimately in flight — and losing that race mislabels a job that will
+  /// go on to succeed as failed (see app_bloc.dart's `_onRequestModelGeneration`).
+  static const _generationTimeout = Duration(seconds: 45);
+
   static Future<GenerationResult> requestGeneration({
     required String userId,
     required String artifactId,
     required String imagePath,  // e.g. "captures/{userId}/{artifactId}.jpg"
     required String sha256,
   }) async {
-    final data = await ApiClient.post('/api/models/generate', body: {
-      'artifact_id': artifactId,
-      'image_path': imagePath,
-      'image_sha256': sha256,
-    });
+    final data = await ApiClient.post(
+      '/api/models/generate',
+      body: {
+        'artifact_id': artifactId,
+        'image_path': imagePath,
+        'image_sha256': sha256,
+      },
+      timeout: _generationTimeout,
+    );
 
     if (data['cached'] == true) {
       return GenerationResult(

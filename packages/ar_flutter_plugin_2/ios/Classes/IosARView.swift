@@ -99,11 +99,21 @@ class IosARView: NSObject, FlutterPlatformView, ARSCNViewDelegate, UIGestureReco
             case "snapshot":
                 // call the SCNView Snapshot method and return the Image
                 let snapshotImage = sceneView.snapshot()
-                if let bytes = snapshotImage.pngData() {
-                    let data = FlutterStandardTypedData(bytes:bytes)
-                    result(data)
-                } else {
-                    result(nil)
+                // Encoding it is the slow part, and doing it inline blocked the
+                // main thread — which Flutter draws on — for as long as it took,
+                // so the shutter looked like a freeze. JPEG off the main thread
+                // instead: far quicker than lossless PNG, a fraction of the
+                // bytes to hand over the channel, and still above the quality
+                // the capture pipeline recompresses to.
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let bytes = snapshotImage.jpegData(compressionQuality: 0.95)
+                    DispatchQueue.main.async {
+                        if let bytes = bytes {
+                            result(FlutterStandardTypedData(bytes: bytes))
+                        } else {
+                            result(nil)
+                        }
+                    }
                 }
             case "dispose":
                 onDispose(result)

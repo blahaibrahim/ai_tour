@@ -6,27 +6,27 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import '../../ar/hunt_session_controller.dart';
-import '../../ar/proximity.dart';
-import '../../repositories/mascot_repository.dart'
+import '../../../ar/hunt_session_controller.dart';
+import '../../../ar/proximity.dart';
+import '../../../repositories/mascot_repository.dart'
     hide BandThresholds; // use proximity.dart's BandThresholds with the controller
-import '../../services/api_client.dart';
-import '../../services/heading_service.dart';
-import '../../theme.dart';
-import '../../widgets/app_backdrop.dart';
-import '../../widgets/glass_surface.dart';
-import '../../widgets/pressable_scale.dart';
-import 'ar_hunt_screen.dart';
+import '../../../services/api_client.dart';
+import '../../../services/heading_service.dart';
+import '../../../services/notification_service.dart';
+import '../../../theme.dart';
+import '../../../widgets/pressable_scale.dart';
+import '../../ar_hunt/ar_hunt_screen.dart';
 
-/// C1 — the proximity hunt screen: a compass ring pointing toward the mascot
-/// and a thermometer showing how hot the hunt is, per Figure 2 / §8 ("Hot/cold
-/// proximity hunt") of the AR capture plan.
+/// C1 — the proximity hunt, rendered inline inside the current-task card
+/// instead of on a screen of its own: a small compass dial pointing toward the
+/// mascot plus a hot/cold thermometer, per Figure 2 / §8 ("Hot/cold proximity
+/// hunt") of the AR capture plan.
 ///
 /// Pure presentation. All distance math and band state live in
-/// [HuntSessionController] (C2); this screen only renders what it streams and
+/// [HuntSessionController] (C2); this widget only renders what it streams and
 /// unlocks the camera once [HuntState.canCapture] is true.
-class HuntRadarScreen extends StatefulWidget {
-  const HuntRadarScreen({
+class InlineMascotHunt extends StatefulWidget {
+  const InlineMascotHunt({
     super.key,
     required this.spawnLocation,
     this.stopName,
@@ -39,11 +39,11 @@ class HuntRadarScreen extends StatefulWidget {
   /// is replaced by the real spawn location from the backend manifest.
   final LatLng spawnLocation;
 
-  /// Name of the stop being explored, shown in the header.
+  /// Name of the stop being explored, forwarded to the capture screen.
   final String? stopName;
 
   /// True when [spawnLocation] was generated near the tester's own position
-  /// rather than a real POI — shown as a banner so testing mode is never
+  /// rather than a real POI — shown as a note so testing mode is never
   /// mistaken for the real hunt.
   final bool isTestSpawn;
 
@@ -56,10 +56,10 @@ class HuntRadarScreen extends StatefulWidget {
   final String? poiId;
 
   @override
-  State<HuntRadarScreen> createState() => _HuntRadarScreenState();
+  State<InlineMascotHunt> createState() => _InlineMascotHuntState();
 }
 
-class _HuntRadarScreenState extends State<HuntRadarScreen> {
+class _InlineMascotHuntState extends State<InlineMascotHunt> {
   late HuntSessionController _hunt;
   StreamSubscription<HuntState>? _huntSub;
   StreamSubscription<double>? _headingSub;
@@ -150,11 +150,18 @@ class _HuntRadarScreenState extends State<HuntRadarScreen> {
   }
 
   Future<void> _start() async {
+    // Subscribe before starting: the controller's seed fix lands during
+    // start(), and a broadcast stream drops events that arrive with no
+    // listener attached.
+    _huntSub?.cancel();
+    _huntSub = _hunt.stream.listen(_onHuntState);
+
     final availability = await _hunt.start();
     if (!mounted) return;
     setState(() => _availability = availability);
-    if (availability == HuntAvailability.ready) {
-      _huntSub = _hunt.stream.listen(_onHuntState);
+    if (availability != HuntAvailability.ready) {
+      _huntSub?.cancel();
+      _huntSub = null;
     }
   }
 
@@ -164,6 +171,7 @@ class _HuntRadarScreenState extends State<HuntRadarScreen> {
     if (previousBand != state.band) {
       HapticFeedback.mediumImpact();
       _restartPulse(state.band);
+      _notifyBandChange(previousBand, state.band);
     }
     // When the device first enters the burning band, issue a proximity token
     // so the capture screen has it ready.
@@ -172,6 +180,36 @@ class _HuntRadarScreenState extends State<HuntRadarScreen> {
         _spawnEntry != null) {
       _requestProximityToken(state);
     }
+  }
+
+  /// Trigger 3 — "you're getting warm", while the app is not being looked at.
+  ///
+  /// Fires on the way *up* into HOT and BURNING only: §5.3's two guards
+  /// (hysteresis plus a two-fix debounce) already live in [HuntBandTracker], so
+  /// by the time a change reaches here it is a real one — but a traveller
+  /// walking away and back would still be told twice without the direction
+  /// check, and the fifteen-minute cooldown in [NotificationPolicy] is what
+  /// covers the rest.
+  ///
+  /// Deliberately a *local* notification and not a push: docs/mascot_plan.md
+  /// §5.6 rules FCM out for proximity, because a server can only know the
+  /// traveller is close if the traveller's live position is streamed to it.
+  /// Everything needed to make this decision is already on the device.
+  void _notifyBandChange(ProximityBand? previous, ProximityBand current) {
+    if (current != ProximityBand.hot && current != ProximityBand.burning) return;
+    if (previous != null && previous.index >= current.index) return;
+
+    // In test mode the spawn is a synthetic point near the tester, with no
+    // server spawn id to hang a cooldown off; the stop name keeps two
+    // different test spawns from sharing one.
+    final subject = _spawnEntry?.spawnId ??
+        'test-${widget.stopName ?? widget.spawnLocation.hashCode}';
+
+    NotificationService.instance.showMascotNearby(
+      spawnId: subject,
+      canCapture: current == ProximityBand.burning,
+      stopName: widget.stopName,
+    );
   }
 
   Future<void> _requestProximityToken(HuntState huntState) async {
@@ -230,110 +268,47 @@ class _HuntRadarScreenState extends State<HuntRadarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.deepNavy,
-      body: AppBackdrop(
-        variant: AppBackdropVariant.deep,
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(context),
-              Expanded(child: _buildBody(context)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: Row(
-        children: [
-          PressableScale(
-            onTap: () => Navigator.of(context).pop(),
-            child: GlassSurface(
-              tint: GlassTint.dark,
-              borderRadius: AppTheme.brPill,
-              padding: const EdgeInsets.all(11),
-              child: const Icon(Icons.close, size: 18, color: Colors.white),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: GlassSurface(
-              tint: GlassTint.dark,
-              borderRadius: AppTheme.brPill,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Find the fennec',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Text(
-                    widget.isTestSpawn
-                        ? 'Testing mode — hunting near you'
-                        : widget.stopName ?? 'Somewhere nearby',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white70, fontSize: 11.5),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+    return AnimatedSize(
+      duration: AppTheme.motionBase,
+      curve: AppTheme.motionCurve,
+      alignment: Alignment.topCenter,
+      child: _buildBody(context),
     );
   }
 
   Widget _buildBody(BuildContext context) {
     // Show loading while fetching the real spawn manifest.
     if (_spawnLoading) {
-      return const _CenteredMessage(
-        icon: Icons.explore_outlined,
-        message: 'Loading AR data…',
-        showSpinner: true,
-      );
+      return const _HuntNote(message: 'Loading AR data…', showSpinner: true);
     }
     switch (_availability) {
       case null:
-        return const _CenteredMessage(
-          icon: Icons.explore_outlined,
+        return const _HuntNote(
           message: 'Finding your position…',
           showSpinner: true,
         );
       case HuntAvailability.serviceDisabled:
-        return _CenteredMessage(
+        return _HuntNote(
           icon: Icons.location_off_outlined,
           message: 'Turn on location services to start the hunt.',
           action: ('Try again', _start),
         );
       case HuntAvailability.permissionDenied:
-        return _CenteredMessage(
+        return _HuntNote(
           icon: Icons.location_off_outlined,
           message: 'The hunt needs your location to guide you to the fennec.',
-          action: ('Allow location', _start),
+          action: ('Allow', _start),
         );
       case HuntAvailability.permissionDeniedForever:
-        return _CenteredMessage(
+        return _HuntNote(
           icon: Icons.location_off_outlined,
           message: 'Location is turned off for this app. Enable it in Settings to hunt.',
-          action: ('Open settings', openAppSettings),
+          action: ('Settings', openAppSettings),
         );
       case HuntAvailability.ready:
         final state = _state;
         if (state == null) {
-          return const _CenteredMessage(
-            icon: Icons.explore_outlined,
+          return const _HuntNote(
             message: 'Getting a fix on your position…',
             showSpinner: true,
           );
@@ -346,77 +321,87 @@ class _HuntRadarScreenState extends State<HuntRadarScreen> {
     final heading = _heading;
     final color = _bandColor(state.band);
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return _HuntShell(
+      band: state.band,
       children: [
-        if (widget.isTestSpawn) _buildTestBanner(),
-        const Spacer(),
-        _CompassRing(
-          band: state.band,
-          // Radians clockwise from "straight ahead of the phone" — the same
-          // yaw formula the AR placement step uses (§5.5).
-          screenAngle: heading == null ? null : state.bearingRadians - heading,
-        ),
-        const SizedBox(height: 22),
-        Text(
-          _bandLabel(state.band),
-          style: TextStyle(
-            color: color,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          _bandHint(state.band),
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white70, fontSize: 13),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          _distanceLabel(state.distanceMeters),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const Spacer(),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: _Thermometer(band: state.band),
-        ),
-        const SizedBox(height: 24),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
-          child: _CameraCta(enabled: state.canCapture, onTap: _openCamera),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTestBanner() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
-      child: GlassSurface(
-        tint: GlassTint.dark,
-        borderRadius: AppTheme.brPill,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        Row(
           children: [
-            const Icon(Icons.science_outlined, size: 15, color: AppTheme.sand),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                'A mascot was spawned near your current location so you can '
-                'test the hunt without visiting a real stop.',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 11),
+            _CompassDial(
+              band: state.band,
+              // Radians clockwise from "straight ahead of the phone" — the same
+              // yaw formula the AR placement step uses (§5.5).
+              screenAngle: heading == null ? null : state.bearingRadians - heading,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _bandLabel(state.band),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _distanceLabel(state.distanceMeters) +
+                            _accuracyNote(state.accuracyMeters),
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _bandHint(state.band),
+                    maxLines: 2,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      height: 1.25,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _Thermometer(band: state.band),
+                ],
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 10),
+        _CameraCta(enabled: state.canCapture, onTap: _openCamera),
+        if (widget.isTestSpawn) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.science_outlined, size: 13, color: AppTheme.warning),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Testing mode — this fennec was spawned near you, not at the stop.',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: AppTheme.text.withValues(alpha: 0.5),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
@@ -426,6 +411,12 @@ String _distanceLabel(double meters) {
   if (meters < 1000) return '${meters.round()} m away';
   return '${(meters / 1000).toStringAsFixed(1)} km away';
 }
+
+/// Appended to the distance once the fix is loose enough that walking a few
+/// metres won't visibly move the number — otherwise a noisy GPS reads as a
+/// broken tracker.
+String _accuracyNote(double accuracyMeters) =>
+    accuracyMeters > 15 ? ' ±${accuracyMeters.round()} m' : '';
 
 String _bandLabel(ProximityBand band) => switch (band) {
       ProximityBand.frozen => 'Ice cold',
@@ -444,11 +435,13 @@ String _bandHint(ProximityBand band) => switch (band) {
     };
 
 Color _bandColor(ProximityBand band) => switch (band) {
-      ProximityBand.frozen => const Color(0xFF7C89A6),
+      ProximityBand.frozen => const Color(0xFF6E7A93),
       ProximityBand.cold => AppTheme.compassBlue,
-      ProximityBand.warm => AppTheme.amber,
-      ProximityBand.hot => const Color(0xFFE8703A),
-      ProximityBand.burning => const Color(0xFFE0503D),
+      // Darker than the full-screen hunt's amber/orange — these sit on cream,
+      // not navy, and have to carry label text at 14 px.
+      ProximityBand.warm => const Color(0xFFB57118),
+      ProximityBand.hot => const Color(0xFFD1541F),
+      ProximityBand.burning => const Color(0xFFC8452F),
     };
 
 /// Pulse cadence per band — §5.3's feedback table. Null means no pulse
@@ -461,14 +454,47 @@ Duration? _pulseInterval(ProximityBand band) => switch (band) {
       ProximityBand.burning => const Duration(milliseconds: 120),
     };
 
-/// Ring with an arrow pointing toward the mascot, relative to the phone's own
+/// Tinted well the hunt sits in, so it reads as one unit inside the task card
+/// and its temperature is legible at a glance from the fill alone.
+class _HuntShell extends StatelessWidget {
+  const _HuntShell({required this.children, this.band});
+
+  final List<Widget> children;
+  final ProximityBand? band;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = band == null ? AppTheme.textSecondary : _bandColor(band!);
+    return AnimatedContainer(
+      duration: AppTheme.motionBase,
+      curve: AppTheme.motionCurve,
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: AppTheme.brMd,
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      ),
+    );
+  }
+}
+
+/// Dial with an arrow pointing toward the mascot, relative to the phone's own
 /// facing direction. Falls back to a static compass glyph when there's no
-/// heading yet (compass unsupported, or not calibrated in time).
-class _CompassRing extends StatelessWidget {
-  const _CompassRing({required this.band, required this.screenAngle});
+/// heading yet (compass unsupported, or not calibrated in time). The
+/// full-screen version's 220 px ring, shrunk to fit the task card.
+class _CompassDial extends StatelessWidget {
+  const _CompassDial({required this.band, required this.screenAngle});
 
   final ProximityBand band;
   final double? screenAngle;
+
+  static const double _size = 60;
 
   @override
   Widget build(BuildContext context) {
@@ -476,35 +502,41 @@ class _CompassRing extends StatelessWidget {
     final angle = screenAngle;
 
     return SizedBox(
-      width: 220,
-      height: 220,
+      width: _size,
+      height: _size,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
-            width: 220,
-            height: 220,
+          AnimatedContainer(
+            duration: AppTheme.motionBase,
+            width: _size,
+            height: _size,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: color.withValues(alpha: 0.10),
+              color: color.withValues(alpha: 0.12),
               border: Border.all(color: color.withValues(alpha: 0.35), width: 1.5),
             ),
           ),
-          Container(
-            width: 150,
-            height: 150,
+          AnimatedContainer(
+            duration: AppTheme.motionBase,
+            width: 41,
+            height: 41,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: color.withValues(alpha: 0.6), width: 1.5),
+              border: Border.all(color: color.withValues(alpha: 0.55), width: 1.5),
             ),
           ),
           if (angle != null)
-            Transform.rotate(
-              angle: angle,
-              child: Icon(Icons.navigation_rounded, color: color, size: 56),
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: angle, end: angle),
+              duration: AppTheme.motionFast,
+              builder: (_, value, child) =>
+                  Transform.rotate(angle: value, child: child),
+              child: Icon(Icons.navigation_rounded, color: color, size: 24),
             )
           else
-            Icon(Icons.explore_outlined, color: color.withValues(alpha: 0.8), size: 48),
+            Icon(Icons.explore_outlined,
+                color: color.withValues(alpha: 0.8), size: 22),
         ],
       ),
     );
@@ -524,13 +556,15 @@ class _Thermometer extends StatelessWidget {
     return Row(
       children: [
         for (final b in ProximityBand.values) ...[
-          if (b != ProximityBand.values.first) const SizedBox(width: 4),
+          if (b != ProximityBand.values.first) const SizedBox(width: 3),
           Expanded(
             child: AnimatedContainer(
               duration: AppTheme.motionBase,
-              height: 6,
+              height: 5,
               decoration: BoxDecoration(
-                color: b.index <= band.index ? color : Colors.white.withValues(alpha: 0.18),
+                color: b.index <= band.index
+                    ? color
+                    : AppTheme.ink.withValues(alpha: 0.10),
                 borderRadius: AppTheme.brPill,
               ),
             ),
@@ -552,28 +586,28 @@ class _CameraCta extends StatelessWidget {
     return PressableScale(
       onTap: enabled ? onTap : null,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
+        duration: AppTheme.motionBase,
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: enabled ? AppTheme.accent : Colors.white24,
-          borderRadius: AppTheme.brLg,
-          boxShadow: enabled ? AppTheme.shadowLg : null,
+          color: enabled ? AppTheme.accent : AppTheme.ink.withValues(alpha: 0.06),
+          borderRadius: AppTheme.brSm,
+          boxShadow: enabled ? AppTheme.shadowSm : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               Icons.camera_alt_rounded,
-              color: enabled ? AppTheme.onAccent : Colors.white54,
-              size: 20,
+              color: enabled ? AppTheme.onAccent : AppTheme.textSecondary,
+              size: 16,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Text(
               enabled ? 'Open camera' : 'Get closer to unlock the camera',
               style: TextStyle(
-                color: enabled ? AppTheme.onAccent : Colors.white54,
-                fontSize: 14.5,
+                color: enabled ? AppTheme.onAccent : AppTheme.textSecondary,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -584,51 +618,62 @@ class _CameraCta extends StatelessWidget {
   }
 }
 
-class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({
-    required this.icon,
+/// The loading / permission states, in the same well as the hunt itself so the
+/// card doesn't jump when the first fix lands.
+class _HuntNote extends StatelessWidget {
+  const _HuntNote({
     required this.message,
+    this.icon,
     this.showSpinner = false,
     this.action,
   });
 
-  final IconData icon;
   final String message;
+  final IconData? icon;
   final bool showSpinner;
   final (String, FutureOr<void> Function())? action;
 
   @override
   Widget build(BuildContext context) {
     final action = this.action;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    return _HuntShell(
+      children: [
+        Row(
           children: [
             if (showSpinner)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 18),
-                child: CircularProgressIndicator(color: AppTheme.sand),
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.textSecondary,
+                ),
               )
             else
-              Icon(icon, color: Colors.white54, size: 34),
-            const SizedBox(height: 14),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
+              Icon(icon ?? Icons.explore_outlined,
+                  size: 16, color: AppTheme.textSecondary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontSize: 12, color: AppTheme.text),
+              ),
             ),
             if (action != null) ...[
-              const SizedBox(height: 20),
-              ElevatedButton(
+              const SizedBox(width: 8),
+              TextButton(
                 onPressed: () => action.$2(),
-                child: Text(action.$1),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(action.$1, style: const TextStyle(fontSize: 12)),
               ),
             ],
           ],
         ),
-      ),
+      ],
     );
   }
 }

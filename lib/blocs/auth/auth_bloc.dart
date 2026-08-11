@@ -65,7 +65,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   Future<void> _onSignInAnonymously(
       SignInAnonymouslyEvent event, Emitter<AuthState> emit) async {
     try {
-      await Supabase.instance.client.auth.signInAnonymously();
+      // Bounded rather than left on Supabase's own default: with no network
+      // path to Supabase at all this call can otherwise hang far longer than
+      // is reasonable, and AppShell holds the whole app on a splash screen
+      // until AuthStatus leaves `unknown` — so a dead backend must resolve
+      // this quickly, not eventually.
+      await Supabase.instance.client.auth
+          .signInAnonymously()
+          .timeout(const Duration(seconds: 8));
       // _handleAuthChange will be called via the stream listener.
     } catch (error, stack) {
       developer.log(

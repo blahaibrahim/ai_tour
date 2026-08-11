@@ -1,4 +1,3 @@
 gaussian splatting (test)
 video generation
-3d model animation in AR (implementation partial, 3d model)
 Quest design

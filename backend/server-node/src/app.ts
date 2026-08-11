@@ -6,6 +6,7 @@ import { chatRouter } from "./routes/chat";
 import { healthRouter } from "./routes/health";
 import { mascotsRouter } from "./routes/mascots";
 import { modelsRouter } from "./routes/models";
+import { notificationsRouter } from "./routes/notifications";
 import { poiRouter } from "./routes/poi";
 import { routesRouter } from "./routes/routes";
 import { tasksRouter } from "./routes/tasks";
@@ -34,6 +35,9 @@ export function createApp(): Express {
   app.use(routesRouter);
   // AR mascot hunt — see src/arCapture/README.md.
   app.use(mascotsRouter);
+  // Push tokens, notification preferences, and the model_jobs completion
+  // webhook — see docs/backend/15-notifications-and-fcm.md.
+  app.use(notificationsRouter);
   app.use(chatRouter);
   app.use(tasksRouter);
   app.use(poiRouter);

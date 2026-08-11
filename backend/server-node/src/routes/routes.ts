@@ -16,6 +16,7 @@ import { Router } from "express";
 import type { Response } from "express";
 
 import { getLogger } from "../logger";
+import * as notifications from "../notifications";
 import { authenticateAndRateLimit } from "../rateLimit";
 import * as routeGeneration from "../routeGeneration";
 import { RouteGenerationError } from "../routeGeneration/errors";
@@ -254,9 +255,59 @@ routesRouter.post(
     const parsed = parseRouteRequest((req.body ?? {}) as Record<string, unknown>, auth.user.id);
     if (isFailure(parsed)) return res.status(400).json(parsed);
 
+    // Did this request's client survive long enough to be told the answer?
+    //
+    // This is the whole basis of the route-ready notification, so it is worth
+    // being precise about. Three situations, and only the last one is this
+    // server's to handle:
+    //
+    //   app in foreground  → nothing should be shown; the screen is about to
+    //                        show the route itself.
+    //   app backgrounded   → a notification should be shown, and the client
+    //                        does it: it gets this response, and it is the
+    //                        only party that knows its own lifecycle state.
+    //   app killed         → a notification should be shown, and *only* a push
+    //                        can do it — there is no process left to fire a
+    //                        local one.
+    //
+    // The first two are indistinguishable from here and identical from here:
+    // in both, the client receives the response and decides for itself. So the
+    // server's rule is simply "push if, and only if, the answer could not be
+    // delivered". Node keeps running this handler after its client
+    // disconnects, which is what makes the third case reachable at all.
+    let clientVanished = false;
+    req.on("close", () => {
+      // `close` also fires on ordinary completion, hence the guard: only a
+      // close that beats the response means the client is gone.
+      if (!res.writableEnded) clientVanished = true;
+    });
+
     try {
       const route = await routeGeneration.generateRoute(parsed);
-      return res.json(serializeRoute(route));
+      res.json(serializeRoute(route));
+
+      if (clientVanished) {
+        // Never awaited — nothing is waiting on this, and `sendToUser`
+        // swallows its own failures. It also applies the opt-in check, so a
+        // traveller who never pressed "Notify me" gets nothing.
+        void notifications.sendToUser(
+          auth.user.id,
+          notifications.routeReadyPayload({
+            routeId: route.id,
+            stopCount: route.stops.length,
+            theme: route.theme,
+          }),
+          {
+            kind: "route_ready",
+            dedupeKey: route.id,
+            // A traveller generating three routes in a row is waiting on each
+            // one. The 15-minute per-kind cooldown would tell them about the
+            // first and silently drop the other two.
+            bypassRateLimits: true,
+          },
+        );
+      }
+      return res;
     } catch (error) {
       return sendError(res, error);
     }

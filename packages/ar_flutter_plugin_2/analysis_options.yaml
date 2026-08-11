@@ -1,0 +1,9 @@
+analyzer:
+  exclude:
+    # FlutterFlow custom-widget snippets (see examples/README.md), not plugin
+    # source. They import '/flutter_flow/...' paths that only resolve inside a
+    # generated FlutterFlow project, plus cloud_firestore/geoflutterfire2 for a
+    # Firestore-based cloud-anchor backend this plugin's own pubspec.yaml never
+    # declares — neither can ever resolve here. Nothing in lib/ imports this
+    # folder and it is not part of the published package's API.
+    - examples/**

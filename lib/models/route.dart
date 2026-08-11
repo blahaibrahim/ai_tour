@@ -302,6 +302,16 @@ class RouteSegment extends Equatable {
             .toList(),
       );
 
+  Map<String, dynamic> toJson() => {
+        'mode': mode.name,
+        'from_poi_id': fromPoiId,
+        'to_poi_id': toPoiId,
+        'cluster_id': clusterId,
+        'duration_minutes': durationMinutes,
+        'distance_meters': distanceMeters,
+        'geometry': geometry.map((p) => [p.latitude, p.longitude]).toList(),
+      };
+
   String get distanceLabel => distanceMeters >= 1000
       ? '${(distanceMeters / 1000).toStringAsFixed(1)} km'
       : '$distanceMeters m';
@@ -359,6 +369,19 @@ class GeneratedRoute extends Equatable {
         dayCountFlag: (json['day_count_flag'] as num?)?.toInt() ?? 1,
         generatedAt: DateTime.tryParse(json['generated_at'] as String? ?? ''),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'city_id': cityId,
+        'theme': theme,
+        'time_budget_minutes': timeBudgetMinutes,
+        'transport_mode': transportMode.wire,
+        'stops': stops.map((s) => s.toJson()).toList(),
+        'segments': segments.map((s) => s.toJson()).toList(),
+        'estimated_total_duration_minutes': estimatedTotalDurationMinutes,
+        'day_count_flag': dayCountFlag,
+        'generated_at': generatedAt?.toIso8601String(),
+      };
 
   /// True when the route needs more than the stated budget — the signal the
   /// result screen warns on.
@@ -443,6 +466,13 @@ class RouteProgress extends Equatable {
             .whereType<String>()
             .toList(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'route_id': routeId,
+        'status': status,
+        'visited_poi_ids': visitedPoiIds,
+      };
 
   @override
   List<Object?> get props => [id, routeId, status, visitedPoiIds];

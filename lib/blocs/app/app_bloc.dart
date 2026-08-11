@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -15,7 +16,11 @@ import '../../repositories/prompt_interpretation_repository.dart';
 import '../../repositories/route_repository.dart';
 import '../../repositories/saved_locations_repository.dart';
 import '../../repositories/task_repository.dart';
+import '../../repositories/session_repository.dart';
 import '../../services/api_client.dart';
+import '../../services/backend_monitor.dart';
+import '../../services/demo_data.dart';
+import '../../services/notification_service.dart';
 import '../../utils/uuid.dart';
 import 'app_event.dart';
 import 'app_state.dart';
@@ -48,6 +53,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<GenerateRouteEvent>(_onGenerateRoute);
     on<ThinkTickEvent>(_onThinkTick);
     on<RouteGeneratedEvent>(_onRouteGenerated);
+    on<OpenRouteByIdEvent>(_onOpenRouteById);
     on<RouteGenerationFailedEvent>(_onRouteGenerationFailed);
     on<BackToMapEvent>(_onBackToMap);
 
@@ -86,12 +92,14 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
     on<InitTestMascotSpawnEvent>(_onInitTestMascotSpawn);
     on<ToggleArTestingModeEvent>(_onToggleArTestingMode);
+    on<RestoreSessionEvent>(_onRestoreSession);
 
     _startRealtimeSubscription();
     _watchAuth();
     add(const LoadRouteOptionsEvent());
     add(const LoadSavedLocationsEvent());
     add(const LoadArtifactsEvent());
+    add(const RestoreSessionEvent());
     if (state.arTestingMode) add(const InitTestMascotSpawnEvent());
   }
 
@@ -107,6 +115,10 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.session == null) return;
       if (_realtimeSub == null) _startRealtimeSubscription();
+      // Same reason as the rest of this method: the "Notify me" preference is
+      // stored per user, so it cannot be read until there is a user. This also
+      // re-registers the device's FCM token, which FCM rotates without asking.
+      unawaited(NotificationService.instance.syncFromServer());
       add(const LoadRouteOptionsEvent());
       add(const LoadSavedLocationsEvent());
       add(const LoadArtifactsEvent());
@@ -138,6 +150,23 @@ class AppBloc extends Bloc<AppEvent, AppState> {
             }
           }
         });
+  }
+
+  @override
+  void onChange(Change<AppState> change) {
+    super.onChange(change);
+    final next = change.nextState;
+    if (const ['swipe', 'result', 'overview'].contains(next.screen)) {
+      SessionRepository.saveSession(next);
+    } else if (next.screen == 'map' && next.route == null && !next.isRestoringSession) {
+      // Gated on the restore having finished: LoadRouteOptionsEvent,
+      // LoadSavedLocationsEvent and LoadArtifactsEvent all fire alongside
+      // RestoreSessionEvent at startup and routinely emit *before* it — each
+      // of those emits lands here with the state still on the initial `map`
+      // screen, and without this guard would wipe the persisted session out
+      // of SharedPreferences before RestoreSessionEvent ever got to read it.
+      SessionRepository.clearSession();
+    }
   }
 
   @override
@@ -385,6 +414,43 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     }
   }
 
+  /// Reopens a route the server already generated, from its id alone.
+  ///
+  /// Reuses the thinking screen while it loads rather than inventing a second
+  /// waiting state — from the traveller's side this *is* the same wait,
+  /// resumed. Once the route lands it flows through [RouteGeneratedEvent] like
+  /// any other, so the swipe/result screens need to know nothing about how it
+  /// arrived.
+  Future<void> _onOpenRouteById(
+      OpenRouteByIdEvent event, Emitter<AppState> emit) async {
+    if (state.route?.id == event.routeId) {
+      // Already loaded — the notification arrived while the app was alive and
+      // has been sitting in the tray. Just show it.
+      emit(state.copyWith(screen: state.queue.isEmpty ? 'result' : 'swipe'));
+      return;
+    }
+
+    _thinkTimer?.cancel();
+    emit(state.copyWith(
+      screen: 'thinking',
+      thinkIdx: 0,
+      isGeneratingRoute: true,
+      routeError: null,
+      routeErrorCode: null,
+    ));
+
+    try {
+      final route = await RouteRepository.fetchRoute(event.routeId);
+      add(RouteGeneratedEvent(route));
+    } on ApiException catch (e) {
+      add(RouteGenerationFailedEvent(
+          e.errorCode, e.message ?? _messageForCode(e.errorCode)));
+    } catch (_) {
+      add(const RouteGenerationFailedEvent(
+          'network_error', "Couldn't reach the route service."));
+    }
+  }
+
   /// Copy for the failure modes the old repository collapsed into "no stops".
   static String _messageForCode(String code) => switch (code) {
         'city_not_available' => "This city isn't open for routes yet.",
@@ -418,6 +484,18 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   void _onRouteGenerated(RouteGeneratedEvent event, Emitter<AppState> emit) {
     if (_generationWasCancelled) return;
     final regionLabel = state.selectedCity?.name ?? '';
+
+    // Trigger 1's fallback path. `POST /api/routes` sends a push the moment
+    // generation finishes, and that owns the notification whenever it can be
+    // delivered — it has to, because the case "Notify me" is really for is the
+    // app being killed mid-generation, and a killed process cannot notify
+    // anyone about anything. This call covers only a build with no Firebase
+    // configuration; it is a no-op otherwise, and a no-op in the foreground.
+    unawaited(NotificationService.instance.showRouteReady(
+      routeTitle: state.selectedCity?.name,
+      routeId: event.route.id,
+    ));
+
     emit(state.copyWith(
       route: event.route,
       queue: event.route.stops.map((s) => s.toLocation(regionLabel: regionLabel)).toList(),
@@ -838,11 +916,12 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       id: uuidV4(),
       name: currentLoc?.name ?? 'Your capture',
       region: currentLoc?.region ?? 'On the go',
-      kindLabel: switch (currentTask?.type) {
-        'video' => 'Video',
-        'mascot' => 'Fennec',
-        _ => 'Scan',
-      },
+      kindLabel: event.kindLabel ??
+          switch (currentTask?.type) {
+            'video' => 'Video',
+            'mascot' => 'Fennec',
+            _ => 'Scan',
+          },
       photoUrl: event.filePath,
       isLocalFile: true,
     );
@@ -960,11 +1039,25 @@ class AppBloc extends Bloc<AppEvent, AppState> {
         // listening, and the artifact stayed on "Generating 3D…" forever.
         if (_realtimeSub == null) _startRealtimeSubscription();
       }
-    } catch (_) {
-      // Mark the artifact as failed so the folder shows the retry UI
+    } catch (e) {
+      // Neither Supabase Storage nor the Node backend is reachable without a
+      // network path to either — there is no upload, no artifact row and no
+      // GPU job possible. Rather than leave the capture stuck on "failed"
+      // (correct when the backend is up and something genuinely broke, but
+      // not when there was never a backend to reach), stand in a bundled demo
+      // model so the folder still shows a completed, rotatable 3D artifact.
+      final isFake = isConnectivityError(e) ||
+          e is StorageException ||
+          e is PostgrestException ||
+          (e is ApiException && e.isTransport);
       final updated = state.capturedArtifacts.map((a) {
         if (a.id != event.artifactId) return a;
-        return a.copyWith(modelStatus: ModelStatus.failed, errorCode: 'internal');
+        return isFake
+            ? a.copyWith(
+                modelStatus: ModelStatus.succeeded,
+                modelPath: DemoData.demoModelPath,
+              )
+            : a.copyWith(modelStatus: ModelStatus.failed, errorCode: 'internal');
       }).toList();
       emit(state.copyWith(capturedArtifacts: updated));
     }
@@ -973,6 +1066,18 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   /// Called by Realtime when a model_jobs row changes to a terminal state.
   void _onJobStatusUpdated(
       JobStatusUpdatedEvent event, Emitter<AppState> emit) {
+    // Trigger 2's fallback path. The same terminal row fires a database
+    // trigger that sends an FCM push, and that push owns this notification
+    // whenever it can be delivered; this call is a no-op in that case. It
+    // exists for builds with no Firebase configuration, where realtime is the
+    // only way the app ever hears that a job finished — see
+    // `NotificationService.showModelResult`.
+    unawaited(NotificationService.instance.showModelResult(
+      jobId: event.jobId,
+      succeeded: event.status == 'succeeded',
+      errorCode: event.errorCode,
+    ));
+
     final updated = state.capturedArtifacts.map((a) {
       if (a.jobId != event.jobId) return a;
       switch (event.status) {
@@ -1046,6 +1151,61 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   // ---------------------------------------------------------------------------
   // Reset
   // ---------------------------------------------------------------------------
+
+  Future<void> _onRestoreSession(RestoreSessionEvent event, Emitter<AppState> emit) async {
+    Map<String, dynamic>? sessionData;
+    try {
+      sessionData = await SessionRepository.loadSession();
+    } catch (e, st) {
+      developer.log('Restore session error', name: 'AppBloc', error: e, stackTrace: st);
+    }
+
+    if (sessionData == null) {
+      // Nothing to restore — still have to clear the flag, or AppShell's
+      // splash gate (and the onChange guard above) waits on it forever.
+      emit(state.copyWith(isRestoringSession: false));
+      return;
+    }
+
+    try {
+      final screen = sessionData['screen'] as String?;
+      if (screen == null || !const ['swipe', 'result', 'overview'].contains(screen)) {
+        emit(state.copyWith(isRestoringSession: false));
+        return;
+      }
+
+      final routeData = sessionData['route'] as Map<String, dynamic>?;
+      final progressData = sessionData['progress'] as Map<String, dynamic>?;
+
+      final queueData = sessionData['queue'] as List<dynamic>?;
+      final acceptedData = sessionData['accepted'] as List<dynamic>?;
+      final rejectedData = sessionData['rejected'] as List<dynamic>?;
+      final tasksData = sessionData['tasks'] as List<dynamic>?;
+
+      emit(state.copyWith(
+        screen: screen,
+        route: routeData != null ? GeneratedRoute.fromJson(routeData) : null,
+        progress: progressData != null ? RouteProgress.fromJson(progressData) : null,
+        queue: queueData?.map((e) => Location.fromJson(e as Map<String, dynamic>)).toList() ?? const [],
+        currentIndex: (sessionData['currentIndex'] as num?)?.toInt() ?? 0,
+        accepted: acceptedData?.map((e) => Location.fromJson(e as Map<String, dynamic>)).toList() ?? const [],
+        rejected: rejectedData?.map((e) => Location.fromJson(e as Map<String, dynamic>)).toList() ?? const [],
+        routeAccepted: sessionData['routeAccepted'] as bool? ?? false,
+        tasks: tasksData?.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList() ?? const [],
+        currentStopIdx: (sessionData['currentStopIdx'] as num?)?.toInt() ?? 0,
+        points: (sessionData['points'] as num?)?.toInt() ?? 0,
+        taskRegenerationsLeft: (sessionData['taskRegenerationsLeft'] as num?)?.toInt() ?? 3,
+        isRestoringSession: false,
+      ));
+    } catch (e, st) {
+      developer.log('Restore session error', name: 'AppBloc', error: e, stackTrace: st);
+      // Malformed beyond parsing (e.g. a schema change since it was saved) —
+      // drop it rather than leave it to fail the same way on every future
+      // launch.
+      await SessionRepository.clearSession();
+      emit(state.copyWith(isRestoringSession: false));
+    }
+  }
 
   void _onLeaveTour(LeaveTourEvent event, Emitter<AppState> emit) {
     _thinkTimer?.cancel();

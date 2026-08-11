@@ -67,6 +67,7 @@ class AppState extends Equatable {
     this.routeErrorCode,
     this.arTestingMode = true,
     this.testMascotSpawn,
+    this.isRestoringSession = true,
   })  : selectedRegions = selectedRegions ?? regions,
         selectedCategoryKeys = selectedCategoryKeys ?? const {},
         savedLocationIds = savedLocationIds ?? const {};
@@ -183,6 +184,19 @@ class AppState extends Equatable {
   /// A mascot spawn point generated near wherever the app was at launch, for
   /// [arTestingMode]. Null until [AppBloc] resolves a GPS fix.
   final LatLng? testMascotSpawn;
+
+  /// True from construction until [AppBloc]'s startup [RestoreSessionEvent]
+  /// handler has run to completion (found nothing, restored a session, or hit
+  /// an error — any outcome counts as "done").
+  ///
+  /// Two things depend on this being accurate: [AppShell] holds up rendering
+  /// while it is true, so the map never flashes before a swap to a restored
+  /// screen; and [AppBloc.onChange] refuses to clear the persisted session
+  /// while it is true, because the other startup events ([LoadRouteOptionsEvent]
+  /// etc.) run concurrently with the restore and would otherwise routinely
+  /// win the race and wipe the saved session out from under it before it's
+  /// ever read.
+  final bool isRestoringSession;
 
   /// The location currently being reviewed, or null if the queue is exhausted.
   Location? get currentLoc {
@@ -333,6 +347,7 @@ class AppState extends Equatable {
     Object? routeErrorCode = _sentinel,
     bool? arTestingMode,
     Object? testMascotSpawn = _sentinel,
+    bool? isRestoringSession,
   }) {
     return AppState(
       screen: screen ?? this.screen,
@@ -381,6 +396,7 @@ class AppState extends Equatable {
       arTestingMode: arTestingMode ?? this.arTestingMode,
       testMascotSpawn:
           testMascotSpawn == _sentinel ? this.testMascotSpawn : testMascotSpawn as LatLng?,
+      isRestoringSession: isRestoringSession ?? this.isRestoringSession,
     );
   }
 
@@ -429,6 +445,7 @@ class AppState extends Equatable {
         routeErrorCode,
         arTestingMode,
         testMascotSpawn,
+        isRestoringSession,
       ];
 }
 

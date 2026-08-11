@@ -4,13 +4,15 @@
  * Single interface: `send(tokens, payload)`. Fire-and-forget with retry;
  * failures are logged, never propagated — the orchestrator is what enforces
  * "never throws upward" (plan §3: "a push failure never fails a capture"),
- * by catching whatever this throws, including `NotImplementedError` itself
- * while this stub is unbuilt. See `orchestrator.ts`'s `notifyPush`.
+ * by catching whatever this throws. See `orchestrator.ts`'s `notifyPush`.
  *
- * STATUS: interface only, same maturity as every adapter in
- * `routeGeneration/adapters/` — every method throws `NotImplementedError`.
+ * STATUS: implemented, by delegation. The send itself lives in
+ * `src/notifications/adapters/fcmAdapter.ts` — this module's push is one of
+ * three features that need FCM, and the other two (3D generation completion,
+ * the "Notify me" toggle) are not AR at all, so the transport sits outside
+ * `arCapture` and this interface stays as plan §7 specified it.
  */
-import { NotImplementedError } from "../errors";
+import { sendPush } from "../../notifications/adapters/fcmAdapter";
 
 export interface PushPayload {
   title: string;
@@ -23,9 +25,11 @@ export interface PushAdapter {
 }
 
 export class FcmPushAdapter implements PushAdapter {
-  send(_tokens: string[], _payload: PushPayload): Promise<void> {
-    // Fails silently as requested for now.
-    return Promise.resolve();
+  async send(tokens: string[], payload: PushPayload): Promise<void> {
+    // `sendPush` already swallows its own failures and reports a count, so
+    // there is nothing here to catch and nothing worth returning upward: this
+    // interface's whole contract is that the caller cannot be affected.
+    await sendPush(tokens, payload);
   }
 }
 

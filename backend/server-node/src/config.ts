@@ -63,6 +63,19 @@ export const Config = {
   // long random string; rotating it invalidates every token in flight
   // (5 minute TTL, so that is never a real outage).
   AR_CAPTURE_TOKEN_SECRET: process.env.AR_CAPTURE_TOKEN_SECRET,
+
+  // --- push notifications (docs/backend/15) --------------------------------
+  // The Firebase service account that signs FCM sends, as either an inline
+  // JSON blob or a path to the downloaded key file. Set neither and push is
+  // simply off: every send becomes a logged no-op and nothing else changes.
+  FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+  FIREBASE_SERVICE_ACCOUNT_PATH: process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
+
+  // Shared secret between the `model_jobs` database trigger and
+  // POST /api/internal/model-job-notify. Must equal the `notify_hook_secret`
+  // row in `private.app_settings` — that endpoint is the one route with no
+  // user session behind it, so this is the whole of its authentication.
+  NOTIFY_HOOK_SECRET: process.env.NOTIFY_HOOK_SECRET,
 } as const;
 
 /**

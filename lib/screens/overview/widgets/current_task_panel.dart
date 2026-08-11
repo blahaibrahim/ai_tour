@@ -6,37 +6,59 @@ import '../../../blocs/app/app_event.dart';
 import '../../../blocs/app/app_state.dart';
 import '../../../models/location.dart';
 import '../../../theme.dart';
-import '../../ar_hunt/hunt_radar_screen.dart';
+import 'inline_mascot_hunt.dart';
 
 /// Task row for the current stop — shows label, points, and action buttons
 /// (Record / Scan / Hunt, and an optional Regenerate button).
-class CurrentTaskPanel extends StatelessWidget {
+///
+/// A mascot task's hot/cold hunt runs inline underneath the row rather than on
+/// a screen of its own, so the visitor keeps the task, its points, and the
+/// route in view while walking the fennec down.
+class CurrentTaskPanel extends StatefulWidget {
   const CurrentTaskPanel({super.key, required this.stop});
 
   final Location stop;
 
-  /// Opens the proximity hunt for [stop]'s mascot.
+  @override
+  State<CurrentTaskPanel> createState() => _CurrentTaskPanelState();
+}
+
+class _CurrentTaskPanelState extends State<CurrentTaskPanel> {
+  /// Whether the inline hunt is running. Disposing the widget tears the GPS
+  /// session down, so this doubles as the session's on/off switch.
+  bool _hunting = false;
+
+  Location get stop => widget.stop;
+
+  @override
+  void didUpdateWidget(CurrentTaskPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Moving on to the next stop ends the hunt — its mascot is behind us.
+    if (oldWidget.stop.id != widget.stop.id && _hunting) {
+      setState(() => _hunting = false);
+    }
+  }
+
+  /// The inline hunt for [stop]'s mascot.
   ///
   /// In testing mode the hunt targets a spawn point generated near the
   /// tester's own position at app start ([AppState.testMascotSpawn]) instead
   /// of the stop's real coordinates — so the hunt is playable without
   /// travelling to an actual POI. See `AppConfig.arTestingMode`.
-  static void _openMascotHunt(BuildContext context, AppState state, Location stop) {
+  Widget _buildMascotHunt(AppState state) {
     final testSpawn = state.testMascotSpawn;
     final useTestSpawn = state.arTestingMode && testSpawn != null;
     final spawnLocation = useTestSpawn ? testSpawn : LatLng(stop.lat, stop.lng);
 
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => HuntRadarScreen(
-          spawnLocation: spawnLocation,
-          stopName: stop.name,
-          isTestSpawn: useTestSpawn,
-          routeId: state.route?.id,
-          poiId: stop.id,
-        ),
-        fullscreenDialog: true,
-      ),
+    return InlineMascotHunt(
+      // Keyed by stop so advancing to the next stop restarts the session
+      // rather than re-targeting a live one.
+      key: ValueKey('hunt-${stop.id}'),
+      spawnLocation: spawnLocation,
+      stopName: stop.name,
+      isTestSpawn: useTestSpawn,
+      routeId: state.route?.id,
+      poiId: stop.id,
     );
   }
 
@@ -110,7 +132,7 @@ class CurrentTaskPanel extends StatelessWidget {
                   ? ElevatedButton(
                       key: const ValueKey('pending'),
                       onPressed: currentTask.type == 'mascot'
-                          ? () => _openMascotHunt(context, state, stop)
+                          ? () => setState(() => _hunting = !_hunting)
                           : () => context.read<AppBloc>().add(const CompleteTaskEvent()),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -118,7 +140,7 @@ class CurrentTaskPanel extends StatelessWidget {
                       ),
                       child: Text(switch (currentTask.type) {
                         'video' => 'Record',
-                        'mascot' => 'Hunt',
+                        'mascot' => _hunting ? 'Stop' : 'Hunt',
                         _ => 'Scan',
                       }),
                     )
@@ -131,6 +153,10 @@ class CurrentTaskPanel extends StatelessWidget {
             ),
           ],
         ),
+        if (_hunting && currentTask.type == 'mascot' && currentTask.state == 'pending') ...[
+          const SizedBox(height: 12),
+          _buildMascotHunt(state),
+        ],
       ],
     );
   }

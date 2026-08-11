@@ -191,7 +191,7 @@ modelsRouter.post(
           "Modal-Key": modalKey,
           "Modal-Secret": modalSecret,
         },
-        timeoutMs: 10_000,
+        timeoutMs: 30_000,
       });
     } catch {
       await unwrap(

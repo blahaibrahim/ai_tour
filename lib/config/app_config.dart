@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Configuration loader that reads from the root `.env` file first,
@@ -28,7 +30,16 @@ class AppConfig {
   static String get apiBaseUrl {
     final fromDotenv = dotenv.maybeGet('API_BASE_URL');
     if (fromDotenv != null && fromDotenv.isNotEmpty) return fromDotenv;
-    return const String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:8000');
+
+    const fromEnv = String.fromEnvironment('API_BASE_URL');
+    if (fromEnv.isNotEmpty) return fromEnv;
+
+    // Fallback based on platform for local development
+    if (!kIsWeb && Platform.isAndroid) {
+      return 'http://10.0.2.2:8000'; // Android Emulator
+    }
+    
+    return 'http://localhost:8000'; // iOS Simulator, Web, Desktop
   }
 
   /// Whether the AR mascot hunt spawns near the device's own position instead

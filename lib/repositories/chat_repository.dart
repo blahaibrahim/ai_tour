@@ -1,5 +1,7 @@
 import '../blocs/app/app_state.dart';
 import '../services/api_client.dart';
+import '../services/backend_monitor.dart';
+import '../services/demo_data.dart';
 
 /// Wraps /api/chat — grounded place chat.
 ///
@@ -28,15 +30,26 @@ class ChatRepository {
         .map((m) => {'role': m.role == 'ai' ? 'assistant' : m.role, 'content': m.text})
         .toList();
 
-    final data = await ApiClient.post('/api/chat', body: {
-      'location_id': locationId,
-      'location_name': locationName,
-      'blurb': blurb,
-      if (category != null && category.isNotEmpty) 'category': category,
-      if (region != null && region.isNotEmpty) 'region': region,
-      'question': question,
-      'history': historyPayload,
-    });
-    return data['answer'] as String? ?? "I'm not sure — try asking differently.";
+    try {
+      final data = await ApiClient.post('/api/chat', body: {
+        'location_id': locationId,
+        'location_name': locationName,
+        'blurb': blurb,
+        if (category != null && category.isNotEmpty) 'category': category,
+        if (region != null && region.isNotEmpty) 'region': region,
+        'question': question,
+        'history': historyPayload,
+      });
+      return data['answer'] as String? ?? "I'm not sure — try asking differently.";
+    } catch (e) {
+      if ((e is ApiException && e.isTransport) || isConnectivityError(e)) {
+        return DemoData.chatAnswer(
+          locationName: locationName,
+          blurb: blurb,
+          question: question,
+        );
+      }
+      rethrow;
+    }
   }
 }

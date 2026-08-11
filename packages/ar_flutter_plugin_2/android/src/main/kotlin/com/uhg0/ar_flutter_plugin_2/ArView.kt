@@ -900,40 +900,51 @@ class ArView(
 
     private fun handleSnapshot(result: MethodChannel.Result) {
         try {
-            mainScope.launch {
-                val bitmap =
-                    withContext(Dispatchers.Main) {
-                        val bitmap =
-                            Bitmap.createBitmap(
-                                sceneView.width,
-                                sceneView.height,
-                                Bitmap.Config.ARGB_8888,
-                            )
+            val bitmap =
+                Bitmap.createBitmap(
+                    sceneView.width,
+                    sceneView.height,
+                    Bitmap.Config.ARGB_8888,
+                )
 
-                        try {
-                            val listener =
-                                PixelCopy.OnPixelCopyFinishedListener { copyResult ->
-                                    if (copyResult == PixelCopy.SUCCESS) {
+            val listener =
+                PixelCopy.OnPixelCopyFinishedListener { copyResult ->
+                    if (copyResult != PixelCopy.SUCCESS) {
+                        result.error("SNAPSHOT_ERROR", "Failed to capture snapshot", null)
+                    } else {
+                        // Encoding a full-screen frame takes a few hundred
+                        // milliseconds. This callback arrives on the main
+                        // looper, which is also the thread Flutter draws on, so
+                        // encoding here froze the whole app for the length of
+                        // the encode — the shutter appeared to hang. Off the
+                        // main thread, and in JPEG rather than lossless PNG
+                        // (several times slower again, and a multi-megabyte
+                        // buffer to shuttle over the method channel), the
+                        // shutter is immediate. The quality is still well above
+                        // what the capture pipeline recompresses to.
+                        mainScope.launch {
+                            try {
+                                val bytes =
+                                    withContext(Dispatchers.IO) {
                                         val byteStream = java.io.ByteArrayOutputStream()
-                                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, byteStream)
-                                        val byteArray = byteStream.toByteArray()
-                                        result.success(byteArray)
-                                    } else {
-                                        result.error("SNAPSHOT_ERROR", "Failed to capture snapshot", null)
+                                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, byteStream)
+                                        bitmap.recycle()
+                                        byteStream.toByteArray()
                                     }
-                                }
-
-                            PixelCopy.request(
-                                sceneView,
-                                bitmap,
-                                listener,
-                                Handler(Looper.getMainLooper()),
-                            )
-                        } catch (e: Exception) {
-                            result.error("SNAPSHOT_ERROR", e.message, null)
+                                result.success(bytes)
+                            } catch (e: Exception) {
+                                result.error("SNAPSHOT_ERROR", e.message, null)
+                            }
                         }
                     }
-            }
+                }
+
+            PixelCopy.request(
+                sceneView,
+                bitmap,
+                listener,
+                Handler(Looper.getMainLooper()),
+            )
         } catch (e: Exception) {
             result.error("SNAPSHOT_ERROR", e.message, null)
         }

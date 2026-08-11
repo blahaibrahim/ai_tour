@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'demo_data.dart';
 
 /// Local disk cache for downloaded GLB model files.
 ///
@@ -12,7 +15,15 @@ class MediaCache {
 
   /// Returns the local [File] for [storagePath] (e.g. "models/{uid}/{id}.glb"),
   /// downloading from Supabase Storage if not already cached.
+  ///
+  /// [DemoData.demoModelPath] is special-cased to a bundled asset: it's what
+  /// [ModelRepository.requestGeneration] hands back instead of a real
+  /// storage key when the GPU backend can't be reached, so there is never a
+  /// real object in Supabase Storage to download for it.
   static Future<File?> getModel(String storagePath) async {
+    if (storagePath == DemoData.demoModelPath) {
+      return _demoModelFile();
+    }
     try {
       final cacheFile = await _cacheFile(storagePath);
       if (await cacheFile.exists()) {
@@ -48,6 +59,26 @@ class MediaCache {
     final dir = await getApplicationCacheDirectory();
     final safe = storagePath.replaceAll('/', '_').replaceAll(' ', '_');
     return File('${dir.path}/$safe');
+  }
+
+  /// Copies the bundled fennec GLB into the cache dir the first time it's
+  /// asked for, so [ArtifactViewerScreen] can open it exactly like a
+  /// downloaded model — [Flutter3DViewer] needs a real file path, not an
+  /// asset key (see the comment at its call site).
+  static Future<File?> _demoModelFile() async {
+    try {
+      final cacheFile = await _cacheFile(DemoData.demoModelPath);
+      if (await cacheFile.exists() && await cacheFile.length() > 0) {
+        return cacheFile;
+      }
+      final data = await rootBundle.load('assets/3d/rigged_animated_fennec.glb');
+      final partial = File('${cacheFile.path}.part');
+      await partial.writeAsBytes(data.buffer.asUint8List(), flush: true);
+      await partial.rename(cacheFile.path);
+      return cacheFile;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Returns a signed URL for a capture photo (1-hour TTL).

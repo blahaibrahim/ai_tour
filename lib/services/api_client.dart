@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/app_config.dart';
+import 'backend_monitor.dart';
 
 /// Typed exception carrying the HTTP status code and machine-readable error code.
 ///
@@ -60,7 +61,13 @@ class ApiClient {
       // The bloc is constructed before anonymous sign-in completes, so the
       // first few calls of a cold start legitimately land here.
       try {
-        final res = await Supabase.instance.client.auth.signInAnonymously();
+        // Bounded: with no path to Supabase this otherwise hangs — and it
+        // runs *before* `_send`'s own timeout wraps anything, so an
+        // unbounded wait here would stall every request indefinitely
+        // regardless of `_timeout` below.
+        final res = await Supabase.instance.client.auth
+            .signInAnonymously()
+            .timeout(const Duration(seconds: 8));
         session = res.session;
       } catch (error, stack) {
         developer.log(
@@ -78,9 +85,14 @@ class ApiClient {
   }
 
   /// POST returning the decoded JSON body.
+  ///
+  /// [timeout] overrides the default deadline for calls that legitimately run
+  /// longer than the rest of the API — e.g. model generation, which waits on
+  /// the backend's own call to Modal.
   static Future<Map<String, dynamic>> post(
     String path, {
     Map<String, dynamic>? body,
+    Duration? timeout,
   }) {
     return _send(
       'POST',
@@ -90,6 +102,7 @@ class ApiClient {
         headers: headers,
         body: body != null ? jsonEncode(body) : null,
       ),
+      timeout: timeout,
     );
   }
 
@@ -102,6 +115,43 @@ class ApiClient {
     );
   }
 
+  /// PUT returning the decoded JSON body.
+  static Future<Map<String, dynamic>> put(
+    String path, {
+    Map<String, dynamic>? body,
+  }) {
+    return _send(
+      'PUT',
+      path,
+      (uri, headers) => _client.put(
+        uri,
+        headers: headers,
+        body: body != null ? jsonEncode(body) : null,
+      ),
+    );
+  }
+
+  /// DELETE returning the decoded JSON body.
+  ///
+  /// Carries a body, unlike the usual reading of the verb: the one caller —
+  /// unregistering a push token — needs to say *which* device is going away,
+  /// and putting a token in the URL would write it to every access log between
+  /// here and the server.
+  static Future<Map<String, dynamic>> delete(
+    String path, {
+    Map<String, dynamic>? body,
+  }) {
+    return _send(
+      'DELETE',
+      path,
+      (uri, headers) => _client.delete(
+        uri,
+        headers: headers,
+        body: body != null ? jsonEncode(body) : null,
+      ),
+    );
+  }
+
   /// The one place a response becomes either a decoded body or an
   /// [ApiException]. Both verbs shared this logic by copy before; the timeout
   /// and transport-error handling are exactly the kind of thing that gets added
@@ -109,19 +159,35 @@ class ApiClient {
   static Future<Map<String, dynamic>> _send(
     String method,
     String path,
-    Future<http.Response> Function(Uri uri, Map<String, String> headers) issue,
-  ) async {
+    Future<http.Response> Function(Uri uri, Map<String, String> headers) issue, {
+    Duration? timeout,
+  }) async {
     final uri = Uri.parse('${AppConfig.apiBaseUrl}$path');
 
     final http.Response response;
     try {
-      response = await issue(uri, await _headers()).timeout(_timeout);
+      response = await issue(uri, await _headers()).timeout(timeout ?? _timeout);
     } on TimeoutException {
+      BackendMonitor.instance.reportFailure();
       throw const ApiException(0, 'timeout', 'The server took too long to answer.');
     } on SocketException {
+      BackendMonitor.instance.reportFailure();
       throw const ApiException(0, 'network_error', "Couldn't reach the server.");
     } on http.ClientException {
+      BackendMonitor.instance.reportFailure();
       throw const ApiException(0, 'network_error', "Couldn't reach the server.");
+    }
+    // Any status code at all means the server answered — connectivity is fine
+    // even if this particular request was rejected.
+    BackendMonitor.instance.reportSuccess();
+
+    // A 204, or any success with nothing in it, is an answer — not a
+    // malformed one. Several endpoints (push-token register and unregister,
+    // the checkpoint recorder) reply exactly this way, and treating an empty
+    // success body as `invalid_json` below made every one of them throw on
+    // the happy path.
+    if (response.body.trim().isEmpty && response.statusCode < 400) {
+      return const {};
     }
 
     Map<String, dynamic>? decoded;

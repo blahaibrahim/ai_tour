@@ -1,6 +1,8 @@
 import 'package:latlong2/latlong.dart';
 
 import '../services/api_client.dart';
+import '../services/backend_monitor.dart';
+import '../services/demo_data.dart';
 
 // ---------------------------------------------------------------------------
 // Models
@@ -189,7 +191,6 @@ class CollectionEntry {
 ///   POST /api/mascots/:spawnId/proximity        → [issueProximityToken]
 ///   POST /api/mascots/:spawnId/capture          → [submitCapture]
 ///   GET  /api/collection                        → [getCollection]
-///   POST /api/devices/push-token               → [registerPushToken]
 class MascotRepository {
   const MascotRepository._();
 
@@ -200,16 +201,26 @@ class MascotRepository {
   /// Generates (and persists) spawn points for every AR-enabled stop on
   /// [routeId]. Idempotent — repeated calls return the same spawns.
   static Future<SpawnManifest> generateManifest(String routeId) async {
-    final data = await ApiClient.post(
-      '/api/routes/$routeId/mascots/generate',
-    );
-    return SpawnManifest.fromJson(data);
+    try {
+      final data = await ApiClient.post(
+        '/api/routes/$routeId/mascots/generate',
+      );
+      return SpawnManifest.fromJson(data);
+    } catch (e) {
+      if (_isBackendUnreachable(e)) return DemoData.manifestForRoute(routeId);
+      rethrow;
+    }
   }
 
   /// Fetches an already-generated manifest without creating new spawns.
   static Future<SpawnManifest> getManifest(String routeId) async {
-    final data = await ApiClient.get('/api/routes/$routeId/mascots');
-    return SpawnManifest.fromJson(data);
+    try {
+      final data = await ApiClient.get('/api/routes/$routeId/mascots');
+      return SpawnManifest.fromJson(data);
+    } catch (e) {
+      if (_isBackendUnreachable(e)) return DemoData.manifestForRoute(routeId);
+      rethrow;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -227,14 +238,19 @@ class MascotRepository {
     required LatLng fix,
     required double accuracyMeters,
   }) async {
-    final data = await ApiClient.post(
-      '/api/mascots/$spawnId/proximity',
-      body: {
-        'fix': {'lat': fix.latitude, 'lng': fix.longitude},
-        'accuracy_meters': accuracyMeters,
-      },
-    );
-    return CaptureToken.fromJson(data);
+    try {
+      final data = await ApiClient.post(
+        '/api/mascots/$spawnId/proximity',
+        body: {
+          'fix': {'lat': fix.latitude, 'lng': fix.longitude},
+          'accuracy_meters': accuracyMeters,
+        },
+      );
+      return CaptureToken.fromJson(data);
+    } catch (e) {
+      if (_isBackendUnreachable(e)) return DemoData.captureToken();
+      rethrow;
+    }
   }
 
   /// Submits a capture attempt and gets back the server's verdict.
@@ -252,19 +268,24 @@ class MascotRepository {
     Map<String, dynamic> arTelemetry = const {},
     bool isOfflineReplay = false,
   }) async {
-    final data = await ApiClient.post(
-      '/api/mascots/$spawnId/capture',
-      body: {
-        'capture_token': captureToken,
-        'fix': {'lat': fix.latitude, 'lng': fix.longitude},
-        'accuracy_meters': accuracyMeters,
-        'client_ts': clientTs,
-        'nonce': nonce,
-        'ar_telemetry': arTelemetry,
-        'is_offline_replay': isOfflineReplay,
-      },
-    );
-    return CaptureResult.fromJson(data);
+    try {
+      final data = await ApiClient.post(
+        '/api/mascots/$spawnId/capture',
+        body: {
+          'capture_token': captureToken,
+          'fix': {'lat': fix.latitude, 'lng': fix.longitude},
+          'accuracy_meters': accuracyMeters,
+          'client_ts': clientTs,
+          'nonce': nonce,
+          'ar_telemetry': arTelemetry,
+          'is_offline_replay': isOfflineReplay,
+        },
+      );
+      return CaptureResult.fromJson(data);
+    } catch (e) {
+      if (_isBackendUnreachable(e)) return DemoData.captureResult;
+      rethrow;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -272,30 +293,24 @@ class MascotRepository {
   // -------------------------------------------------------------------------
 
   static Future<List<CollectionEntry>> getCollection() async {
-    final data = await ApiClient.get('/api/collection');
-    return (data['collection'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(CollectionEntry.fromJson)
-        .toList();
+    try {
+      final data = await ApiClient.get('/api/collection');
+      return (data['collection'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(CollectionEntry.fromJson)
+          .toList();
+    } catch (e) {
+      if (_isBackendUnreachable(e)) return const [];
+      rethrow;
+    }
   }
 
-  // -------------------------------------------------------------------------
-  // Device push token
-  // -------------------------------------------------------------------------
-
-  /// Registers or refreshes a push notification token.
-  ///
-  /// [platform] must be `'android'`, `'ios'`, or `'web'`.
-  /// [arCapability] is optional telemetry: `'full'`, `'limited'`, or `'none'`.
-  static Future<void> registerPushToken({
-    required String token,
-    required String platform,
-    String? arCapability,
-  }) async {
-    await ApiClient.post('/api/devices/push-token', body: {
-      'token': token,
-      'platform': platform,
-      if (arCapability != null) 'ar_capability': arCapability,
-    });
-  }
+  // Device push tokens used to be registered from here. They live in
+  // `NotificationRepository` now — the same endpoint, but tokens serve all
+  // three of the app's notification triggers and only one of them is the hunt.
 }
+
+/// True when [error] means the backend couldn't be reached at all — see
+/// the identical helper in `route_repository.dart`.
+bool _isBackendUnreachable(Object error) =>
+    (error is ApiException && error.isTransport) || isConnectivityError(error);

@@ -57,6 +57,7 @@ backend/**/*.pyc
 backend/**/results/
 backend/**/*.glb
 backend/server/instance/
+backend/massar-bfa62-firebase-adminsdk-fbsvc-7a4a6a674e.json
 
 # AI, Agents, and MCP related
 .agents/
@@ -70,3 +71,4 @@ skills-lock.json
 .windsurf/
 docs/
 .vscode/
+

@@ -3,6 +3,11 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Android 13+ gates notifications behind a runtime prompt. Without this
+         declaration the request in NotificationService.enable() returns denied
+         immediately and nothing is ever shown — on 12 and below the permission
+         is implicit and this is ignored. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
     <!-- The mascot hunt runs on ARCore. ar_flutter_plugin_2 already merges in
@@ -51,6 +56,15 @@
             android:name="com.google.ar.core"
             android:value="required"
             tools:replace="android:value" />
+
+        <!-- Which channel an FCM message lands in when it arrives with the app
+             closed and the payload names no channel of its own. Android drops a
+             notification addressed to a channel that does not exist, silently
+             and with nothing in logcat, so this has to match the channel
+             NotificationService creates at startup. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="massar_default" />
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

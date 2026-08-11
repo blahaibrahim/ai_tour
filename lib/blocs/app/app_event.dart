@@ -147,6 +147,21 @@ class RouteGeneratedEvent extends AppEvent {
   List<Object?> get props => [route];
 }
 
+/// Reopen an already-generated route by its id.
+///
+/// Exists for the "your route is ready" notification. That push is sent for
+/// the case where the app was killed while a route generated — the request
+/// finishes on the server either way — so by the time the traveller taps it,
+/// this process has no memory of the route at all. The id in the notification
+/// is the only way back, and `GET /api/routes/:id` is where it leads.
+class OpenRouteByIdEvent extends AppEvent {
+  const OpenRouteByIdEvent(this.routeId);
+  final String routeId;
+
+  @override
+  List<Object?> get props => [routeId];
+}
+
 /// Generation failed. `code` is the server's machine-readable error, so the UI
 /// can tell "this city isn't open yet" from "nothing matched" from "the
 /// backend is down" — three states the old repository collapsed into an empty
@@ -285,11 +300,17 @@ class NavHomeEvent extends AppEvent {
 }
 
 class AddCapturedArtifactEvent extends AppEvent {
-  const AddCapturedArtifactEvent(this.filePath);
+  const AddCapturedArtifactEvent(this.filePath, {this.kindLabel});
   final String filePath;
 
+  /// What the folder should call this one. Left null, the label is inferred
+  /// from the task in progress — right for a capture that answers a task, but
+  /// a plain photo taken from the nav bar answers nothing and would inherit
+  /// "Scan" from the fallback.
+  final String? kindLabel;
+
   @override
-  List<Object?> get props => [filePath];
+  List<Object?> get props => [filePath, kindLabel];
 }
 
 class LeaveTourEvent extends AppEvent {
@@ -395,3 +416,9 @@ class OptimisticArtifactEvent extends AppEvent {
   @override
   List<Object?> get props => [artifact];
 }
+
+/// Restores the route generation session from SharedPreferences on startup.
+class RestoreSessionEvent extends AppEvent {
+  const RestoreSessionEvent();
+}
+

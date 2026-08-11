@@ -36,6 +36,7 @@ import '../../services/object_detector.dart';
 import '../../theme.dart';
 import '../../utils/artifact_naming.dart';
 import '../../utils/uuid.dart';
+import '../../widgets/camera_mode_selector.dart';
 import '../../widgets/glass_surface.dart';
 import '../../widgets/pressable_scale.dart';
 
@@ -47,6 +48,23 @@ enum ArCameraMode {
   /// Plain capture: the same camera, chrome and shutter, no mascot. Used by
   /// the camera button in the nav bar.
   capture,
+}
+
+/// What the shutter does in [ArCameraMode.capture], swiped between above the
+/// shutter itself — see [CameraModeSelector].
+///
+/// The two are the same shot taken for different reasons, which is why they
+/// share one camera rather than sitting behind separate buttons: [photo] keeps
+/// the frame, [scan] sends it off to be rebuilt as a 3D model and only accepts
+/// frames with a real object in them.
+enum CaptureMode {
+  photo('Photo'),
+  scan('3D Scan');
+
+  const CaptureMode(this.label);
+
+  /// Name shown in the mode strip.
+  final String label;
 }
 
 /// The camera half of the mascot hunt, on ARCore/ARKit world tracking.
@@ -85,13 +103,13 @@ class ArHuntScreen extends StatefulWidget {
   final ArCameraMode mode;
 
   /// The mascot's real geographic spawn point, from the proximity hunt
-  /// (`HuntRadarScreen`) that led here. When set, [spot] is replaced at
+  /// (`InlineMascotHunt`) that led here. When set, [spot] is replaced at
   /// session start by the true bearing to this point combined with the
   /// device's heading — §5.5's bearing-preserving placement — rather than the
   /// fixed default.
   final LatLng? spawnLocation;
 
-  /// The backend spawn id, forwarded from [HuntRadarScreen] when a real
+  /// The backend spawn id, forwarded from the inline hunt when a real
   /// manifest was loaded. Used to submit the capture after the mascot is caught.
   final String? spawnId;
 
@@ -167,9 +185,31 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   GlbBounds? _bounds;
 
   _Stage _stage = _Stage.scanning;
+
+  /// Which shutter the plain camera is currently showing. Opens on [
+  /// CaptureMode.photo] for the same reason a phone's camera does: a photo is
+  /// the shot you take without thinking about it, and scanning is a decision.
+  CaptureMode _captureMode = CaptureMode.photo;
+
   bool _busy = false;
   bool _floorMeasured = false;
   String? _error;
+
+  /// The frame that has been taken but not yet accepted, held over the
+  /// viewfinder while it is looked at.
+  ///
+  /// Both plain-camera shots are worth a second before they are committed to —
+  /// a photo goes in the folder, a scan spends a generation — and a frozen
+  /// frame is the only way to tell a blurred or half-framed shot from a good
+  /// one, because the live viewfinder has already moved on. The hunt has no
+  /// review: the shot there is the end of a chase, and interrupting it to ask
+  /// would be asking about the wrong thing.
+  Uint8List? _pendingFrame;
+
+  /// Which shutter took [_pendingFrame]. Captured at the shutter rather than
+  /// read back at confirm time, so the frame and what happens to it can't come
+  /// apart.
+  bool _pendingScan = false;
 
   Timer? _scanTimeout;
   Timer? _poseTimer;
@@ -207,10 +247,19 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   /// a plain camera.
   bool get _hunting => widget.mode == ArCameraMode.hunt;
 
+  /// True when the shutter will send the shot off to be turned into a 3D
+  /// model. The hunt has its own shutter and never scans.
+  bool get _scanning => !_hunting && _captureMode == CaptureMode.scan;
+
+  /// True while a taken frame is waiting to be kept or retaken.
+  bool get _reviewing => _pendingFrame != null;
+
   /// Whether the shutter is live. Plain capture can shoot as soon as there is
   /// a session to snapshot; a hunt only once the fennec has been caught.
-  bool get _canShoot =>
-      !_busy && _session != null && (!_hunting || _stage == _Stage.caught);
+  bool get _canShoot => !_busy &&
+      !_reviewing &&
+      _session != null &&
+      (!_hunting || _stage == _Stage.caught);
 
   @override
   void initState() {
@@ -698,168 +747,102 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   // Capture
   // ---------------------------------------------------------------------------
 
+  /// Takes the shot.
+  ///
+  /// On a hunt this is the whole of it — the frame goes straight on to be
+  /// saved and the screen closes. In plain capture it stops at the frozen
+  /// frame and waits for [_keepShot] or [_retakeShot].
   Future<void> _capture() async {
     final session = _session;
-    if (session == null || _busy) return;
+    if (session == null || _busy || _reviewing) return;
 
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
-    final bloc = context.read<AppBloc>();
-    final navigator = Navigator.of(context);
+    final scanning = _scanning;
 
+    final Uint8List frame;
     try {
       final image = await session.snapshot();
       if (image is! MemoryImage) {
         throw StateError('unexpected snapshot format');
       }
-
-      // Save raw PNG so the capture appears in the folder immediately
-      final directory = await getApplicationDocumentsDirectory();
-      final rawPath = '${directory.path}/capture_${DateTime.now().millisecondsSinceEpoch}.png';
-      await File(rawPath).writeAsBytes(image.bytes, flush: true);
-
-      // In capture mode: run the full 3D generation pipeline
-      if (!_hunting) {
-        // 1. Compress to JPEG + strip EXIF (privacy + bandwidth)
-        final compressed = await FlutterImageCompress.compressWithFile(
-          rawPath,
-          minWidth: 1536,
-          minHeight: 1536,
-          quality: 85,
-          format: CompressFormat.jpeg,
-          keepExif: false,
-        );
-
-        if (compressed == null || compressed.isEmpty) {
-          throw StateError('image compression failed');
-        }
-
-        // 2. Object detection — tell user if no scan-worthy object found
-        final jpegPath = rawPath.replaceAll('.png', '.jpg');
-        await File(jpegPath).writeAsBytes(compressed, flush: true);
-
-        final hasObject = await ObjectDetector.hasDetectableObject(jpegPath);
-        if (!hasObject) {
-          if (!mounted) return;
-          setState(() => _busy = false);
-          messenger.showSnackBar(const SnackBar(
-            content: Text(
-              'No clear object found — try filling more of the frame with the subject',
-            ),
-            duration: Duration(seconds: 3),
-          ));
-          return;
-        }
-
-        // 3. SHA-256 for deduplication (server will skip GPU if identical image seen before)
-        final sha256hex = sha256.convert(compressed).toString();
-        // Must be a real UUID: it becomes artifacts.id and model_jobs.artifact_id,
-        // both uuid columns. A readable id like "capture-<millis>" is rejected by
-        // the column type, which failed every capture before the server even got
-        // as far as the foreign key.
-        final artifactId = uuidV4();
-        final atStop = bloc.state.accepted.isNotEmpty &&
-            bloc.state.currentStopIdx < bloc.state.accepted.length;
-        final stop = atStop ? bloc.state.accepted[bloc.state.currentStopIdx] : null;
-
-        // Name by area, numbered within it: algiers_the_casbah_1, _2, … The
-        // region is the area proper; a stop whose region the catalogue left
-        // blank falls back to its own name so the number still has something
-        // meaningful to hang off.
-        final area = stop == null
-            ? kUnplacedArea
-            : stop.region.isNotEmpty
-                ? stop.region
-                : stop.name.isNotEmpty
-                    ? stop.name
-                    : kUnplacedArea;
-        // Counts against the whole folder, which by now includes everything
-        // restored from Supabase — so numbering keeps climbing across restarts
-        // instead of restarting at 1 each launch.
-        final captureName = nextArtifactName(bloc.state.capturedArtifacts, area);
-
-        // 4. Add optimistic artifact immediately so the user sees it in the folder
-        final artifact = Artifact(
-          id: artifactId,
-          name: captureName,
-          region: area,
-          kindLabel: '3D Model',
-          photoUrl: jpegPath,
-          isLocalFile: true,
-          modelStatus: ModelStatus.generating,
-          jobId: null,
-        );
-
-        // Emit the optimistic state directly (bypassing AddCapturedArtifactEvent
-        // because we need the full Artifact, not just the file path)
-        bloc.add(OptimisticArtifactEvent(artifact));
-
-        // 5. Dispatch the async upload+generation event
-        bloc.add(RequestModelGenerationEvent(
-          artifactId: artifactId,
-          localImagePath: jpegPath,
-          imageBytes: compressed,
-          sha256: sha256hex,
-          title: captureName,
-        ));
-
-        navigator.pop();
-        messenger.showSnackBar(const SnackBar(
-          content: Text('Generating 3D model — check your folder in a moment'),
-          duration: Duration(seconds: 4),
-        ));
-      } else {
-        // Hunt mode: save photo locally first so the folder is updated
-        // immediately regardless of network state.
-        bloc.add(AddCapturedArtifactEvent(rawPath));
-
-        // Submit the capture to the backend when we have a real spawn + token.
-        // Best-effort: a network failure never blocks the folder or the pop.
-        final spawnId = widget.spawnId;
-        final captureToken = widget.captureToken;
-        if (spawnId != null && captureToken != null) {
-          try {
-            final pos = await Geolocator.getCurrentPosition(
-              locationSettings:
-                  const LocationSettings(accuracy: LocationAccuracy.best),
-            ).timeout(const Duration(seconds: 3));
-            await MascotRepository.submitCapture(
-              spawnId: spawnId,
-              captureToken: captureToken,
-              fix: LatLng(pos.latitude, pos.longitude),
-              accuracyMeters: pos.accuracy,
-              clientTs: DateTime.now().toUtc().toIso8601String(),
-              nonce: uuidV4(),
-              arTelemetry: {
-                'stage': _stage.name,
-                'floor_measured': _floorMeasured,
-              },
-            );
-          } catch (_) {
-            // Non-fatal — the photo is already saved locally.
-          }
-        }
-
-        if (!mounted) return;
-        
-        if (_node != null && _objects != null) {
-          _objects!.playAnimation(nodeName: _node!.name, animationName: 'Death', loop: false);
-          // Let the user see the death animation before popping
-          await Future.delayed(const Duration(milliseconds: 1500));
-          if (!mounted) return;
-        }
-        
-        navigator.pop();
-        messenger.showSnackBar(const SnackBar(
-          content: Text('Fennec caught — saved to your folder'),
-        ));
-      }
+      frame = image.bytes;
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
       messenger.showSnackBar(
-        SnackBar(content: Text("Couldn't save that shot: ${e.toString()}")),
+        SnackBar(content: Text("Couldn't take that shot: ${e.toString()}")),
       );
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+    if (!mounted) return;
+
+    if (_hunting) {
+      _dispatch(frame, scanning: false);
+      return;
+    }
+
+    setState(() {
+      _pendingFrame = frame;
+      _pendingScan = scanning;
+      _busy = false;
+    });
+  }
+
+  /// Throws the reviewed frame away and hands the viewfinder back.
+  void _retakeShot() {
+    if (!_reviewing) return;
+    HapticFeedback.selectionClick();
+    setState(() => _pendingFrame = null);
+  }
+
+  /// Accepts the reviewed frame and sends it on its way.
+  void _keepShot() {
+    final frame = _pendingFrame;
+    if (frame == null || _busy) return;
+    HapticFeedback.mediumImpact();
+    _dispatch(frame, scanning: _pendingScan);
+  }
+
+  /// Closes the screen on [frame] and lets the rest finish behind it.
+  ///
+  /// Only the snapshot itself has to happen while the camera is still on
+  /// screen. Everything after it — writing the file, compressing, object
+  /// detection, the network — used to run before the screen closed, which is
+  /// what made the shutter feel like the app had frozen: several seconds of a
+  /// stuck viewfinder with nothing to show for it. Now the screen closes here
+  /// and the rest finishes behind it, reporting to the folder and a snackbar
+  /// the way any other background work does.
+  void _dispatch(Uint8List frame, {required bool scanning}) {
+    final messenger = ScaffoldMessenger.of(context);
+    final bloc = context.read<AppBloc>();
+
+    // Past this line the widget is on its way out, so the work below is
+    // handed to functions that hold no reference to it — no setState, no
+    // context, nothing that a disposed State would trip over.
+    Navigator.of(context).pop();
+
+    if (scanning) {
+      unawaited(_finishScanCapture(
+        frame: frame,
+        bloc: bloc,
+        messenger: messenger,
+      ));
+    } else {
+      unawaited(_finishPhotoCapture(
+        frame: frame,
+        bloc: bloc,
+        messenger: messenger,
+        caught: _hunting,
+        spawnId: widget.spawnId,
+        captureToken: widget.captureToken,
+        arTelemetry: {
+          'stage': _stage.name,
+          'floor_measured': _floorMeasured,
+        },
+      ));
     }
   }
 
@@ -893,6 +876,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   @override
   Widget build(BuildContext context) {
     final bearing = _bearing;
+    final review = _pendingFrame;
     final hunting = _hunting &&
         (_stage == _Stage.placed || _stage == _Stage.caught);
 
@@ -908,7 +892,16 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
             planeDetectionConfig: PlaneDetectionConfig.horizontal,
             permissionDenied: _buildPermissionPrompt,
           ),
-          if (hunting && bearing != null && !bearing.onScreen)
+          if (review != null)
+            // The frame sits on top of the running session rather than
+            // replacing it, so a retake is instant — the AR view underneath
+            // never went away and has nothing to warm back up.
+            Image.memory(
+              review,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+            )
+          else if (hunting && bearing != null && !bearing.onScreen)
             _EdgeArrow(direction: bearing.direction),
           _buildChrome(context),
         ],
@@ -977,7 +970,15 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _hunting ? 'Find the fennec' : 'Take a photo',
+                          _reviewing
+                              ? (_pendingScan
+                                  ? 'Scan this?'
+                                  : 'Keep this photo?')
+                              : _hunting
+                                  ? 'Find the fennec'
+                                  : _scanning
+                                      ? 'Scan an object'
+                                      : 'Take a photo',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 14,
@@ -985,10 +986,16 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                           ),
                         ),
                         Text(
-                          widget.stopName ??
-                              (_hunting
-                                  ? 'Somewhere around you'
-                                  : 'It goes straight to your folder'),
+                          _reviewing
+                              ? (_pendingScan
+                                  ? 'Check the object is sharp and whole'
+                                  : 'Check it came out how you wanted')
+                              : widget.stopName ??
+                                  (_hunting
+                                      ? 'Somewhere around you'
+                                      : _scanning
+                                          ? 'It comes back as a 3D model'
+                                          : 'It goes straight to your folder'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -1016,7 +1023,12 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
             ),
           ),
           const Spacer(),
-          if (_error != null) _buildError() else _buildFooter(),
+          if (_error != null)
+            _buildError()
+          else if (_reviewing)
+            _buildReviewFooter()
+          else
+            _buildFooter(),
         ],
       ),
     );
@@ -1024,8 +1036,16 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
   Widget _buildFooter() {
     final bearing = _bearing;
-    final (label, hint) = !_hunting
-        ? ('Camera', 'Frame the shot and tap the shutter')
+    // The strip under the card already names the mode in plain-camera mode, so
+    // the card there carries the hint alone — the same word twice, forty
+    // pixels apart, tells nobody anything.
+    final (String? label, String hint) = !_hunting
+        ? (
+            null,
+            _scanning
+                ? 'Fill the frame with one object, then shoot'
+                : 'Frame the shot and tap the shutter',
+          )
         : switch (_stage) {
             _Stage.scanning => (
                 'Reading the room',
@@ -1059,15 +1079,17 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                if (label != null) ...[
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 3),
+                  const SizedBox(height: 3),
+                ],
                 Text(
                   hint,
                   textAlign: TextAlign.center,
@@ -1098,8 +1120,59 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 20),
-          _ShutterButton(enabled: _canShoot, onTap: _capture),
+          if (!_hunting) ...[
+            const SizedBox(height: 12),
+            CameraModeSelector(
+              labels: [for (final mode in CaptureMode.values) mode.label],
+              index: _captureMode.index,
+              enabled: !_busy,
+              onChanged: (index) =>
+                  setState(() => _captureMode = CaptureMode.values[index]),
+            ),
+            const SizedBox(height: 8),
+          ] else
+            const SizedBox(height: 20),
+          _ShutterButton(
+            enabled: _canShoot,
+            onTap: _capture,
+            icon: _scanning
+                ? Icons.view_in_ar_rounded
+                : Icons.camera_alt_rounded,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Retake or keep, in place of the shutter.
+  ///
+  /// The two sit at the same height the shutter did, so the thumb is already
+  /// where it needs to be. Keeping is the filled one because it is what
+  /// almost every shot is for; retaking is a shade quieter but the same size,
+  /// since it is the reason this step exists at all.
+  Widget _buildReviewFooter() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 34),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ReviewButton(
+              label: 'Retake',
+              icon: Icons.refresh_rounded,
+              onTap: _retakeShot,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _ReviewButton(
+              label: _pendingScan ? 'Scan it' : 'Use photo',
+              icon: _pendingScan
+                  ? Icons.view_in_ar_rounded
+                  : Icons.check_rounded,
+              onTap: _keepShot,
+              filled: true,
+            ),
+          ),
         ],
       ),
     );
@@ -1135,6 +1208,181 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// After the shutter
+// ---------------------------------------------------------------------------
+//
+// Both of these run after the camera screen has been popped, which is the
+// whole point of them — the shutter is only as fast as the work it waits on.
+// They are top-level rather than methods so there is no `this` to be tempted
+// by: the State they came from is disposed by the time they get going, and its
+// context, `mounted` and `setState` are all off limits. The bloc and the root
+// [ScaffoldMessengerState] both outlive the screen, so results still land in
+// the folder and on screen.
+
+/// Saves [frame] straight to the folder — the plain photo shutter, and the
+/// shot that ends a fennec hunt.
+///
+/// [caught] marks the hunt case, which additionally reports the catch to the
+/// backend when the hunt was a real (server-issued) one.
+Future<void> _finishPhotoCapture({
+  required Uint8List frame,
+  required AppBloc bloc,
+  required ScaffoldMessengerState messenger,
+  required bool caught,
+  String? spawnId,
+  String? captureToken,
+  Map<String, dynamic> arTelemetry = const {},
+}) async {
+  try {
+    final directory = await getApplicationDocumentsDirectory();
+    final path =
+        '${directory.path}/capture_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await File(path).writeAsBytes(frame, flush: true);
+
+    // Locally first, so the photo is in the folder whatever the network does.
+    // A hunt photo keeps the label its task implies; a photo taken from the
+    // nav bar is just a photo.
+    bloc.add(AddCapturedArtifactEvent(path, kindLabel: caught ? null : 'Photo'));
+    messenger.showSnackBar(SnackBar(
+      content: Text(caught
+          ? 'Fennec caught — saved to your folder'
+          : 'Photo saved to your folder'),
+    ));
+  } catch (e) {
+    messenger.showSnackBar(
+      SnackBar(content: Text("Couldn't save that shot: ${e.toString()}")),
+    );
+    return;
+  }
+
+  // Best-effort: a network failure costs nothing, the photo is already saved.
+  if (!caught || spawnId == null || captureToken == null) return;
+  try {
+    final position = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.best),
+    ).timeout(const Duration(seconds: 3));
+    await MascotRepository.submitCapture(
+      spawnId: spawnId,
+      captureToken: captureToken,
+      fix: LatLng(position.latitude, position.longitude),
+      accuracyMeters: position.accuracy,
+      clientTs: DateTime.now().toUtc().toIso8601String(),
+      nonce: uuidV4(),
+      arTelemetry: arTelemetry,
+    );
+  } catch (_) {
+    // Non-fatal — the photo is already saved locally.
+  }
+}
+
+/// Runs [frame] through the 3D generation pipeline: compress, check there is
+/// actually an object in it, then hand it to the bloc to upload and generate.
+Future<void> _finishScanCapture({
+  required Uint8List frame,
+  required AppBloc bloc,
+  required ScaffoldMessengerState messenger,
+}) async {
+  try {
+    // 1. Compress to JPEG + strip EXIF (privacy + bandwidth). Straight from
+    // the frame in memory — the full-size original was only ever written to
+    // disk so this step had something to read.
+    final compressed = await FlutterImageCompress.compressWithList(
+      frame,
+      minWidth: 1536,
+      minHeight: 1536,
+      quality: 85,
+      format: CompressFormat.jpeg,
+      keepExif: false,
+    );
+    if (compressed.isEmpty) throw StateError('image compression failed');
+
+    final directory = await getApplicationDocumentsDirectory();
+    final jpegPath =
+        '${directory.path}/capture_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await File(jpegPath).writeAsBytes(compressed, flush: true);
+
+    // 2. Object detection — say so rather than burning a generation on a
+    // photo of a wall. The camera has already closed, so this reports back
+    // over whatever screen they returned to.
+    if (!await ObjectDetector.hasDetectableObject(jpegPath)) {
+      try {
+        await File(jpegPath).delete();
+      } catch (_) {
+        // Nothing to clean up, then.
+      }
+      messenger.showSnackBar(const SnackBar(
+        content: Text(
+          'No clear object in that shot — nothing scanned. Try filling more of the frame with the subject.',
+        ),
+        duration: Duration(seconds: 4),
+      ));
+      return;
+    }
+
+    // 3. SHA-256 for deduplication (server will skip GPU if identical image seen before)
+    final sha256hex = sha256.convert(compressed).toString();
+    // Must be a real UUID: it becomes artifacts.id and model_jobs.artifact_id,
+    // both uuid columns. A readable id like "capture-<millis>" is rejected by
+    // the column type, which failed every capture before the server even got
+    // as far as the foreign key.
+    final artifactId = uuidV4();
+    final atStop = bloc.state.accepted.isNotEmpty &&
+        bloc.state.currentStopIdx < bloc.state.accepted.length;
+    final stop = atStop ? bloc.state.accepted[bloc.state.currentStopIdx] : null;
+
+    // Name by area, numbered within it: algiers_the_casbah_1, _2, … The
+    // region is the area proper; a stop whose region the catalogue left
+    // blank falls back to its own name so the number still has something
+    // meaningful to hang off.
+    final area = stop == null
+        ? kUnplacedArea
+        : stop.region.isNotEmpty
+            ? stop.region
+            : stop.name.isNotEmpty
+                ? stop.name
+                : kUnplacedArea;
+    // Counts against the whole folder, which by now includes everything
+    // restored from Supabase — so numbering keeps climbing across restarts
+    // instead of restarting at 1 each launch.
+    final captureName = nextArtifactName(bloc.state.capturedArtifacts, area);
+
+    // 4. Add optimistic artifact immediately so the user sees it in the folder
+    final artifact = Artifact(
+      id: artifactId,
+      name: captureName,
+      region: area,
+      kindLabel: '3D Model',
+      photoUrl: jpegPath,
+      isLocalFile: true,
+      modelStatus: ModelStatus.generating,
+      jobId: null,
+    );
+
+    // Emit the optimistic state directly (bypassing AddCapturedArtifactEvent
+    // because we need the full Artifact, not just the file path)
+    bloc.add(OptimisticArtifactEvent(artifact));
+
+    // 5. Dispatch the async upload+generation event
+    bloc.add(RequestModelGenerationEvent(
+      artifactId: artifactId,
+      localImagePath: jpegPath,
+      imageBytes: compressed,
+      sha256: sha256hex,
+      title: captureName,
+    ));
+
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Generating 3D model — check your folder in a moment'),
+      duration: Duration(seconds: 4),
+    ));
+  } catch (e) {
+    messenger.showSnackBar(
+      SnackBar(content: Text("Couldn't scan that shot: ${e.toString()}")),
     );
   }
 }
@@ -1199,11 +1447,81 @@ class _EdgeArrow extends StatelessWidget {
   }
 }
 
+/// One of the pair under a frozen frame: retake, or keep.
+class _ReviewButton extends StatelessWidget {
+  const _ReviewButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.filled = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  /// True for the accepting half, which is filled to say it is the way on.
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = filled ? AppTheme.onAccent : Colors.white;
+    final content = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 19, color: foreground),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    return PressableScale(
+      onTap: onTap,
+      child: filled
+          ? Container(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: AppTheme.accent,
+                borderRadius: AppTheme.brPill,
+                boxShadow: AppTheme.shadowLg,
+              ),
+              child: content,
+            )
+          : GlassSurface(
+              tint: GlassTint.dark,
+              borderRadius: AppTheme.brPill,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: content,
+            ),
+    );
+  }
+}
+
 class _ShutterButton extends StatelessWidget {
-  const _ShutterButton({required this.enabled, required this.onTap});
+  const _ShutterButton({
+    required this.enabled,
+    required this.onTap,
+    this.icon = Icons.camera_alt_rounded,
+  });
 
   final bool enabled;
   final VoidCallback onTap;
+
+  /// Says what kind of shot this is about to take — the mode strip above says
+  /// it in words, this says it where the thumb already is.
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -1220,7 +1538,7 @@ class _ShutterButton extends StatelessWidget {
           boxShadow: enabled ? AppTheme.shadowLg : null,
         ),
         child: Icon(
-          Icons.camera_alt_rounded,
+          icon,
           color: enabled ? AppTheme.onAccent : Colors.white54,
           size: 28,
         ),

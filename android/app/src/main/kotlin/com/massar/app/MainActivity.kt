@@ -1,4 +1,4 @@
-package com.example.ai_tour
+package com.massar.app
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -33,7 +33,6 @@ const logger = getLogger("routes.mascots");
 export const mascotsRouter = Router();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PLATFORMS = new Set(["android", "ios", "web"]);
 
 function sendError(res: Response, error: unknown): Response {
   if (error instanceof ArCaptureError) {
@@ -351,32 +350,9 @@ mascotsRouter.get(
   }),
 );
 
-mascotsRouter.post(
-  "/api/devices/push-token",
-  asyncHandler(async (req, res) => {
-    const auth = await authenticateAndRateLimit(req, "register_push_token", 30, "1 hour");
-    if (auth.failure) return res.status(auth.failure.status).json(auth.failure.body);
-
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    if (typeof body.token !== "string" || !body.token) {
-      return res.status(400).json({ error: "bad_request", message: "token is required" });
-    }
-    if (typeof body.platform !== "string" || !PLATFORMS.has(body.platform)) {
-      return res
-        .status(400)
-        .json({ error: "bad_request", message: `platform must be one of ${[...PLATFORMS].join(", ")}` });
-    }
-
-    try {
-      await arCapture.upsertPushToken({
-        userId: auth.user.id,
-        token: body.token,
-        platform: body.platform as arCapture.DevicePlatform,
-        arCapability: typeof body.ar_capability === "string" ? body.ar_capability : null,
-      });
-      return res.status(204).send();
-    } catch (error) {
-      return sendError(res, error);
-    }
-  }),
-);
+/* `POST /api/devices/push-token` used to live here. It moved to
+ * `routes/notifications.ts`, unchanged in path and contract: routed through
+ * `arCapture`'s fixture switch it wrote nothing unless `AR_CAPTURE_MODE=real`,
+ * so on this deployment's default every token the app registered was invented
+ * and thrown away. Device tokens serve three features and only one of them is
+ * the hunt — see `src/notifications/index.ts`. */
