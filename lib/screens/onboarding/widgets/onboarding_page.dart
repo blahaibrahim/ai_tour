@@ -41,7 +41,6 @@ class OnboardingPage extends StatelessWidget {
           child: OnboardingArt(
             assetPath: content.artAsset,
             icon: content.icon,
-            tint: content.tint,
           ),
         );
 

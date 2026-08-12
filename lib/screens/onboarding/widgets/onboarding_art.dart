@@ -17,12 +17,10 @@ class OnboardingArt extends StatelessWidget {
     super.key,
     required this.assetPath,
     required this.icon,
-    required this.tint,
   });
 
   final String assetPath;
   final IconData icon;
-  final Color tint;
 
   @override
   Widget build(BuildContext context) {
@@ -34,31 +32,26 @@ class OnboardingArt extends StatelessWidget {
         fit: BoxFit.contain,
         // Reached on every build until the real art lands. Cheap: the asset
         // bundle resolves the miss without touching the disk, and the stand-in
-        // is an icon and two lines of text.
-        errorBuilder: (_, _, _) => _ArtPlaceholder(
-          assetPath: assetPath,
-          icon: icon,
-          tint: tint,
-        ),
+        // is a single icon.
+        errorBuilder: (_, _, _) => _ArtPlaceholder(icon: icon),
       ),
     );
   }
 }
 
-/// What the slot shows before the artwork exists.
+/// What the slot shows before the artwork exists: the page's icon, quietly, and
+/// nothing else.
 ///
-/// Names the file it is waiting for rather than showing a generic shape — the
-/// stand-in is also the spec for what to draw and where to put it.
+/// It used to caption itself with "Artwork goes here" and the filename it was
+/// waiting for. That is useful to whoever is wiring the flow up and to nobody
+/// else — it reads as an unfinished screen to anyone looking at the app, and
+/// the slides get shown to people well before the illustrations land. The
+/// filenames live in `assets/onboarding/README.md`, which is where someone
+/// looking for them would go anyway.
 class _ArtPlaceholder extends StatelessWidget {
-  const _ArtPlaceholder({
-    required this.assetPath,
-    required this.icon,
-    required this.tint,
-  });
+  const _ArtPlaceholder({required this.icon});
 
-  final String assetPath;
   final IconData icon;
-  final Color tint;
 
   @override
   Widget build(BuildContext context) {
@@ -69,34 +62,14 @@ class _ArtPlaceholder extends StatelessWidget {
         final iconSize = (constraints.maxHeight * 0.42).clamp(48.0, 132.0);
 
         return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Neutral navy rather than the page's tint. The two warm pages
-              // put an amber stand-in over the sand end of the backdrop, where
-              // it all but disappears; the tint still shows up where it can be
-              // read, on the advance button and the progress dots.
-              Icon(icon, size: iconSize, color: AppTheme.ink.withValues(alpha: 0.30)),
-              AppTheme.gap4,
-              Text(
-                'Artwork goes here',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.ink.withValues(alpha: 0.62),
-                ),
-              ),
-              AppTheme.gap1,
-              Text(
-                assetPath,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  height: 1.4,
-                  color: AppTheme.ink.withValues(alpha: 0.55),
-                ),
-              ),
-            ],
+          // Neutral navy rather than the page's tint, and faint. The two warm
+          // pages put an amber stand-in over the sand end of the backdrop,
+          // where it all but disappears; the tint still shows up where it can
+          // be read, on the advance button and the progress dots.
+          child: Icon(
+            icon,
+            size: iconSize,
+            color: AppTheme.ink.withValues(alpha: 0.22),
           ),
         );
       },
