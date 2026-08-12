@@ -60,6 +60,10 @@ flutter:
     # random stock image the old picsum.photos fallback pulled in.
     - assets/icon/app-icon-transparent.png
     - assets/dz_wilayas.geojson
+    # Registered as a directory, not file by file: the intro's illustrations
+    # don't exist yet, and this way dropping them in needs no pubspec change.
+    # Until then each slide falls back to a labelled placeholder.
+    - assets/onboarding/
     - .env
 
 flutter_launcher_icons:

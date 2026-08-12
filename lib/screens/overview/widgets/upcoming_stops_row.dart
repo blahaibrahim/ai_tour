@@ -30,13 +30,16 @@ class UpcomingStopsRow extends StatelessWidget {
       children: [
         const SizedBox(height: AppTheme.space6),
         // White, not ink: this label sits directly on the page backdrop rather
-        // than on a card, and that backdrop is dark at the top of the overview.
+        // than on a card, and matches the other section labels on this screen
+        // ("YOUR ROUTE", "STOP n OF m"), which are all white70 on the same
+        // ground. It had drifted to the grey secondary colour, which is a card
+        // colour and disappears out here.
         const Text(
           'UPCOMING',
           style: TextStyle(
             fontSize: 11,
             letterSpacing: 0.8,
-            color: AppTheme.textSecondary,
+            color: Colors.white70,
             fontWeight: FontWeight.w700,
           ),
         ),

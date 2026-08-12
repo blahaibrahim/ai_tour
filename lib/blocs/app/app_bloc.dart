@@ -12,6 +12,7 @@ import '../../models/route.dart';
 import '../../repositories/artifact_repository.dart';
 import '../../repositories/chat_repository.dart';
 import '../../repositories/model_repository.dart';
+import '../../repositories/points_repository.dart';
 import '../../repositories/prompt_interpretation_repository.dart';
 import '../../repositories/route_repository.dart';
 import '../../repositories/saved_locations_repository.dart';
@@ -89,6 +90,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
     on<LoadSavedLocationsEvent>(_onLoadSavedLocations);
     on<LoadArtifactsEvent>(_onLoadArtifacts);
+    on<LoadPointsEvent>(_onLoadPoints);
 
     on<InitTestMascotSpawnEvent>(_onInitTestMascotSpawn);
     on<ToggleArTestingModeEvent>(_onToggleArTestingMode);
@@ -99,6 +101,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     add(const LoadRouteOptionsEvent());
     add(const LoadSavedLocationsEvent());
     add(const LoadArtifactsEvent());
+    add(const LoadPointsEvent());
     add(const RestoreSessionEvent());
     if (state.arTestingMode) add(const InitTestMascotSpawnEvent());
   }
@@ -122,6 +125,9 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       add(const LoadRouteOptionsEvent());
       add(const LoadSavedLocationsEvent());
       add(const LoadArtifactsEvent());
+      // Also drains the offline outbox — this is the first moment in a launch
+      // where there is both a session and, usually, a network.
+      add(const LoadPointsEvent());
     });
   }
 
@@ -787,19 +793,78 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     );
   }
 
-  void _onCompleteTask(CompleteTaskEvent event, Emitter<AppState> emit) {
+  Future<void> _onCompleteTask(
+      CompleteTaskEvent event, Emitter<AppState> emit) async {
     if (state.currentStopIdx >= state.tasks.length) return;
     final t = state.tasks[state.currentStopIdx];
     if (t.state == 'done') return;
 
+    final stopIdx = state.currentStopIdx;
     final updated = List<Task>.from(state.tasks);
-    updated[state.currentStopIdx] = t.copyWith(state: 'done');
+    updated[stopIdx] = t.copyWith(state: 'done');
+    // Emitted before the write, not after: the pill moves the instant the task
+    // is finished, and the ledger catches up on its own schedule.
     emit(state.copyWith(tasks: updated, points: state.points + t.points));
 
     final stops = state.routeStops;
-    if (state.currentStopIdx < stops.length) {
-      add(RecordCheckpointEvent(stops[state.currentStopIdx].poiId));
+    if (stopIdx < stops.length) {
+      add(RecordCheckpointEvent(stops[stopIdx].poiId));
     }
+
+    final total = await _recordCompletion(stopIdx: stopIdx, task: t);
+    // The ledger write can outlive the bloc — a task finished as the app is
+    // being closed. Emitting into a closed bloc throws.
+    if (total != null && !isClosed) emit(state.copyWith(lifetimePoints: total));
+  }
+
+  /// Writes one finished task to the durable per-user ledger.
+  ///
+  /// The key is the route plus the stop index, which is what makes this safe to
+  /// call more than once for the same task — and it does get called more than
+  /// once: [_onCompleteTask] and [_onAddCapturedArtifact] both finish the
+  /// current stop's task, and a capture that answers a task goes through both.
+  ///
+  /// Returns the traveller's new lifetime total, or null when it could not be
+  /// determined (no session, or a first-ever award on a device that has never
+  /// synced a baseline).
+  Future<int?> _recordCompletion({required int stopIdx, required Task task}) async {
+    final routeId = state.route?.id ?? state.progress?.routeId;
+    // Without a route there is nothing stable to key on, and an unkeyed award
+    // would be counted again on every replay. Skipping is the safe direction:
+    // the tour-local pill still shows the points.
+    if (routeId == null || routeId.isEmpty) return null;
+
+    final stops = state.routeStops;
+    return PointsRepository.recordCompletion(
+      completionKey: '$routeId:stop:$stopIdx',
+      points: task.points,
+      routeId: routeId,
+      poiId: stopIdx < stops.length ? stops[stopIdx].poiId : null,
+      taskType: task.type,
+    );
+  }
+
+  /// Reads the traveller's saved score, and pushes up anything stranded offline.
+  ///
+  /// The cached value is emitted first so the number is on screen immediately;
+  /// the network read then corrects it. With no session at all — signed out —
+  /// the total goes back to unknown rather than lingering as the previous
+  /// user's score.
+  Future<void> _onLoadPoints(LoadPointsEvent event, Emitter<AppState> emit) async {
+    if (Supabase.instance.client.auth.currentUser == null) {
+      emit(state.copyWith(lifetimePoints: null));
+      return;
+    }
+
+    final cached = await PointsRepository.cachedTotal();
+    if (isClosed) return;
+    if (cached != null && cached != state.lifetimePoints) {
+      emit(state.copyWith(lifetimePoints: cached));
+    }
+
+    await PointsRepository.flushOutbox();
+    final total = await PointsRepository.fetchTotal();
+    if (total != null && !isClosed) emit(state.copyWith(lifetimePoints: total));
   }
 
   /// Calls /api/tasks/generate for a real LLM-generated task.
@@ -901,8 +966,8 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   // Camera / folder
   // ---------------------------------------------------------------------------
 
-  void _onAddCapturedArtifact(
-      AddCapturedArtifactEvent event, Emitter<AppState> emit) {
+  Future<void> _onAddCapturedArtifact(
+      AddCapturedArtifactEvent event, Emitter<AppState> emit) async {
     Location? currentLoc;
     Task? currentTask;
     if (state.routeAccepted && state.currentStopIdx < state.accepted.length) {
@@ -929,13 +994,20 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     final newArtifacts = [artifact, ...state.capturedArtifacts];
 
     if (currentTask != null && currentTask.state == 'pending') {
+      final stopIdx = state.currentStopIdx;
       final updated = List<Task>.from(state.tasks);
-      updated[state.currentStopIdx] = currentTask.copyWith(state: 'done');
+      updated[stopIdx] = currentTask.copyWith(state: 'done');
       emit(state.copyWith(
         capturedArtifacts: newArtifacts,
         tasks: updated,
         points: state.points + currentTask.points,
       ));
+
+      // Same ledger, same key as [_onCompleteTask] would have used for this
+      // stop — a capture that answers a task is one completion, however it was
+      // finished.
+      final total = await _recordCompletion(stopIdx: stopIdx, task: currentTask);
+      if (total != null && !isClosed) emit(state.copyWith(lifetimePoints: total));
     } else {
       emit(state.copyWith(capturedArtifacts: newArtifacts));
     }

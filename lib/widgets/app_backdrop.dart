@@ -15,6 +15,17 @@ enum AppBackdropVariant {
 
   /// Warm sand, for pages leaning on the secondary colour.
   warm,
+
+  /// Both brand colours at once: fennec sand in one corner, compass blue in
+  /// the other, with the cream paper holding the middle. Used by the first-run
+  /// screens, which have no content of their own to carry the brand — the
+  /// intro is mostly whitespace around one illustration, and the other
+  /// variants leave it looking like an unfinished page.
+  ///
+  /// The neutral band is not decoration: it is where the title and body sit,
+  /// and it is what keeps navy text at full contrast on a page whose corners
+  /// are strongly coloured.
+  duotone,
 }
 
 /// The app's page background: a faint gradient, a subtle grain, and a few
@@ -50,8 +61,8 @@ class AppBackdrop extends StatelessWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+                  begin: palette.begin,
+                  end: palette.end,
                   colors: palette.gradient,
                   stops: palette.stops,
                 ),
@@ -93,10 +104,18 @@ class _AppBackdropPalette {
     required this.gradient,
     required this.stops,
     required this.trail,
+    this.begin = Alignment.topCenter,
+    this.end = Alignment.bottomCenter,
   });
 
   final List<Color> gradient;
   final List<double> stops;
+
+  /// Top-to-bottom for every variant but [AppBackdropVariant.duotone], which
+  /// runs corner to corner so its two brand colours read as two corners rather
+  /// than as two horizontal bands.
+  final AlignmentGeometry begin;
+  final AlignmentGeometry end;
 
   /// Trails are drawn in this, already at its final opacity.
   final Color trail;
@@ -136,6 +155,47 @@ class _AppBackdropPalette {
             ],
             stops: const [0.0, 0.45, 1.0],
             trail: AppTheme.cocoa.withValues(alpha: 0.35),
+          ),
+
+        // Sand at the top, soft compass blue at the bottom, ramped so neither
+        // the crossover nor the ends read as white.
+        //
+        // Two things this gets wrong if done the obvious way:
+        //
+        //  * **The axis.** A corner-to-corner gradient looks appealing but on a
+        //    phone-shaped box the bottom-left corner projects only ~82% of the
+        //    way along it, so the bottom edge ran from pale to blue and the
+        //    page appeared to fade back to white at the bottom. The axis is
+        //    near-vertical instead — tilted just enough to not look mechanical,
+        //    which keeps the top and bottom edges within 5% of a single colour.
+        //
+        //  * **The crossover.** Sand and compass blue are on opposite sides of
+        //    the wheel, so interpolating between them in sRGB drops through
+        //    near-zero chroma — a wide, grey, washed-out middle, and a visible
+        //    seam where warm flips to cool. The waypoints below are hand-picked
+        //    rather than left to the lerp: chroma is given up gradually on the
+        //    warm side and picked up again on the cool side, and the lightest
+        //    point on the whole ramp is a tinted greige (#DED6C8, ~84% L)
+        //    rather than paper. That is why these are literals and not theme
+        //    tokens — they are waypoints on a hue path, not semantic colours.
+        AppBackdropVariant.duotone => const _AppBackdropPalette(
+            begin: Alignment(-0.35, -1),
+            end: Alignment(0.35, 1),
+            gradient: [
+              AppTheme.sand, // #F8D59B — the token, exactly
+              Color(0xFFF5D6A6),
+              Color(0xFFEDD7B8),
+              Color(0xFFDED6C8), // the warm/cool crossover
+              Color(0xFFCBD2E0),
+              Color(0xFFB5C3E0),
+              Color(0xFFA5B7DA),
+              Color(0xFF9CB0D6),
+            ],
+            stops: [0.0, 0.20, 0.38, 0.50, 0.60, 0.74, 0.88, 1.0],
+            // Navy rather than either brand colour: the trails cross the whole
+            // ramp, and a blue trail vanishes into the bottom while a warm one
+            // vanishes into the top.
+            trail: Color(0x2E14254A), // AppTheme.ink @ 18%
           ),
       };
 }

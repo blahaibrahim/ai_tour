@@ -10,7 +10,7 @@ import 'services/backend_monitor.dart';
 import 'services/notification_service.dart';
 import 'services/supabase_service.dart';
 import 'theme.dart';
-import 'app/app_shell.dart';
+import 'app/onboarding_gate.dart';
 import 'widgets/backend_startup_toast.dart';
 
 Future<void> main() async {
@@ -89,7 +89,9 @@ class _AITourAppState extends State<AITourApp> {
       title: 'AI Tour',
       theme: AppTheme.theme,
       scaffoldMessengerKey: _scaffoldMessengerKey,
-      home: const AppShell(),
+      // Not AppShell directly: on a first install the intro and the sign-in
+      // screen come first, and the gate is what decides that.
+      home: const OnboardingGate(),
       debugShowCheckedModeBanner: false,
     );
   }

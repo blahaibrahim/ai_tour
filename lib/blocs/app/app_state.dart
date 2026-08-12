@@ -54,6 +54,7 @@ class AppState extends Equatable {
     this.tasks = const [],
     this.currentStopIdx = 0,
     this.points = 0,
+    this.lifetimePoints,
     this.taskRegenerationsLeft = 3,
     this.videoPlaying = false,
     this.folderSearch = '',
@@ -159,7 +160,23 @@ class AppState extends Equatable {
   final bool routeAccepted;
   final List<Task> tasks;
   final int currentStopIdx;
+
+  /// Points earned on *this* tour. Reset by [LeaveTourEvent], because the
+  /// overview screen's pill is a readout of the walk in progress.
   final int points;
+
+  /// The traveller's score across every tour they have ever done, mirrored
+  /// from `profiles.total_points`.
+  ///
+  /// Null means "not known yet" rather than zero — this device may never have
+  /// synced, and showing a real 400-point traveller a 0 while the network
+  /// answers is worse than showing nothing.
+  ///
+  /// Kept separate from [points] because they answer different questions and
+  /// have different lifetimes: leaving a tour zeroes one and must not touch
+  /// the other.
+  final int? lifetimePoints;
+
   final int taskRegenerationsLeft;
   final bool videoPlaying;
   final String folderSearch;
@@ -334,6 +351,7 @@ class AppState extends Equatable {
     List<Task>? tasks,
     int? currentStopIdx,
     int? points,
+    Object? lifetimePoints = _sentinel,
     int? taskRegenerationsLeft,
     bool? videoPlaying,
     String? folderSearch,
@@ -381,6 +399,8 @@ class AppState extends Equatable {
       tasks: tasks ?? this.tasks,
       currentStopIdx: currentStopIdx ?? this.currentStopIdx,
       points: points ?? this.points,
+      lifetimePoints:
+          lifetimePoints == _sentinel ? this.lifetimePoints : lifetimePoints as int?,
       taskRegenerationsLeft: taskRegenerationsLeft ?? this.taskRegenerationsLeft,
       videoPlaying: videoPlaying ?? this.videoPlaying,
       folderSearch: folderSearch ?? this.folderSearch,
@@ -432,6 +452,7 @@ class AppState extends Equatable {
         tasks,
         currentStopIdx,
         points,
+        lifetimePoints,
         taskRegenerationsLeft,
         videoPlaying,
         folderSearch,

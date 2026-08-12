@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
+import '../../blocs/auth/auth_bloc.dart';
+import '../../blocs/auth/auth_event.dart';
+import '../../blocs/auth/auth_state.dart';
+import '../auth/auth_screen.dart';
 import '../../repositories/notification_repository.dart';
 import '../../services/notification_service.dart';
 import '../../theme.dart';
 import '../../widgets/app_backdrop.dart';
+import '../onboarding/onboarding_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -20,8 +25,16 @@ class SettingsScreen extends StatelessWidget {
         title: const Text('Settings'),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        titleTextStyle: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+        // Ink, not white. The bar is transparent over `AppBackdrop`'s default
+        // `sky` variant, which is cream at the top — so a white title and a
+        // white back arrow were invisible. This page has no dark header; the
+        // one on the overview screen does, which is where the white came from.
+        iconTheme: const IconThemeData(color: AppTheme.ink),
+        titleTextStyle: const TextStyle(
+          color: AppTheme.ink,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+        ),
       ),
       body: AppBackdrop(
         child: ListView(
@@ -59,10 +72,7 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 32),
             _buildSettingSection(
               title: 'ACCOUNT',
-              children: [
-                _buildListTile(icon: Icons.person_outline, title: 'Profile details'),
-                _buildListTile(icon: Icons.stars_outlined, title: 'AI Tour Pro', subtitle: 'Manage subscription'),
-              ],
+              children: const [_AccountSettings()],
             ),
             const SizedBox(height: 32),
             _buildSettingSection(
@@ -70,30 +80,48 @@ class SettingsScreen extends StatelessWidget {
               children: const [_NotificationSettings()],
             ),
             const SizedBox(height: 32),
-            _buildSettingSection(
-              title: 'PREFERENCES',
-              children: [
-                _buildListTile(icon: Icons.map_outlined, title: 'Offline Maps'),
-                _buildListTile(icon: Icons.language, title: 'Language', subtitle: 'English'),
-              ],
-            ),
-            const SizedBox(height: 32),
+            // Everything that used to sit between here and the version string —
+            // Offline Maps, Language, Help Center, Privacy Policy — was a row
+            // with an empty `onTap`. A settings screen where half the rows do
+            // nothing teaches the traveller that none of them are worth
+            // pressing, which costs more than the four placeholders were worth.
+            // Add each back at the point it does something.
             _buildSettingSection(
               title: 'ABOUT',
               children: [
-                _buildListTile(icon: Icons.help_outline, title: 'Help Center'),
-                _buildListTile(icon: Icons.privacy_tip_outlined, title: 'Privacy Policy'),
+                _buildListTile(
+                  icon: Icons.slideshow_outlined,
+                  title: 'Replay intro',
+                  subtitle: 'The tour of what Massar does',
+                  onTap: () => _replayIntro(context),
+                ),
               ],
             ),
             const SizedBox(height: 48),
             Center(
               child: Text(
-                'AI Tour v1.0.0',
+                'Massar v1.0.0',
                 style: TextStyle(color: AppTheme.text.withValues(alpha: 0.5), fontSize: 12),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Re-runs the intro as a normal pushed route rather than by clearing the
+  /// seen flag: this is "show me that again", not "pretend I never installed
+  /// the app", and it should end back in Settings rather than at the sign-in
+  /// screen.
+  void _replayIntro(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => OnboardingScreen(
+          finishLabel: 'Done',
+          onFinish: () => Navigator.of(routeContext).pop(),
+        ),
+        fullscreenDialog: true,
       ),
     );
   }
@@ -146,20 +174,105 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  /// [onTap] is required on purpose. It used to default to `() {}`, which is
+  /// how four rows that did nothing ended up shipping — a placeholder was one
+  /// omitted argument away. Now a row that goes nowhere will not compile.
   Widget _buildListTile({
     required IconData icon,
     required String title,
+    required VoidCallback onTap,
     String? subtitle,
     Color? textColor,
     Color? iconColor,
-    VoidCallback? onTap,
   }) {
     return ListTile(
       leading: Icon(icon, color: iconColor ?? AppTheme.textSecondary),
       title: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textColor)),
       subtitle: subtitle != null ? Text(subtitle, style: TextStyle(fontSize: 12, color: AppTheme.text.withValues(alpha: 0.6))) : null,
       trailing: Icon(Icons.chevron_right, size: 20, color: AppTheme.text.withValues(alpha: 0.3)),
-      onTap: onTap ?? () {},
+      onTap: onTap,
+    );
+  }
+}
+
+/// Who the traveller is, what they have scored, and the way out.
+///
+/// The score shown here is [AppState.lifetimePoints] — the running total from
+/// `profiles.total_points`, not the current tour's pill. It is the only place
+/// in the app that answers "how much have I earned overall", which is the
+/// number the rewards screen will eventually spend.
+class _AccountSettings extends StatelessWidget {
+  const _AccountSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthBloc>().state;
+    final lifetimePoints = context.select<AppBloc, int?>((b) => b.state.lifetimePoints);
+    final isSignedIn = auth.status == AuthStatus.authenticated;
+
+    return Column(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.stars_outlined, color: AppTheme.textSecondary),
+          title: const Text('Total points',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          subtitle: Text(
+            // Null is "not synced yet", which is not the same as zero — see
+            // AppState.lifetimePoints.
+            lifetimePoints == null
+                ? 'Syncing…'
+                : 'Earned across every tour',
+            style: TextStyle(fontSize: 12, color: AppTheme.text.withValues(alpha: 0.6)),
+          ),
+          trailing: Text(
+            lifetimePoints?.toString() ?? '—',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.accent,
+            ),
+          ),
+        ),
+        Divider(height: 1, indent: 56, color: AppTheme.ink.withValues(alpha: 0.1)),
+        ListTile(
+          leading: Icon(
+            isSignedIn ? Icons.person_outline : Icons.person_add_alt,
+            color: AppTheme.textSecondary,
+          ),
+          title: Text(
+            isSignedIn ? (auth.email ?? 'Signed in') : 'Create an account',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          ),
+          subtitle: Text(
+            isSignedIn
+                ? 'Your points and souvenirs follow this account'
+                : 'Guest — your progress lives only on this device',
+            style: TextStyle(fontSize: 12, color: AppTheme.text.withValues(alpha: 0.6)),
+          ),
+          trailing: isSignedIn
+              ? null
+              : Icon(Icons.chevron_right, size: 20, color: AppTheme.text.withValues(alpha: 0.3)),
+          onTap: isSignedIn
+              ? null
+              : () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (routeContext) => AuthScreen(
+                        onContinue: () => Navigator.of(routeContext).pop(),
+                      ),
+                      fullscreenDialog: true,
+                    ),
+                  ),
+        ),
+        if (isSignedIn) ...[
+          Divider(height: 1, indent: 56, color: AppTheme.ink.withValues(alpha: 0.1)),
+          ListTile(
+            leading: const Icon(Icons.logout, color: AppTheme.textSecondary),
+            title: const Text('Sign out',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            onTap: () => context.read<AuthBloc>().add(const SignOutEvent()),
+          ),
+        ],
+      ],
     );
   }
 }

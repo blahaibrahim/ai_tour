@@ -325,6 +325,19 @@ class LoadSavedLocationsEvent extends AppEvent {
   List<Object?> get props => [];
 }
 
+/// Brings [AppState.lifetimePoints] up to date, and drains any task
+/// completions that were recorded while offline.
+///
+/// Dispatched at startup and again whenever the session changes — the bloc is
+/// built before anonymous sign-in lands, and a login swaps the identity the
+/// score belongs to, so neither moment can be the only one.
+class LoadPointsEvent extends AppEvent {
+  const LoadPointsEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
 class ToggleSavedLocationEvent extends AppEvent {
   const ToggleSavedLocationEvent(this.id);
   final String id;
