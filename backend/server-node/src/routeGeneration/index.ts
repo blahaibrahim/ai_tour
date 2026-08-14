@@ -1,16 +1,18 @@
 /**
  * The module's public face — the only thing Layer 1 is allowed to import.
  *
- * It also owns the fixture/real switch. While `ROUTE_GENERATION_MODE=fixture`
- * (the default, because the module is not built yet) every call here answers
- * from `fixtures.ts`; set it to `real` and the same calls go to the
- * orchestrator, which throws NotImplementedError at the first missing piece.
+ * It also owns the fixture/real switch. `ROUTE_GENERATION_MODE=real` (the
+ * default now that the orchestrator is implemented) runs the real pipeline;
+ * `fixture` answers from `fixtures.ts`, which is kept for developing the app
+ * against the contract with no database, no provider key and no network.
  *
  * The switch lives here rather than in the controller so that Layer 1 never
- * has to know the module is a skeleton — when the orchestrator is finished,
- * the default flips and no endpoint changes.
+ * has to know which mode it is in — no endpoint changes either way.
  */
+import { Config } from "../config";
+import { getClient } from "../data/supabaseClient";
 import { getLogger } from "../logger";
+import { unwrap } from "../supabase";
 import { getCityConfigRepository } from "./data/cityConfigRepository";
 import { getPoiRepository } from "./data/poiRepository";
 import { getProgressRepository, getRouteRepository } from "./data/routeRepository";
@@ -23,20 +25,27 @@ import {
   fixtureRoute,
 } from "./fixtures";
 import * as orchestrator from "./orchestrator";
-import { Category, CityConfig, Progress, RouteRequest, RouteResponse } from "./types";
+import {
+  Category,
+  CityConfig,
+  Locale,
+  Progress,
+  RouteRequest,
+  RouteResponse,
+  Theme,
+} from "./types";
 
 const logger = getLogger("routeGeneration");
 
 export type RouteGenerationMode = "fixture" | "real";
 
 export const MODE: RouteGenerationMode =
-  process.env.ROUTE_GENERATION_MODE === "real" ? "real" : "fixture";
+  Config.ROUTE_GENERATION_MODE === "fixture" ? "fixture" : "real";
 
 if (MODE === "fixture") {
   logger.warning(
-    "ROUTE GENERATION IS SERVING FIXTURES. The module is a skeleton — see " +
-      "src/routeGeneration/README.md. Set ROUTE_GENERATION_MODE=real once the " +
-      "orchestrator is implemented.",
+    "ROUTE GENERATION IS SERVING FIXTURES. Every route is invented — set " +
+      "ROUTE_GENERATION_MODE=real in backend/.env to run the real pipeline.",
   );
 }
 
@@ -52,10 +61,29 @@ export async function listCategories(): Promise<Category[]> {
   return getPoiRepository().listCategories();
 }
 
-export async function listThemes(): Promise<typeof FIXTURE_THEMES> {
-  // Themes have no table in the spec's schema — see poiSelector.ts. Until they
-  // do, this is the same list in both modes rather than a silent difference.
-  return FIXTURE_THEMES;
+/**
+ * Themes the request builder may offer.
+ *
+ * Scoped to a city when one is known, because the answer genuinely differs:
+ * `themes_available` only returns a theme whose categories hold at least one
+ * published POI in that city. That is what stops the picker offering a theme
+ * which can only ever answer 422 — the traveller reads an empty result as
+ * "there is nothing here" rather than "we should not have offered that".
+ */
+export async function listThemes(cityId?: string): Promise<Theme[]> {
+  if (MODE === "fixture") return FIXTURE_THEMES;
+
+  const rows =
+    (await unwrap<Array<{ key: string; label_en: string; label_fr: string; label_ar: string }>>(
+      getClient().rpc("themes_available", { p_city_id: cityId ?? null }),
+    )) ?? [];
+
+  return rows.map((r) => ({
+    key: r.key,
+    labelEn: r.label_en,
+    labelFr: r.label_fr,
+    labelAr: r.label_ar,
+  }));
 }
 
 /** Shared by both modes, so the rollout gate is enforced identically. */
@@ -92,6 +120,7 @@ export async function refineRoute(
 export async function getRoute(
   routeId: string,
   userId: string | null,
+  locale: Locale = "en",
 ): Promise<RouteResponse> {
   if (MODE === "fixture") {
     return fixtureRoute({
@@ -101,7 +130,9 @@ export async function getRoute(
       transportMode: "hybrid",
     });
   }
-  const route = await getRouteRepository().findById(routeId, userId);
+  const route = await getRouteRepository().findById(routeId, userId, locale);
+  // Not-found and not-yours are deliberately the same answer: distinguishing
+  // them tells an unauthorised caller that a given route id exists.
   if (!route) throw new RouteNotFoundError(routeId);
   return route;
 }

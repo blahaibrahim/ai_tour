@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Video capture records sound with the picture. Only the plain camera
+         asks for this — the AR hunt takes stills and never needs it — so the
+         prompt appears the first time someone holds the shutter, not at
+         launch. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- The fennec hunt (InlineMascotHunt/HuntSessionController) is meant to

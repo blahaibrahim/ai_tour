@@ -1,0 +1,145 @@
+.page {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-5) var(--space-8);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-8);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: 1;
+  min-width: 260px;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-md);
+  background: var(--deep-navy);
+  color: var(--sand);
+  flex: none;
+}
+
+.title {
+  font-size: 27px;
+}
+
+.tagline {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 2px 0 0;
+}
+
+.volumeChip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.volumeName {
+  font-family: ui-monospace, monospace;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rail {
+    position: static;
+  }
+}
+
+.rail {
+  position: sticky;
+  top: var(--space-5);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-body), sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.count {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-alt);
+  letter-spacing: 0.4px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--space-4);
+}
+
+.jobs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.notice {
+  padding: var(--space-4);
+  border: 1px dashed var(--divider);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.warning {
+  border-style: solid;
+  border-color: transparent;
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-weight: 500;
+}
+
+.path {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+}

@@ -22,6 +22,10 @@ class SessionRepository {
       'currentStopIdx': state.currentStopIdx,
       'points': state.points,
       'taskRegenerationsLeft': state.taskRegenerationsLeft,
+      // Which quests each stop has already offered. Without this a restored
+      // session forgets, and a traveller who already refused the fennec hunt
+      // at a stop can be handed it again.
+      'offeredQuestTypes': state.offeredQuestTypes.map((s) => s.toList()).toList(),
     };
     
     await prefs.setString(_kSessionKey, jsonEncode(data));

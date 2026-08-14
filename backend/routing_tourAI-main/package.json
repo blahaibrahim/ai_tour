@@ -1,0 +1,45 @@
+{
+  "name": "route-generation-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/api/server.js",
+    "dev:api": "tsx watch src/api/server.ts",
+    "dev": "tsx watch scripts/driver.ts",
+    "driver": "tsx scripts/driver.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "migrate:up": "node-pg-migrate -d DATABASE_URL -m src/data/db/migrations up",
+    "migrate:down": "node-pg-migrate -d DATABASE_URL -m src/data/db/migrations down",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "^11.2.0",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.11.3",
+    "ioredis": "^5.4.1",
+    "kysely": "^0.27.4",
+    "pg": "^8.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@types/node": "^22.5.0",
+    "@types/pg": "^8.11.6",
+    "eslint": "^9.9.0",
+    "node-pg-migrate": "^7.6.1",
+    "pino-pretty": "^13.1.3",
+    "prettier": "^3.3.3",
+    "tsx": "^4.16.5",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.2.0",
+    "vitest": "^2.0.5"
+  }
+}

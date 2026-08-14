@@ -1,0 +1,133 @@
+/*
+ * "Fennec Compass" — the same palette the Flutter app builds its theme from
+ * (lib/theme.dart). Values are copied, not re-picked: the two surfaces should
+ * agree on what "accent" means. Flat fills only, no gradients in the chrome.
+ */
+
+:root {
+  /* Raw colors sampled from the app icon */
+  --compass-blue: #2f549a;
+  --deep-navy: #14254a;
+  --sand: #f8d59b;
+  --amber: #eba664;
+  --cream: #fbe7c4;
+
+  /* Semantic tokens */
+  --bg: #fcf6ec;
+  --surface: #ffffff;
+  --surface-alt: #f3ecde;
+  --ink: var(--deep-navy);
+  --text: var(--ink);
+  --text-secondary: #6e7a93;
+  --divider: #e6dcc9;
+
+  --accent: var(--compass-blue);
+  --accent-dark: #22406f;
+  --accent-soft: #dee6f4;
+  --on-accent: #ffffff;
+
+  --secondary-accent: var(--amber);
+  --secondary-soft: #faebd5;
+  --on-navy: var(--cream);
+
+  --success: #2f7d5b;
+  --success-soft: #dff0e7;
+  /* Amber rather than red, as in the app: "this needs your attention" is not
+     the same fact as "this failed". */
+  --warning: #9a6212;
+  --warning-soft: #fbeeda;
+  --error: #c8452f;
+  --error-soft: #fae4e0;
+
+  /* Corner radii — the app's rounded, soft-edged shape language */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* 4pt spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Soft, navy-tinted elevation — no hard black shadows */
+  --shadow-sm: 0 3px 10px rgba(20, 37, 74, 0.07);
+  --shadow-md: 0 8px 20px rgba(20, 37, 74, 0.09);
+  --shadow-lg: 0 12px 32px rgba(20, 37, 74, 0.16);
+
+  /* Motion */
+  --motion-fast: 120ms;
+  --motion-base: 240ms;
+  --motion-slow: 420ms;
+  --motion-curve: cubic-bezier(0.215, 0.61, 0.355, 1);
+
+  --min-tap: 48px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+code,
+pre {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+}
+
+a {
+  color: var(--accent);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Focus ring, once, in the accent — every interactive element inherits it. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

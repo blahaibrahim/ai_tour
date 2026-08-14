@@ -143,6 +143,28 @@ function serializeCity(city: routeGeneration.CityConfig): Record<string, unknown
   };
 }
 
+function serializeStop(s: routeGeneration.RouteStop): Record<string, unknown> {
+  return {
+    poi_id: s.poiId,
+    sequence_order: s.sequenceOrder,
+    cluster_id: s.clusterId,
+    name: s.name,
+    description: s.description,
+    category_key: s.categoryKey,
+    lat: s.location.lat,
+    lng: s.location.lng,
+    dwell_minutes: s.dwellMinutes,
+    checkpoint_radius_meters: s.checkpointRadiusMeters,
+    opening_hours_raw: s.openingHoursRaw,
+    photo_url: s.photoUrl,
+    photo_attribution: s.photoAttribution,
+    photo_license: s.photoLicense,
+    photo_source_url: s.photoSourceUrl,
+    ar_content_id: s.arContentId,
+    stamp_id: s.stampId,
+  };
+}
+
 function serializeRoute(route: routeGeneration.RouteResponse): Record<string, unknown> {
   return {
     id: route.id,
@@ -153,25 +175,11 @@ function serializeRoute(route: routeGeneration.RouteResponse): Record<string, un
     estimated_total_duration_minutes: route.estimatedTotalDurationMinutes,
     day_count_flag: route.dayCountFlag,
     generated_at: route.generatedAt,
-    stops: route.stops.map((s) => ({
-      poi_id: s.poiId,
-      sequence_order: s.sequenceOrder,
-      cluster_id: s.clusterId,
-      name: s.name,
-      description: s.description,
-      category_key: s.categoryKey,
-      lat: s.location.lat,
-      lng: s.location.lng,
-      dwell_minutes: s.dwellMinutes,
-      checkpoint_radius_meters: s.checkpointRadiusMeters,
-      opening_hours_raw: s.openingHoursRaw,
-      photo_url: s.photoUrl,
-      photo_attribution: s.photoAttribution,
-      photo_license: s.photoLicense,
-      photo_source_url: s.photoSourceUrl,
-      ar_content_id: s.arContentId,
-      stamp_id: s.stampId,
-    })),
+    stops: route.stops.map(serializeStop),
+    // Replacement candidates for the review step — see RouteResponse.alternates.
+    // Same shape as a stop, so the client renders one with the same card, but
+    // they carry sequence_order -1 and are not part of the route.
+    alternates: route.alternates.map(serializeStop),
     segments: route.segments.map((seg) => ({
       mode: seg.mode,
       from_poi_id: seg.fromPoiId,
@@ -204,17 +212,28 @@ routesRouter.get(
 );
 
 /** Themes and categories for the request builder. Returned together because
- * the picker needs both and they change at the same rate. */
+ * the picker needs both and they change at the same rate.
+ *
+ * `?city_id=` is optional and narrows the theme list to what that city can
+ * actually answer — a theme whose categories hold no published POI there is
+ * not offered, rather than offered and then refused with a 422. Omitting it
+ * gives the union across every city, which is the right answer before the
+ * traveller has picked one. */
 routesRouter.get(
   "/api/categories",
   asyncHandler(async (req, res) => {
     const auth = await authenticateAndRateLimit(req, "list_categories", 300, "1 hour");
     if (auth.failure) return res.status(auth.failure.status).json(auth.failure.body);
 
+    const cityId = typeof req.query.city_id === "string" ? req.query.city_id : undefined;
+    if (cityId !== undefined && !UUID_RE.test(cityId)) {
+      return res.status(400).json({ error: "bad_request", message: "city_id must be a uuid" });
+    }
+
     try {
       const [categories, themes] = await Promise.all([
         routeGeneration.listCategories(),
-        routeGeneration.listThemes(),
+        routeGeneration.listThemes(cityId),
       ]);
       return res.json({
         categories: categories.map((c) => ({
@@ -325,8 +344,16 @@ routesRouter.get(
       return res.status(400).json({ error: "bad_request", message: "routeId must be a uuid" });
     }
 
+    // Names and descriptions are stored per locale and resolved on read, so a
+    // route generated in one language can be read back in another rather than
+    // being frozen into whatever was asked for at generation time.
+    const locale = (req.query.locale ?? "en") as Locale;
+    if (!LOCALES.has(locale)) {
+      return res.status(400).json({ error: "bad_request", message: "unsupported locale" });
+    }
+
     try {
-      const route = await routeGeneration.getRoute(routeId, auth.user.id);
+      const route = await routeGeneration.getRoute(routeId, auth.user.id, locale);
       return res.json(serializeRoute(route));
     } catch (error) {
       return sendError(res, error);

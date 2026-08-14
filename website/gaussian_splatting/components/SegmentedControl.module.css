@@ -1,0 +1,76 @@
+/* The web twin of lib/widgets/segmented_control.dart: a bounded track that
+   reads as single-choice, with the indicator sliding between positions. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.track {
+  position: relative;
+  display: flex;
+  height: 46px;
+  padding: 4px;
+  background: var(--surface-alt);
+  border-radius: var(--radius-pill);
+}
+
+.indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--motion-base) var(--motion-curve);
+}
+
+.segment {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(20, 37, 74, 0.6);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--motion-curve);
+}
+
+.segment:hover {
+  color: var(--accent-dark);
+}
+
+.selected,
+.selected:hover {
+  color: var(--accent-dark);
+}
+
+.text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}

@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to capture photos for your scan and video tasks.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Used to record sound when you hold the shutter to film a video.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Used to guide you to nearby stops and hidden mascots.</string>
 	<!-- The fennec hunt keeps tracking proximity while the app is backgrounded

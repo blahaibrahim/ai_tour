@@ -30,28 +30,19 @@ class _FolderScreenState extends State<FolderScreen> {
   Widget build(BuildContext context) {
     final state = context.watch<AppBloc>().state;
 
-    // Stops whose task is done but which produced no capture of their own —
-    // a quiz or a task marked complete without the camera. Anything the user
-    // actually captured is already in capturedArtifacts (and, since it is
-    // persisted, survives a restart), so those ids are skipped here rather
-    // than shown twice.
-    final capturedIds = state.capturedArtifacts.map((a) => a.id).toSet();
-    final doneArtifacts = <Artifact>[
-      for (var i = 0; i < state.tasks.length && i < state.accepted.length; i++)
-        if (state.tasks[i].state == 'done' &&
-            !capturedIds.contains(state.accepted[i].id))
-          Artifact(
-            id: state.accepted[i].id,
-            name: state.accepted[i].name,
-            region: state.accepted[i].region,
-            kindLabel: switch (state.tasks[i].type) {
-              'video' => 'Video',
-              'mascot' => 'Fennec',
-              _ => 'Scan',
-            },
-            photoUrl: state.accepted[i].artifactUrl,
-          ),
-    ];
+    // Nothing is synthesised here any more.
+    //
+    // This used to fabricate an Artifact for every finished task that had no
+    // capture of its own, which made two kinds of phantom: a "Fennec" tile for
+    // every mascot quest — a fennec belongs in the collection album, not among
+    // the traveller's own photographs — and a placeholder for photo and video
+    // quests, which cannot occur at all now that those quests are only finished
+    // by a real capture.
+    //
+    // The de-duplication it relied on never worked either: it compared a
+    // captured artifact's `id` (a fresh uuid) against a stop's id, which never
+    // matched, so a stop that *did* produce a capture was shown twice.
+    const doneArtifacts = <Artifact>[];
 
     final allItems = [...state.capturedArtifacts, ...doneArtifacts];
     final query = _searchController.text.toLowerCase();

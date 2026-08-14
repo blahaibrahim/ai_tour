@@ -6,6 +6,7 @@ import '../../../theme.dart';
 import '../../../widgets/glass_surface.dart';
 import '../../../widgets/location_search_bar.dart';
 import '../../../utils/geojson_parser.dart';
+import 'time_budget_picker.dart';
 
 /// The slide-up glass panel at the bottom of the map screen that lets the user
 /// configure radius, prompt, and number of stops before generating a route.
@@ -120,7 +121,10 @@ class MapBottomPanel extends StatelessWidget {
                 },
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
+              const TimeBudgetPicker(),
+
+              const SizedBox(height: 16),
               Text(
                 "TELL THE AI WHAT YOU'RE AFTER",
                 style: TextStyle(
@@ -130,36 +134,35 @@ class MapBottomPanel extends StatelessWidget {
                   color: AppTheme.text.withValues(alpha: 0.5),
                 ),
               ),
-                const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
-                // Text area + visit chips
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceAlt,
-                    borderRadius: AppTheme.brMd,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      TextField(
-                        maxLines: 2,
-                        onChanged: (v) => bloc.add(SetPromptEvent(v)),
-                        decoration: InputDecoration(
-                          hintText: "quiet Roman ruins, coastal viewpoints...",
-                          hintStyle: TextStyle(color: AppTheme.text.withValues(alpha: 0.4), fontSize: 13),
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
+              // One line, not two. The prompt is a phrase — "quiet Roman
+              // ruins" — not a paragraph, and the second line was empty in
+              // every state except an unusually long sentence, which scrolls
+              // within the field anyway.
+              Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceAlt,
+                  borderRadius: AppTheme.brMd,
+                ),
+                child: TextField(
+                  maxLines: 1,
+                  textInputAction: TextInputAction.search,
+                  onChanged: (v) => bloc.add(SetPromptEvent(v)),
+                  decoration: InputDecoration(
+                    hintText: "quiet Roman ruins, coastal viewpoints...",
+                    hintStyle: TextStyle(color: AppTheme.text.withValues(alpha: 0.4), fontSize: 13),
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
                   ),
                 ),
+              ),
 
-                const SizedBox(height: 14),
+              const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () => bloc.add(const GenerateRouteEvent()),
                 style: ElevatedButton.styleFrom(

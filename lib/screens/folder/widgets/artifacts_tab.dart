@@ -93,6 +93,13 @@ class ArtifactsTab extends StatelessWidget {
   }
 
   Widget _buildMediaPreview(Artifact art) {
+    // A clip is not an image, so no image widget can show it. Without this it
+    // falls through to Image.file, fails to decode an mp4, and lands on the
+    // cube thumbnail — which reads as a broken 3D model rather than as a
+    // video. Drawing it deliberately is both honest and less work than the
+    // alternative, which is a frame-extraction dependency.
+    if (art.kindLabel == 'Video') return _VideoThumbnail(artifact: art);
+
     if (art.isLocalFile && File(art.photoUrl).existsSync()) {
       return Image.file(
         File(art.photoUrl),
@@ -253,5 +260,43 @@ class _StoredCapturePreviewState extends State<_StoredCapturePreview> {
       return ArtifactCubeThumbnail(artifact: widget.artifact, size: 104);
     }
     return NetImage(url: _url!, fit: BoxFit.cover);
+  }
+}
+
+/// The tile for a recorded clip.
+///
+/// Deliberately not a still from the video: extracting one needs a
+/// frame-grabbing dependency, and the first frame of a clip is a poor summary
+/// of it anyway — a pan starts pointed at whatever the traveller happened to
+/// be facing before they began. A drawn tile says "this is a video" more
+/// reliably than a blurry frame would, and it cannot fail to load.
+class _VideoThumbnail extends StatelessWidget {
+  const _VideoThumbnail({required this.artifact});
+
+  final Artifact artifact;
+
+  @override
+  Widget build(BuildContext context) {
+    final missing = artifact.isLocalFile && !File(artifact.photoUrl).existsSync();
+
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppTheme.deepNavy, AppTheme.accentDark],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          // A clip whose file has gone — the OS reclaimed it, or a reinstall
+          // moved the container — says so rather than promising playback that
+          // cannot happen.
+          missing ? Icons.videocam_off_rounded : Icons.play_circle_fill_rounded,
+          color: Colors.white.withValues(alpha: missing ? 0.4 : 0.85),
+          size: 34,
+        ),
+      ),
+    );
   }
 }

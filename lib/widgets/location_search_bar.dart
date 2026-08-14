@@ -97,13 +97,19 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
       builder: (BuildContext context, SearchController controller) {
         return SearchBar(
           controller: controller,
-          padding: const WidgetStatePropertyAll<EdgeInsets>(EdgeInsets.symmetric(horizontal: 16.0)),
+          // SearchBar's own minimum is 56, which is a lot of height for one
+          // line of text in a panel that has to hold four other controls
+          // above the fold. Both bounds are pinned so it cannot grow back.
+          constraints: const BoxConstraints(minHeight: 44, maxHeight: 44),
+          padding: const WidgetStatePropertyAll<EdgeInsets>(EdgeInsets.symmetric(horizontal: 12.0)),
           onTap: () => controller.openView(),
           onChanged: (_) => controller.openView(),
           onSubmitted: _onSubmitted,
-          leading: const Icon(Icons.search, color: AppTheme.text),
+          leading: const Icon(Icons.search, size: 19, color: AppTheme.text),
           hintText: 'Search for a wilaya...',
-          hintStyle: WidgetStatePropertyAll(TextStyle(color: AppTheme.text.withValues(alpha: 0.5))),
+          textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 14)),
+          hintStyle: WidgetStatePropertyAll(
+              TextStyle(color: AppTheme.text.withValues(alpha: 0.5), fontSize: 14)),
           backgroundColor: const WidgetStatePropertyAll(AppTheme.surface),
           elevation: const WidgetStatePropertyAll(2.0),
           side: const WidgetStatePropertyAll(BorderSide(color: AppTheme.divider, width: 1)),

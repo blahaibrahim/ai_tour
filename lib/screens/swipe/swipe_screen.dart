@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
+import '../../models/route.dart' show formatMinutes;
 import '../../theme.dart';
 import '../../widgets/app_backdrop.dart';
 import '../../widgets/glass_surface.dart';
@@ -149,13 +150,32 @@ class _SwipeScreenState extends State<SwipeScreen>
                       Builder(builder: (context) {
                         final reviewed = state.currentIndex;
                         final total = state.queue.length;
+
+                        // Moving on is only allowed once the kept stops fill
+                        // the day the traveller asked for. Rejecting everything
+                        // and pressing on used to produce a route far shorter
+                        // than the budget they set, with nothing saying why.
+                        //
+                        // The exception is a catalogue that has run out: then
+                        // the shortfall is the city's, not theirs, and holding
+                        // them behind a button that can never enable would be
+                        // punishing them for it.
+                        final canProceed = state.budgetFilled || state.reviewExhausted;
+                        final short = state.requiredMinutes - state.acceptedMinutes;
+
                         return ElevatedButton(
-                          onPressed: () => context
-                              .read<AppBloc>()
-                              .add(const ConfirmReviewedStopsEvent()),
+                          onPressed: canProceed
+                              ? () => context
+                                  .read<AppBloc>()
+                                  .add(const ConfirmReviewedStopsEvent())
+                              : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.accent,
                             foregroundColor: AppTheme.onAccent,
+                            disabledBackgroundColor:
+                                AppTheme.ink.withValues(alpha: 0.10),
+                            disabledForegroundColor:
+                                AppTheme.text.withValues(alpha: 0.45),
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                             minimumSize: const Size(0, 36),
                           ),
@@ -163,12 +183,24 @@ class _SwipeScreenState extends State<SwipeScreen>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                reviewed >= total ? 'Done' : 'Keep the rest ($reviewed/$total)',
+                                canProceed
+                                    ? (reviewed >= total
+                                        ? 'Done'
+                                        : 'Keep the rest ($reviewed/$total)')
+                                    // Names what is missing rather than just
+                                    // greying out: a disabled button with no
+                                    // reason reads as a bug.
+                                    : '${formatMinutes(short)} short',
                                 style: const TextStyle(
                                     fontSize: 13, fontWeight: FontWeight.w600),
                               ),
                               const SizedBox(width: 6),
-                              const Icon(Icons.arrow_forward_rounded, size: 16),
+                              Icon(
+                                canProceed
+                                    ? Icons.arrow_forward_rounded
+                                    : Icons.hourglass_bottom_rounded,
+                                size: 16,
+                              ),
                             ],
                           ),
                         );
@@ -207,6 +239,58 @@ class _SwipeScreenState extends State<SwipeScreen>
                           width: cardW,
                           child: SwipeProgressBar(width: cardW),
                         ),
+
+                        // The deck ran dry before the budget was filled and
+                        // there is nothing left to offer. Said plainly, because
+                        // the alternative is a traveller staring at an empty
+                        // deck and a button that will not enable, with no way
+                        // to tell whether the app is broken or the city is
+                        // simply small.
+                        if (state.reviewExhausted && currentLoc == null)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 34),
+                              child: GlassSurface(
+                                borderRadius: AppTheme.brLg,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 20, vertical: 22),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.explore_off_outlined,
+                                        size: 30, color: AppTheme.textSecondary),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      "That's everything here",
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineSmall
+                                          ?.copyWith(fontSize: 17),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      state.acceptedMinutes <= 0
+                                          ? 'You turned every stop down, and this '
+                                              'city has no others to suggest. Go '
+                                              'back to change the theme or give '
+                                              'yourself less time.'
+                                          : 'This city has no more stops to fill '
+                                              'the rest of your time. Carry on '
+                                              'with what you kept, or go back and '
+                                              'try a different theme.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        height: 1.45,
+                                        color: AppTheme.text.withValues(alpha: 0.7),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
 
                         // Cards Stack
                         Center(

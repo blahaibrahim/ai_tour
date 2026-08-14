@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: route-gen-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: route_gen
+      POSTGRES_PASSWORD: route_gen_dev
+      POSTGRES_DB: route_gen
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: route-gen-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    # Used by RedisCacheAdapter (src/adapters/cache/redis-cache.adapter.ts).
+    # InMemoryCacheAdapter remains available as a no-dependency fallback
+    # for quick local runs that don't need this container.
+
+volumes:
+  pgdata:

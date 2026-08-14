@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:math' as math;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -8,15 +9,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../ar/spawn_point.dart';
 import '../../config/app_config.dart';
 import '../../models/location.dart';
+import '../../models/quest_type.dart';
 import '../../models/route.dart';
 import '../../repositories/artifact_repository.dart';
+import '../../repositories/capture_repository.dart';
 import '../../repositories/chat_repository.dart';
 import '../../repositories/model_repository.dart';
 import '../../repositories/points_repository.dart';
 import '../../repositories/prompt_interpretation_repository.dart';
 import '../../repositories/route_repository.dart';
 import '../../repositories/saved_locations_repository.dart';
-import '../../repositories/task_repository.dart';
 import '../../repositories/session_repository.dart';
 import '../../services/api_client.dart';
 import '../../services/backend_monitor.dart';
@@ -49,6 +51,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<SetPromptEvent>(_onSetPrompt);
     on<InterpretPromptEvent>(_onInterpretPrompt);
     on<SetTripDaysEvent>(_onSetTripDays);
+    on<SetHoursPerDayEvent>(_onSetHoursPerDay);
     on<SetTransportModeEvent>(_onSetTransportMode);
 
     on<GenerateRouteEvent>(_onGenerateRoute);
@@ -60,6 +63,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
     on<CommitSwipeEvent>(_onCommitSwipe);
     on<UndoSwipeEvent>(_onUndoSwipe);
+    on<OfferAlternateStopsEvent>(_onOfferAlternateStops);
     on<ConfirmReviewedStopsEvent>(_onConfirmReviewedStops);
     on<OpenDetailEvent>(_onOpenDetail);
     on<CloseDetailEvent>(_onCloseDetail);
@@ -78,6 +82,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<AdvanceStopEvent>(_onAdvanceStop);
     on<NavHomeEvent>(_onNavHome);
     on<AddCapturedArtifactEvent>(_onAddCapturedArtifact);
+    on<MascotCaughtEvent>(_onMascotCaught);
     on<LeaveTourEvent>(_onLeaveTour);
     on<ToggleSavedLocationEvent>(_onToggleSavedLocation);
     on<SetTripDateEvent>(_onSetTripDate);
@@ -290,6 +295,10 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
   void _onSetTripDays(SetTripDaysEvent event, Emitter<AppState> emit) {
     emit(state.copyWith(tripDays: event.days, routeError: null, routeErrorCode: null));
+  }
+
+  void _onSetHoursPerDay(SetHoursPerDayEvent event, Emitter<AppState> emit) {
+    emit(state.copyWith(hoursPerDay: event.hours, routeError: null, routeErrorCode: null));
   }
 
   void _onToggleWilaya(ToggleWilayaEvent event, Emitter<AppState> emit) {
@@ -539,17 +548,71 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
   void _handleSwipeNext(int nextIndex, List<Location> newAccepted,
       List<Location> newRejected, Emitter<AppState> emit) {
-    emit(state.copyWith(
+    final next = state.copyWith(
       accepted: newAccepted,
       rejected: newRejected,
       currentIndex: nextIndex,
-    ));
+    );
+    emit(next);
 
-    // Every stop reviewed. There is no candidate pool to pull more from — the
-    // route is what the module generated — so this always moves on.
-    if (nextIndex >= state.queue.length) {
+    if (nextIndex < next.queue.length) return;
+
+    // The deck is empty. Whether that ends the review depends on whether what
+    // was kept fills the day the traveller asked for.
+    if (next.budgetFilled) {
       add(const ConfirmReviewedStopsEvent());
+      return;
     }
+
+    // Short, so offer the stops the budget fit had to leave out rather than
+    // pushing on with a half-empty day. Rejecting used to be free in the wrong
+    // way: it made the route shorter and nothing replaced it.
+    add(const OfferAlternateStopsEvent());
+  }
+
+  /// Refills the review deck from the route's held-back candidates.
+  ///
+  /// Only as many as the shortfall needs, so a traveller who rejected one stop
+  /// is shown one more rather than the rest of the catalogue.
+  void _onOfferAlternateStops(
+      OfferAlternateStopsEvent event, Emitter<AppState> emit) {
+    final route = state.route;
+    if (route == null) return;
+
+    final seen = {
+      ...state.queue.map((l) => l.id),
+      ...state.accepted.map((l) => l.id),
+      ...state.rejected.map((l) => l.id),
+    };
+    final regionLabel = state.selectedCity?.name ?? '';
+    final fresh = route.alternates
+        .where((s) => !seen.contains(s.poiId))
+        .map((s) => s.toLocation(regionLabel: regionLabel))
+        .toList();
+
+    if (fresh.isEmpty) {
+      // Nothing left to offer. The traveller is not stuck — the review can
+      // still be confirmed — but the reason the day is short is the catalogue,
+      // not them, and saying so is better than a button that never enables.
+      emit(state.copyWith(reviewExhausted: true));
+      return;
+    }
+
+    var shortfall = state.requiredMinutes - state.acceptedMinutes;
+    final take = <Location>[];
+    for (final loc in fresh) {
+      if (shortfall <= 0) break;
+      take.add(loc);
+      shortfall -= loc.dwellMinutes;
+    }
+
+    emit(state.copyWith(
+      queue: [...state.queue, ...take],
+      route: route.copyWithAlternates(
+        route.alternates.where((s) => !take.any((l) => l.id == s.poiId)).toList(),
+      ),
+      reviewExhausted: false,
+    ));
   }
 
   /// Steps the review back one card and un-files the stop it had filed.
@@ -724,6 +787,18 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     if (event.index < 0 || event.index >= route.stops.length) return;
 
     final dropped = route.stops[event.index];
+
+    // The same rule the swipe step enforces: a traveller may trim their day,
+    // but not below the day they asked for. Guarded here as well as in the UI
+    // because the button is not the only way in — the detail overlay rejects
+    // too, and a rule enforced only where it is drawn is a rule that leaks.
+    if (!state.canRemoveStop(dropped.dwellMinutes)) {
+      emit(state.copyWith(
+        routeError: 'Removing that would leave less than the time you asked for.',
+      ));
+      return;
+    }
+
     emit(state.copyWith(isGeneratingRoute: true));
 
     try {
@@ -757,13 +832,25 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     final regionLabel = state.selectedCity?.name ?? '';
     final stopsAsLocations =
         route.stops.map((s) => s.toLocation(regionLabel: regionLabel)).toList();
-    final tasks = stopsAsLocations
-        .map((l) => Task(type: l.task.type, label: l.task.label, points: 30))
-        .toList();
+
+    // Each stop draws its own quest at random rather than taking whatever the
+    // catalogue happened to carry — a route where every stop asks for a photo
+    // is a route people stop doing by the third one. The type drawn here is
+    // also the first entry in that stop's offered-history, which is what stops
+    // a regeneration handing back the same quest.
+    final random = math.Random();
+    final tasks = <Task>[];
+    final offered = <Set<String>>[];
+    for (var i = 0; i < stopsAsLocations.length; i++) {
+      final type = initialQuestType(random: random);
+      tasks.add(Task(type: type, label: questLabel(type, seed: i), points: 30));
+      offered.add({type});
+    }
 
     emit(state.copyWith(
       accepted: stopsAsLocations,
       tasks: tasks,
+      offeredQuestTypes: offered,
       screen: 'overview',
       routeAccepted: true,
       currentStopIdx: 0,
@@ -867,48 +954,60 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     if (total != null && !isClosed) emit(state.copyWith(lifetimePoints: total));
   }
 
-  /// Calls /api/tasks/generate for a real LLM-generated task.
+  /// Swaps the current stop's quest for one it has not offered before.
+  ///
+  /// The type is chosen here rather than by the server. `/api/tasks/generate`
+  /// picks its own type, which cannot satisfy the no-repeat rule — and it is
+  /// currently unreachable for route stops anyway, since it resolves ids
+  /// against the `locations` catalogue while a route stop carries a `pois`
+  /// uuid. A label written for the wrong activity is worse than a fixed one,
+  /// so the labels come from [questLabel].
+  ///
+  /// Two independent limits stop this: the per-tour budget, and having run out
+  /// of unoffered types at this stop. [AppState.canRegenerateQuest] is the
+  /// single place both are expressed, so the button and this handler cannot
+  /// disagree about whether a swap is possible.
   Future<void> _onRegenerateTask(
       RegenerateTaskEvent event, Emitter<AppState> emit) async {
-    if (state.currentStopIdx >= state.tasks.length) return;
-    final t = state.tasks[state.currentStopIdx];
-    if (t.state != 'pending' || state.taskRegenerationsLeft <= 0) return;
+    if (!state.canRegenerateQuest) return;
 
-    try {
-      final loc = state.accepted.length > state.currentStopIdx
-          ? state.accepted[state.currentStopIdx]
-          : null;
-      final newTask = await TaskRepository.generateTask(
-        locationId: loc?.id ?? 'unknown',
-        locationName: loc?.name ?? 'this location',
-      );
-      final updated = List<Task>.from(state.tasks);
-      updated[state.currentStopIdx] = newTask.copyWith(state: 'pending', points: t.points);
-      emit(state.copyWith(
-        tasks: updated,
-        taskRegenerationsLeft: state.taskRegenerationsLeft - 1,
-      ));
-    } catch (_) {
-      // Fall back to the existing cycling behaviour on network failure.
-      const cycle = {'video': 'scan', 'scan': 'mascot', 'mascot': 'video'};
-      const labels = {
-        'video': 'Record a quick panoramic video of your surroundings.',
-        'scan': 'Scan the surrounding area to uncover a hidden historical detail.',
-        'mascot': 'A fennec is hiding somewhere here — find it and photograph it.',
-      };
-      final next = cycle[t.type] ?? 'video';
-      final updated = List<Task>.from(state.tasks);
-      updated[state.currentStopIdx] = Task(
-        type: next,
-        label: labels[next]!,
-        state: 'pending',
-        points: t.points,
-      );
-      emit(state.copyWith(
-        tasks: updated,
-        taskRegenerationsLeft: state.taskRegenerationsLeft - 1,
-      ));
+    final idx = state.currentStopIdx;
+    final t = state.tasks[idx];
+
+    final offered = idx < state.offeredQuestTypes.length
+        ? state.offeredQuestTypes[idx]
+        : <String>{t.type};
+
+    final next = nextQuestType(offered);
+    if (next == null) return; // Already guarded above; belt and braces.
+
+    final updatedTasks = List<Task>.from(state.tasks);
+    updatedTasks[idx] = Task(
+      type: next,
+      label: questLabel(next, seed: idx + offered.length),
+      state: 'pending',
+      points: t.points,
+    );
+
+    final updatedOffered = [
+      for (var i = 0; i < state.offeredQuestTypes.length; i++)
+        i == idx ? {...state.offeredQuestTypes[i], next} : state.offeredQuestTypes[i],
+    ];
+    // A session restored from before this field existed has no history to
+    // extend; seed it from what is on screen so the rule still holds for the
+    // rest of the walk.
+    if (idx >= updatedOffered.length) {
+      updatedOffered.addAll([
+        for (var i = updatedOffered.length; i <= idx; i++)
+          i == idx ? {t.type, next} : <String>{},
+      ]);
     }
+
+    emit(state.copyWith(
+      tasks: updatedTasks,
+      offeredQuestTypes: updatedOffered,
+      taskRegenerationsLeft: state.taskRegenerationsLeft - 1,
+    ));
   }
 
   void _onAdvanceStop(AdvanceStopEvent event, Emitter<AppState> emit) {
@@ -981,19 +1080,34 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       id: uuidV4(),
       name: currentLoc?.name ?? 'Your capture',
       region: currentLoc?.region ?? 'On the go',
-      kindLabel: event.kindLabel ??
-          switch (currentTask?.type) {
-            'video' => 'Video',
-            'mascot' => 'Fennec',
-            _ => 'Scan',
-          },
+      kindLabel: event.kindLabel ?? 'Photo',
       photoUrl: event.filePath,
       isLocalFile: true,
     );
 
     final newArtifacts = [artifact, ...state.capturedArtifacts];
 
-    if (currentTask != null && currentTask.state == 'pending') {
+    // Push a copy to storage behind the UI. Not awaited and never surfaced:
+    // the file is already on disk and the artifact is already in the folder, so
+    // an upload that fails costs the traveller nothing they can see now — only
+    // the copy that would have outlived this device.
+    unawaited(CaptureRepository.upload(
+      artifactId: artifact.id,
+      localPath: event.filePath,
+      kind: event.kind == 'video' ? 'video' : 'photo',
+      title: artifact.name,
+    ));
+
+    // A capture finishes the quest only when it is the thing the quest asked
+    // for. Previously *any* capture finished whatever quest was open, so a
+    // photo closed a video quest and a snapshot taken from the nav bar — miles
+    // from the stop, answering nothing — closed the next one in line.
+    final answersQuest = currentTask != null &&
+        currentTask.state == 'pending' &&
+        event.kind != null &&
+        event.kind == currentTask.type;
+
+    if (answersQuest) {
       final stopIdx = state.currentStopIdx;
       final updated = List<Task>.from(state.tasks);
       updated[stopIdx] = currentTask.copyWith(state: 'done');
@@ -1011,6 +1125,31 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     } else {
       emit(state.copyWith(capturedArtifacts: newArtifacts));
     }
+  }
+
+  /// Finishes a mascot quest on a catch.
+  ///
+  /// Nothing is added to the folder: a fennec is not one of the traveller's own
+  /// captures. The catch itself is the completion, and it only counts against a
+  /// stop whose quest actually asked for one — catching a fennec found while a
+  /// photo quest is open is a nice moment, not an answer to that quest.
+  Future<void> _onMascotCaught(
+      MascotCaughtEvent event, Emitter<AppState> emit) async {
+    if (!state.routeAccepted || state.currentStopIdx >= state.tasks.length) return;
+
+    final stopIdx = state.currentStopIdx;
+    final task = state.tasks[stopIdx];
+    if (task.type != 'mascot' || task.state != 'pending') return;
+
+    final updated = List<Task>.from(state.tasks);
+    updated[stopIdx] = task.copyWith(state: 'done');
+    emit(state.copyWith(tasks: updated, points: state.points + task.points));
+
+    final stops = state.routeStops;
+    if (stopIdx < stops.length) add(RecordCheckpointEvent(stops[stopIdx].poiId));
+
+    final total = await _recordCompletion(stopIdx: stopIdx, task: task);
+    if (total != null && !isClosed) emit(state.copyWith(lifetimePoints: total));
   }
 
   // ---------------------------------------------------------------------------
@@ -1267,6 +1406,15 @@ class AppBloc extends Bloc<AppEvent, AppState> {
         currentStopIdx: (sessionData['currentStopIdx'] as num?)?.toInt() ?? 0,
         points: (sessionData['points'] as num?)?.toInt() ?? 0,
         taskRegenerationsLeft: (sessionData['taskRegenerationsLeft'] as num?)?.toInt() ?? 3,
+        // A session saved before quests were randomised has no history. Seed
+        // it from the task each stop is currently showing, so the no-repeat
+        // rule holds from here on rather than starting the walk over.
+        offeredQuestTypes: (sessionData['offeredQuestTypes'] as List<dynamic>?)
+                ?.map((e) => (e as List<dynamic>).cast<String>().toSet())
+                .toList() ??
+            (tasksData ?? const [])
+                .map((e) => {((e as Map<String, dynamic>)['type'] as String?) ?? 'photo'})
+                .toList(),
         isRestoringSession: false,
       ));
     } catch (e, st) {
@@ -1299,6 +1447,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       currentStopIdx: 0,
       points: 0,
       taskRegenerationsLeft: 3,
+      offeredQuestTypes: const [],
       videoPlaying: false,
       isGeneratingRoute: false,
       isChatLoading: false,

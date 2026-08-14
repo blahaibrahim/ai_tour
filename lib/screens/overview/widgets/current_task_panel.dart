@@ -6,6 +6,7 @@ import '../../../blocs/app/app_event.dart';
 import '../../../blocs/app/app_state.dart';
 import '../../../models/location.dart';
 import '../../../theme.dart';
+import '../../ar_hunt/ar_hunt_screen.dart';
 import 'inline_mascot_hunt.dart';
 
 /// Task row for the current stop — shows label, points, and action buttons
@@ -29,6 +30,26 @@ class _CurrentTaskPanelState extends State<CurrentTaskPanel> {
   bool _hunting = false;
 
   Location get stop => widget.stop;
+
+  /// Opens the camera locked to what this quest asks for.
+  ///
+  /// The button used to dispatch [CompleteTaskEvent] directly, which marked the
+  /// quest done without anything being captured — the traveller was awarded
+  /// points for pressing a button. Now the quest is finished by the capture
+  /// itself, in [AppBloc], and only when the capture is the kind the quest
+  /// asked for.
+  void _openQuestCamera(String questType) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ArHuntScreen(
+          mode: ArCameraMode.capture,
+          intent: questType == 'video' ? CaptureIntent.video : CaptureIntent.photo,
+          stopName: stop.name,
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+  }
 
   @override
   void didUpdateWidget(CurrentTaskPanel oldWidget) {
@@ -82,7 +103,11 @@ class _CurrentTaskPanelState extends State<CurrentTaskPanel> {
               style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppTheme.text.withValues(alpha: 0.55), fontWeight: FontWeight.bold),
             ),
             const Spacer(),
-            if (currentTask.state == 'pending' && state.taskRegenerationsLeft > 0)
+            // Hidden once this stop has shown every quest type it has, not
+            // just once the budget runs out — offering a swap that could only
+            // return something already refused is the 'do-over' the rule
+            // exists to prevent.
+            if (state.canRegenerateQuest)
               InkWell(
                 onTap: () => context.read<AppBloc>().add(const RegenerateTaskEvent()),
                 borderRadius: AppTheme.brPill,
@@ -133,13 +158,18 @@ class _CurrentTaskPanelState extends State<CurrentTaskPanel> {
                       key: const ValueKey('pending'),
                       onPressed: currentTask.type == 'mascot'
                           ? () => setState(() => _hunting = !_hunting)
-                          : () => context.read<AppBloc>().add(const CompleteTaskEvent()),
+                          : () => _openQuestCamera(currentTask.type),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         minimumSize: Size.zero,
                       ),
+                      // Quests are now drawn from photo/video/mascot, so the
+                      // old default of 'Scan' would have labelled every photo
+                      // quest as a 3D scan — a different action entirely, and
+                      // the one type no longer assigned at all.
                       child: Text(switch (currentTask.type) {
-                        'video' => 'Record',
+                        'photo' => 'Shoot',
+                        'video' => 'Film',
                         'mascot' => _hunting ? 'Stop' : 'Hunt',
                         _ => 'Scan',
                       }),

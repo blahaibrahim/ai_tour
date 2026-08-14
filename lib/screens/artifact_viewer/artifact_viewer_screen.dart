@@ -3,18 +3,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_3d_controller/flutter_3d_controller.dart';
 
+import 'package:video_player/video_player.dart';
+
 import '../../models/location.dart';
 import '../../services/media_cache.dart';
 import '../../theme.dart';
 import '../../widgets/artifact_cube.dart';
 import '../../widgets/cube3d.dart';
+import '../../widgets/net_image.dart';
 import '../../widgets/pressable_scale.dart';
 
-/// Full interactive viewer for artifacts.
+/// Full viewer for artifacts, which opens each kind as what it actually is.
 ///
-/// Photo/video artifacts are rendered as a 3D photo cube.
-/// Generated 3D GLB models (when modelStatus == succeeded) are rendered using
-/// a real native 3D GLB viewer via [Flutter3DViewer].
+/// It did not always: every artifact that was not a finished GLB opened as a
+/// rotating photo cube, so a photograph could only be looked at wrapped around
+/// a spinning box and a video showed a still of nothing on six faces. The cube
+/// is a nice object for an artifact with no real media behind it — a fennec, a
+/// model still generating — and a poor one for a picture somebody took.
+///
+///   * **3D model** (`modelStatus == succeeded`) → the native GLB viewer.
+///   * **Video** → a player with play/pause and a scrubber.
+///   * **Photo** → the photograph, pan and zoom.
+///   * **Anything with no media** → the cube, as before.
 class ArtifactViewerScreen extends StatefulWidget {
   final Artifact artifact;
 
@@ -151,17 +161,11 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
                 ],
               ),
             ),
-            Expanded(
-              child: isRealGlb
-                  ? _buildGlbViewer()
-                  : _buildPhotoCubeViewer(art),
-            ),
+            Expanded(child: _buildBody(art, isRealGlb)),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
               child: Text(
-                isRealGlb
-                    ? 'Interactive 3D Model — Touch to rotate'
-                    : 'Drag to rotate · Pinch to zoom',
+                _hintFor(art, isRealGlb),
                 style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
               ),
             ),
@@ -225,6 +229,57 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
     );
   }
 
+  /// True when this artifact has real media on disk or in storage — as opposed
+  /// to a fennec or a model still generating, which have nothing to show and
+  /// are what the cube exists for.
+  bool _hasMedia(Artifact art) {
+    if (art.photoUrl.isEmpty) return false;
+    if (art.isLocalFile) return File(art.photoUrl).existsSync();
+    return art.photoUrl.startsWith('captures/');
+  }
+
+  bool _isVideo(Artifact art) => art.kindLabel == 'Video';
+
+  Widget _buildBody(Artifact art, bool isRealGlb) {
+    if (isRealGlb) return _buildGlbViewer();
+    if (_isVideo(art) && _hasMedia(art)) return _ClipPlayer(artifact: art);
+    if (_hasMedia(art)) {
+      return art.isLocalFile
+          ? _buildPhotoViewer(art)
+          // Restored from storage: the key has to be signed before it can be
+          // loaded, so it opens as a photo rather than falling back to the
+          // cube the way it used to.
+          : _StoredPhotoViewer(key: ValueKey(art.id), artifact: art);
+    }
+    return _buildPhotoCubeViewer(art);
+  }
+
+  String _hintFor(Artifact art, bool isRealGlb) {
+    if (isRealGlb) return 'Interactive 3D model — touch to rotate';
+    if (_isVideo(art) && _hasMedia(art)) return 'Tap the video to play or pause';
+    if (_hasMedia(art)) return 'Pinch to zoom · drag to pan';
+    return 'Drag to rotate · pinch to zoom';
+  }
+
+  /// The photograph itself.
+  ///
+  /// [InteractiveViewer] rather than the cube's bespoke gesture handling: pan
+  /// and zoom on a flat image is a solved problem, and it bounds the transform
+  /// so the picture cannot be flung off screen and lost.
+  Widget _buildPhotoViewer(Artifact art) {
+    return InteractiveViewer(
+      minScale: 1,
+      maxScale: 5,
+      child: Center(
+        child: Image.file(
+          File(art.photoUrl),
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => _buildPhotoCubeViewer(art),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPhotoCubeViewer(Artifact art) {
     final faces = artifactCubeFaces(art, iconSize: 46);
     final cubeSize = MediaQuery.of(context).size.shortestSide * 0.62;
@@ -250,6 +305,236 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Plays a clip from the folder.
+///
+/// Not looping, unlike the review player at capture time: there the clip was
+/// being judged and a loop kept it in front of you, here it is being watched
+/// and a video that silently restarts is a video you cannot tell has ended.
+class _ClipPlayer extends StatefulWidget {
+  const _ClipPlayer({required this.artifact});
+
+  final Artifact artifact;
+
+  @override
+  State<_ClipPlayer> createState() => _ClipPlayerState();
+}
+
+class _ClipPlayerState extends State<_ClipPlayer> {
+  VideoPlayerController? _controller;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _open();
+  }
+
+  Future<void> _open() async {
+    final art = widget.artifact;
+    VideoPlayerController? controller;
+    try {
+      if (art.isLocalFile) {
+        controller = VideoPlayerController.file(File(art.photoUrl));
+      } else {
+        // Stored clips live in a private bucket, so the URL has to be signed
+        // before it can be handed to the player.
+        final url = await MediaCache.captureSignedUrlForPath(art.photoUrl);
+        if (url == null) throw StateError('could not sign the clip URL');
+        controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      }
+      await controller.initialize();
+      await controller.play();
+    } catch (_) {
+      await controller?.dispose();
+      if (mounted) setState(() => _failed = true);
+      return;
+    }
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    // Reaching the end flips isPlaying to false without anything calling
+    // setState, so without this the play overlay never comes back and the
+    // clip looks like it is still running.
+    controller.addListener(_onPlaybackChanged);
+    setState(() => _controller = controller);
+  }
+
+  bool _wasPlaying = true;
+
+  void _onPlaybackChanged() {
+    final playing = _controller?.value.isPlaying ?? false;
+    if (playing == _wasPlaying) return;
+    _wasPlaying = playing;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeListener(_onPlaybackChanged);
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    final controller = _controller;
+    if (controller == null) return;
+    setState(() {
+      if (controller.value.isPlaying) {
+        controller.pause();
+      } else {
+        // Replay from the start once it has run to the end, rather than
+        // resuming from a final frame that is already over.
+        if (controller.value.position >= controller.value.duration) {
+          controller.seekTo(Duration.zero);
+        }
+        controller.play();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.videocam_off_rounded,
+                  size: 32, color: AppTheme.textSecondary),
+              const SizedBox(height: 12),
+              Text(
+                "This clip can't be played — the file may have been removed.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final controller = _controller;
+    if (controller == null) {
+      return const Center(
+        child: SizedBox(
+          width: 26,
+          height: 26,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Expanded(
+          child: GestureDetector(
+            onTap: _toggle,
+            behavior: HitTestBehavior.opaque,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: controller.value.aspectRatio,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    VideoPlayer(controller),
+                    // Only while paused: an overlay on a playing video is in
+                    // the way of the thing it is overlaying.
+                    if (!controller.value.isPlaying)
+                      Container(
+                        width: 62,
+                        height: 62,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.play_arrow_rounded,
+                            color: Colors.white, size: 36),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+          child: VideoProgressIndicator(
+            controller,
+            allowScrubbing: true,
+            colors: VideoProgressColors(
+              playedColor: AppTheme.accent,
+              bufferedColor: AppTheme.accentSoft,
+              backgroundColor: AppTheme.surfaceAlt,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A photo restored from Supabase storage, whose `photoUrl` is a private key
+/// rather than something an image widget can load directly.
+class _StoredPhotoViewer extends StatefulWidget {
+  const _StoredPhotoViewer({super.key, required this.artifact});
+
+  final Artifact artifact;
+
+  @override
+  State<_StoredPhotoViewer> createState() => _StoredPhotoViewerState();
+}
+
+class _StoredPhotoViewerState extends State<_StoredPhotoViewer> {
+  String? _url;
+  bool _resolving = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final url = await MediaCache.captureSignedUrlForPath(widget.artifact.photoUrl);
+    if (!mounted) return;
+    setState(() {
+      _url = url;
+      _resolving = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_resolving) {
+      return const Center(
+        child: SizedBox(
+          width: 26,
+          height: 26,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    final url = _url;
+    if (url == null) {
+      return Center(
+        child: Text(
+          "This photo couldn't be loaded.",
+          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+        ),
+      );
+    }
+    return InteractiveViewer(
+      minScale: 1,
+      maxScale: 5,
+      child: Center(child: NetImage(url: url, fit: BoxFit.contain)),
     );
   }
 }

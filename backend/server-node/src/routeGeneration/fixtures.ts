@@ -239,6 +239,10 @@ export function fixtureRoute(request: RouteRequest): RouteResponse {
     estimatedTotalDurationMinutes: total,
     dayCountFlag: total > request.timeBudgetMinutes ? 2 : 1,
     generatedAt: new Date().toISOString(),
+    // Fixture mode has no candidate pool behind it — the stops are the whole
+    // world. An empty list is the honest answer, and the review step reads it
+    // as "nothing left to offer".
+    alternates: [],
   };
 }
 

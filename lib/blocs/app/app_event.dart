@@ -116,6 +116,19 @@ class SetTripDaysEvent extends AppEvent {
   List<Object?> get props => [days];
 }
 
+/// Touring hours within each of those days.
+///
+/// The other half of the time budget: days say how long the trip is, this says
+/// how much of each one is actually spent walking around. Half a day is a
+/// common, real answer that days alone could not express.
+class SetHoursPerDayEvent extends AppEvent {
+  const SetHoursPerDayEvent(this.hours);
+  final int hours;
+
+  @override
+  List<Object?> get props => [hours];
+}
+
 class SetTransportModeEvent extends AppEvent {
   const SetTransportModeEvent(this.mode);
   final TransportMode mode;
@@ -200,6 +213,15 @@ class CommitSwipeEvent extends AppEvent {
 /// gesture is borrowed from offers this.
 class UndoSwipeEvent extends AppEvent {
   const UndoSwipeEvent();
+}
+
+/// Refills the review deck from the route's held-back candidates when the
+/// stops kept so far do not fill the traveller's budget.
+///
+/// Dispatched when the deck empties short of the budget, so a rejection costs
+/// the traveller a choice rather than costing them their day.
+class OfferAlternateStopsEvent extends AppEvent {
+  const OfferAlternateStopsEvent();
 }
 
 /// The review is done. If anything was dropped, the route is re-generated
@@ -300,7 +322,7 @@ class NavHomeEvent extends AppEvent {
 }
 
 class AddCapturedArtifactEvent extends AppEvent {
-  const AddCapturedArtifactEvent(this.filePath, {this.kindLabel});
+  const AddCapturedArtifactEvent(this.filePath, {this.kindLabel, this.kind});
   final String filePath;
 
   /// What the folder should call this one. Left null, the label is inferred
@@ -309,8 +331,28 @@ class AddCapturedArtifactEvent extends AppEvent {
   /// "Scan" from the fallback.
   final String? kindLabel;
 
+  /// What was actually captured — one of the quest types in [kQuestTypes], or
+  /// `'scan'`.
+  ///
+  /// This is what decides whether the capture *answers the current quest*.
+  /// Before it existed, any capture finished whatever quest happened to be
+  /// open: a photo closed a video quest, and a snapshot taken from the nav bar
+  /// hundreds of metres from a stop closed whichever quest was next. Null
+  /// means "this capture answers nothing" and leaves the quest alone.
+  final String? kind;
+
   @override
-  List<Object?> get props => [filePath, kindLabel];
+  List<Object?> get props => [filePath, kindLabel, kind];
+}
+
+/// A fennec was caught.
+///
+/// Separate from [AddCapturedArtifactEvent] because a catch is no longer filed
+/// in the folder — the fennec belongs in the collection album, not among the
+/// traveller's own photographs. All this carries is the fact of the catch, so
+/// the mascot quest at the current stop can be finished.
+class MascotCaughtEvent extends AppEvent {
+  const MascotCaughtEvent();
 }
 
 class LeaveTourEvent extends AppEvent {

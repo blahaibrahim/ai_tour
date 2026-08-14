@@ -1,3 +1,2 @@
 gaussian splatting (test)
-video generation
 Quest design

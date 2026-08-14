@@ -12,6 +12,7 @@ import 'package:ar_flutter_plugin_2/managers/ar_session_manager.dart';
 import 'package:ar_flutter_plugin_2/models/ar_anchor.dart';
 import 'package:ar_flutter_plugin_2/models/ar_hittest_result.dart';
 import 'package:ar_flutter_plugin_2/models/ar_node.dart';
+import 'package:camera/camera.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
+import 'package:video_player/video_player.dart';
 
 import '../../ar/ar_session_host.dart';
 import '../../ar/geo_math.dart';
@@ -54,11 +56,16 @@ enum ArCameraMode {
 /// shutter itself — see [CameraModeSelector].
 ///
 /// The two are the same shot taken for different reasons, which is why they
-/// share one camera rather than sitting behind separate buttons: [photo] keeps
-/// the frame, [scan] sends it off to be rebuilt as a 3D model and only accepts
-/// frames with a real object in them.
+/// share one camera rather than sitting behind separate buttons: [media] keeps
+/// what you shot, [scan] sends it off to be rebuilt as a 3D model and only
+/// accepts frames with a real object in them.
 enum CaptureMode {
-  photo('Photo'),
+  /// Tap for a photo, hold to film. One mode rather than two because it is the
+  /// same decision made at the moment of pressing — every phone camera people
+  /// already own works this way, so the hold is discovered rather than taught,
+  /// and a moment worth filming rarely announces itself far enough ahead to
+  /// swipe modes first.
+  media('Media'),
   scan('3D Scan');
 
   const CaptureMode(this.label);
@@ -66,6 +73,47 @@ enum CaptureMode {
   /// Name shown in the mode strip.
   final String label;
 }
+
+/// What the camera has been opened *for*.
+///
+/// A quest asks for a specific thing, and the camera should only be able to
+/// produce that thing — a video quest answered with a photo is not answered.
+/// Rather than let the capture happen and reject it afterwards, the modes that
+/// cannot satisfy the quest are simply not offered: there is nothing to undo
+/// and nothing to explain.
+enum CaptureIntent {
+  /// The nav-bar camera. Every mode available, nothing required.
+  free,
+
+  /// A photo quest. Filming is off; the mode strip is hidden.
+  photo,
+
+  /// A video quest. Tapping does not shoot, and a clip must reach
+  /// [_kMinQuestClip] before it counts.
+  video;
+
+  bool get isQuest => this != CaptureIntent.free;
+}
+
+/// Long enough that a slow tap is not a one-frame video, short enough that
+/// deliberately holding to film feels immediate.
+const Duration _kHoldToFilmDelay = Duration(milliseconds: 260);
+
+/// The floor for a clip that answers a video quest.
+///
+/// Three seconds is short enough not to be a chore and long enough to rule out
+/// the thing it exists to rule out: a flick of the wrist that technically
+/// produces a video file. A quest asking for a clip of a place should get a
+/// clip of a place.
+const Duration _kMinQuestClip = Duration(seconds: 3);
+
+/// The floor for any other clip — long enough only to tell a deliberate hold
+/// from a tap the gesture recogniser rounded the wrong way.
+const Duration _kMinFreeClip = Duration(milliseconds: 700);
+
+/// Hard stop on a single clip. Long videos are large files on a device that is
+/// also holding un-uploaded captures, and nothing downstream streams them.
+const Duration _kMaxClipDuration = Duration(seconds: 30);
 
 /// The camera half of the mascot hunt, on ARCore/ARKit world tracking.
 ///
@@ -86,6 +134,7 @@ class ArHuntScreen extends StatefulWidget {
     this.stopName,
     this.spot = const MascotSpot(),
     this.mode = ArCameraMode.hunt,
+    this.intent = CaptureIntent.free,
     this.spawnLocation,
     this.spawnId,
     this.captureToken,
@@ -101,6 +150,9 @@ class ArHuntScreen extends StatefulWidget {
 
   /// Whether to run the hunt or just take a photo.
   final ArCameraMode mode;
+
+  /// What this camera has been opened for. See [CaptureIntent].
+  final CaptureIntent intent;
 
   /// The mascot's real geographic spawn point, from the proximity hunt
   /// (`InlineMascotHunt`) that led here. When set, [spot] is replaced at
@@ -187,9 +239,34 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   _Stage _stage = _Stage.scanning;
 
   /// Which shutter the plain camera is currently showing. Opens on [
-  /// CaptureMode.photo] for the same reason a phone's camera does: a photo is
+  /// CaptureMode.media] for the same reason a phone's camera does: a photo is
   /// the shot you take without thinking about it, and scanning is a decision.
-  CaptureMode _captureMode = CaptureMode.photo;
+  CaptureMode _captureMode = CaptureMode.media;
+
+  /// True while the camera is answering a specific quest, so the modes that
+  /// cannot answer it are withheld rather than offered and then refused.
+  bool get _questing => widget.intent.isQuest;
+
+  /// Shortest clip this camera will accept. A quest sets a real floor; the
+  /// free camera only guards against a mistimed tap.
+  Duration get _minClip =>
+      widget.intent == CaptureIntent.video ? _kMinQuestClip : _kMinFreeClip;
+
+  /// The plain camera's viewfinder.
+  ///
+  /// Null while hunting: the hunt renders the AR session instead, and running
+  /// both at once is not possible — ARCore/ARKit take the camera exclusively.
+  /// That split is the whole reason this field exists rather than the screen
+  /// simply using `session.snapshot()` for everything, as it used to.
+  CameraController? _camera;
+
+  /// True from the moment a hold starts filming until the clip is saved.
+  bool _recording = false;
+
+  /// Wall-clock start of the current clip, for the on-screen timer.
+  DateTime? _recordingStartedAt;
+  Timer? _recordingTicker;
+  Timer? _clipLimit;
 
   bool _busy = false;
   bool _floorMeasured = false;
@@ -210,6 +287,17 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   /// read back at confirm time, so the frame and what happens to it can't come
   /// apart.
   bool _pendingScan = false;
+
+  /// A clip that has been filmed but not yet kept, replayed on a loop over the
+  /// viewfinder while it is decided on.
+  ///
+  /// A photo gets reviewed as a frozen frame; a clip has to be *watched*, and
+  /// that is the whole reason this is a separate field rather than reusing
+  /// [_pendingFrame]. Judging a video from a still of its opening frame is not
+  /// a review — a pan starts pointed at whatever the traveller happened to be
+  /// facing before they pressed.
+  String? _pendingVideoPath;
+  Duration _pendingVideoLength = Duration.zero;
 
   Timer? _scanTimeout;
   Timer? _poseTimer;
@@ -251,15 +339,39 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   /// model. The hunt has its own shutter and never scans.
   bool get _scanning => !_hunting && _captureMode == CaptureMode.scan;
 
-  /// True while a taken frame is waiting to be kept or retaken.
-  bool get _reviewing => _pendingFrame != null;
+  /// True when holding the shutter should film rather than do nothing. Only
+  /// [CaptureMode.media] films — a held shutter in 3D Scan has no meaning,
+  /// since a scan is built from one frame.
+  bool get _canFilm =>
+      !_hunting &&
+      _captureMode == CaptureMode.media &&
+      widget.intent != CaptureIntent.photo;
 
-  /// Whether the shutter is live. Plain capture can shoot as soon as there is
-  /// a session to snapshot; a hunt only once the fennec has been caught.
-  bool get _canShoot => !_busy &&
-      !_reviewing &&
-      _session != null &&
-      (!_hunting || _stage == _Stage.caught);
+  /// How long the current clip has been running, for the on-screen timer.
+  Duration get _recordingElapsed => _recordingStartedAt == null
+      ? Duration.zero
+      : DateTime.now().difference(_recordingStartedAt!);
+
+  /// True while a taken frame or clip is waiting to be kept or discarded.
+  bool get _reviewing => _pendingFrame != null || _pendingVideoPath != null;
+
+  /// How far through the 30-second cap the current clip is, 0..1. Drives the
+  /// ring around the shutter, which is the only thing telling the traveller
+  /// how much of their hold is left.
+  double get _recordingProgress {
+    if (!_recording) return 0;
+    final elapsed = _recordingElapsed.inMilliseconds;
+    return (elapsed / _kMaxClipDuration.inMilliseconds).clamp(0.0, 1.0);
+  }
+
+  /// Whether the shutter is live. Plain capture waits on its own camera
+  /// controller rather than an AR session; a hunt shoots only once the fennec
+  /// has been caught.
+  bool get _canShoot {
+    if (_busy || _reviewing) return false;
+    if (_hunting) return _session != null && _stage == _Stage.caught;
+    return _camera?.value.isInitialized ?? false;
+  }
 
   @override
   void initState() {
@@ -268,6 +380,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     if (_hunting && widget.spawnLocation != null) {
       _geoOffsetFuture = _resolveGeoOffset();
     }
+    if (!_hunting) unawaited(_openCamera());
   }
 
   @override
@@ -275,8 +388,54 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     _scanTimeout?.cancel();
     _poseTimer?.cancel();
     _refineTimer?.cancel();
+    _recordingTicker?.cancel();
+    _clipLimit?.cancel();
     _ar?.dispose();
+    // Not awaited: dispose cannot be async, and a controller that is still
+    // recording is stopped by disposal anyway — the clip is lost, which is the
+    // right outcome for a screen the user walked away from mid-hold.
+    unawaited(_camera?.dispose());
     super.dispose();
+  }
+
+  /// Opens the rear camera for the plain capture screen.
+  ///
+  /// `enableAudio` is on because a video of a place with the sound stripped out
+  /// is a worse record of being there — but it is also why this screen triggers
+  /// the microphone prompt, and only this screen: the hunt never constructs a
+  /// controller at all.
+  Future<void> _openCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) throw CameraException('no_camera', 'No camera on this device');
+
+      final back = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+
+      final controller = CameraController(
+        back,
+        ResolutionPreset.high,
+        enableAudio: true,
+      );
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() => _camera = controller);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = _cameraErrorText(e));
+    }
+  }
+
+  String _cameraErrorText(Object error) {
+    if (error is CameraException && error.code.toLowerCase().contains('permission')) {
+      return 'The camera needs permission before it can open.';
+    }
+    return "The camera didn't open: ${error is CameraException ? error.description ?? error.code : error}";
   }
 
   /// Takes an early GPS fix so the geographic offset to the spawn point is
@@ -753,8 +912,22 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   /// saved and the screen closes. In plain capture it stops at the frozen
   /// frame and waits for [_keepShot] or [_retakeShot].
   Future<void> _capture() async {
-    final session = _session;
-    if (session == null || _busy || _reviewing) return;
+    if (_busy || _reviewing || _recording) return;
+
+    // A video quest cannot be answered with a photo, so tapping says what to
+    // do instead of quietly taking one and having it rejected later.
+    if (widget.intent == CaptureIntent.video) {
+      HapticFeedback.selectionClick();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'This one wants a clip — hold the shutter for '
+            '${_kMinQuestClip.inSeconds} seconds or more',
+          ),
+        ),
+      );
+      return;
+    }
 
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -762,11 +935,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
     final Uint8List frame;
     try {
-      final image = await session.snapshot();
-      if (image is! MemoryImage) {
-        throw StateError('unexpected snapshot format');
-      }
-      frame = image.bytes;
+      frame = _hunting ? await _snapshotFromSession() : await _snapshotFromCamera();
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -791,6 +960,170 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     });
   }
 
+  /// The hunt's still: a composited frame of the AR scene, fennec included.
+  Future<Uint8List> _snapshotFromSession() async {
+    final session = _session;
+    if (session == null) throw StateError('no AR session');
+    final image = await session.snapshot();
+    if (image is! MemoryImage) throw StateError('unexpected snapshot format');
+    return image.bytes;
+  }
+
+  /// The plain camera's still.
+  Future<Uint8List> _snapshotFromCamera() async {
+    final camera = _camera;
+    if (camera == null || !camera.value.isInitialized) {
+      throw StateError('camera not ready');
+    }
+    final file = await camera.takePicture();
+    return file.readAsBytes();
+  }
+
+  // ---------------------------------------------------------------------
+  // Filming
+  //
+  // Hold the shutter to record, release to keep it. The gesture is the one
+  // every phone camera already uses, which is why it is not signposted beyond
+  // the hint under the viewfinder — it is being confirmed, not taught.
+  // ---------------------------------------------------------------------
+
+  Future<void> _startRecording() async {
+    final camera = _camera;
+    if (!_canFilm || _recording || _busy || _reviewing) return;
+    if (camera == null || !camera.value.isInitialized) return;
+
+    try {
+      await camera.startVideoRecording();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Couldn't start filming: ${_cameraErrorText(e)}")),
+      );
+      return;
+    }
+    if (!mounted) {
+      // The screen went away between the await and here; stop the recording
+      // rather than leaving the camera running into a disposed controller.
+      unawaited(camera.stopVideoRecording().catchError((_) => XFile('')));
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _recording = true;
+      _recordingStartedAt = DateTime.now();
+    });
+
+    // Drives the timer readout and the ring around the shutter; the clip
+    // itself is bounded by _clipLimit below, so a dropped tick cannot overrun
+    // the cap. 50 ms because the ring is the part being watched — at the 200 ms
+    // the readout alone needed, a thirty-second sweep visibly steps.
+    _recordingTicker = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (mounted) setState(() {});
+    });
+    _clipLimit = Timer(_kMaxClipDuration, () {
+      // Stops itself at the cap rather than waiting for a release: someone
+      // filming a long pan should get their clip, not a recording that keeps
+      // growing until the disk complains.
+      unawaited(_stopRecording(hitLimit: true));
+    });
+  }
+
+  Future<void> _stopRecording({bool hitLimit = false}) async {
+    final camera = _camera;
+    if (!_recording || camera == null) return;
+
+    _recordingTicker?.cancel();
+    _clipLimit?.cancel();
+    _recordingTicker = null;
+    _clipLimit = null;
+
+    final elapsed = DateTime.now().difference(_recordingStartedAt ?? DateTime.now());
+    setState(() {
+      _recording = false;
+      _recordingStartedAt = null;
+      _busy = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    XFile clip;
+    try {
+      clip = await camera.stopVideoRecording();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger.showSnackBar(
+        SnackBar(content: Text("The clip didn't save: ${_cameraErrorText(e)}")),
+      );
+      return;
+    }
+
+    // Too short to keep. For the free camera that means a tap the gesture
+    // recogniser rounded the wrong way; for a video quest it means the clip
+    // does not meet what the quest asked for. Either way the file goes, and
+    // the message says which of the two it was — "hold for a moment" is not
+    // useful advice to someone who held for two seconds.
+    if (elapsed < _minClip) {
+      unawaited(File(clip.path).delete().catchError((_) => File(clip.path)));
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.intent == CaptureIntent.video
+                ? 'That clip was ${elapsed.inSeconds}s — this quest needs at '
+                    'least ${_kMinQuestClip.inSeconds}. Hold for longer.'
+                : 'Hold the shutter for a moment to film',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    HapticFeedback.mediumImpact();
+    if (hitLimit) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Clip capped at ${_kMaxClipDuration.inSeconds}s')),
+      );
+    }
+
+    // Straight into review rather than the folder. A clip is the one capture
+    // the traveller genuinely cannot judge at the moment of taking it — they
+    // were watching the scene, not the frame — so it gets watched back before
+    // it is committed to.
+    setState(() {
+      _pendingVideoPath = clip.path;
+      _pendingVideoLength = elapsed;
+      _busy = false;
+    });
+  }
+
+  /// Throws the reviewed clip away and hands the viewfinder back.
+  void _discardClip() {
+    final path = _pendingVideoPath;
+    if (path == null) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _pendingVideoPath = null;
+      _pendingVideoLength = Duration.zero;
+    });
+    // The file is in the camera plugin's cache directory and nothing else
+    // refers to it, so this is the last chance to remove it — the OS would get
+    // there eventually, but leaving discarded footage on the device in the
+    // meantime is not what "discard" means to the person who pressed it.
+    unawaited(File(path).delete().catchError((_) => File(path)));
+  }
+
+  /// Accepts the reviewed clip and files it.
+  void _keepClip() {
+    final path = _pendingVideoPath;
+    if (path == null || _busy) return;
+    HapticFeedback.mediumImpact();
+    _dispatchVideo(path, _pendingVideoLength);
+  }
+
   /// Throws the reviewed frame away and hands the viewfinder back.
   void _retakeShot() {
     if (!_reviewing) return;
@@ -804,6 +1137,26 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     if (frame == null || _busy) return;
     HapticFeedback.mediumImpact();
     _dispatch(frame, scanning: _pendingScan);
+  }
+
+  /// Closes the screen on a finished clip and files it behind the exit.
+  ///
+  /// No review step, unlike a photo. Reviewing a video means playing it back,
+  /// which needs a player this app does not carry — and a still of the first
+  /// frame would be a worse decision aid than no review at all, since what
+  /// makes a clip good or bad is almost never its opening frame.
+  void _dispatchVideo(String path, Duration length) {
+    final messenger = ScaffoldMessenger.of(context);
+    final bloc = context.read<AppBloc>();
+
+    Navigator.of(context).pop();
+
+    unawaited(_finishVideoCapture(
+      sourcePath: path,
+      length: length,
+      bloc: bloc,
+      messenger: messenger,
+    ));
   }
 
   /// Closes the screen on [frame] and lets the rest finish behind it.
@@ -885,13 +1238,20 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          ArSessionHost(
-            onSessionCreated: _onSessionCreated,
-            // Horizontal only: the fennec stands on the floor, and tracking
-            // walls as well only slows the search for a surface.
-            planeDetectionConfig: PlaneDetectionConfig.horizontal,
-            permissionDenied: _buildPermissionPrompt,
-          ),
+          // The hunt needs world tracking to stand a fennec on the floor; the
+          // plain camera needs a camera that can also record. They cannot be
+          // the same surface — ARCore/ARKit take the camera exclusively — so
+          // the screen picks one at mount and keeps it.
+          if (_hunting)
+            ArSessionHost(
+              onSessionCreated: _onSessionCreated,
+              // Horizontal only: the fennec stands on the floor, and tracking
+              // walls as well only slows the search for a surface.
+              planeDetectionConfig: PlaneDetectionConfig.horizontal,
+              permissionDenied: _buildPermissionPrompt,
+            )
+          else
+            _buildCameraViewfinder(),
           if (review != null)
             // The frame sits on top of the running session rather than
             // replacing it, so a retake is instant — the AR view underneath
@@ -901,10 +1261,61 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
               fit: BoxFit.cover,
               gaplessPlayback: true,
             )
+          else if (_pendingVideoPath != null)
+            // Same idea, and the same reason: the camera keeps running behind
+            // the replay, so discarding is instant.
+            _ClipReview(
+              // Keyed on the path so filming a second clip after discarding
+              // the first builds a fresh player rather than reusing one still
+              // pointed at a file that has been deleted.
+              key: ValueKey(_pendingVideoPath),
+              path: _pendingVideoPath!,
+            )
           else if (hunting && bearing != null && !bearing.onScreen)
             _EdgeArrow(direction: bearing.direction),
           _buildChrome(context),
         ],
+      ),
+    );
+  }
+
+  /// The plain camera's preview, filling the screen the way the AR view did.
+  ///
+  /// `CameraPreview` reports the sensor's aspect ratio, which is almost never
+  /// the screen's. Letterboxing it would be the honest framing, but no phone
+  /// camera app does that and a photo app with black bars reads as broken —
+  /// so the preview is scaled to cover and the overflow is clipped, which is
+  /// what the OS camera does too.
+  Widget _buildCameraViewfinder() {
+    final camera = _camera;
+    if (camera == null || !camera.value.isInitialized) {
+      return const ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white30),
+          ),
+        ),
+      );
+    }
+
+    return ClipRect(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final previewRatio = camera.value.aspectRatio;
+          final screenRatio = constraints.maxWidth / constraints.maxHeight;
+          // `aspectRatio` is width/height in landscape terms; the preview is
+          // shown portrait, hence the inversion.
+          final scale = screenRatio < (1 / previewRatio)
+              ? (1 / previewRatio) / screenRatio
+              : screenRatio * previewRatio;
+          return Transform.scale(
+            scale: scale.isFinite && scale > 0 ? scale : 1.0,
+            child: Center(child: CameraPreview(camera)),
+          );
+        },
       ),
     );
   }
@@ -971,14 +1382,16 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                       children: [
                         Text(
                           _reviewing
-                              ? (_pendingScan
-                                  ? 'Scan this?'
-                                  : 'Keep this photo?')
+                              ? (_pendingVideoPath != null
+                                  ? 'Keep this clip?'
+                                  : _pendingScan
+                                      ? 'Scan this?'
+                                      : 'Keep this photo?')
                               : _hunting
                                   ? 'Find the fennec'
                                   : _scanning
                                       ? 'Scan an object'
-                                      : 'Take a photo',
+                                      : 'Photo or video',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 14,
@@ -987,9 +1400,11 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                         ),
                         Text(
                           _reviewing
-                              ? (_pendingScan
-                                  ? 'Check the object is sharp and whole'
-                                  : 'Check it came out how you wanted')
+                              ? (_pendingVideoPath != null
+                                  ? "It's looping — watch it before you decide"
+                                  : _pendingScan
+                                      ? 'Check the object is sharp and whole'
+                                      : 'Check it came out how you wanted')
                               : widget.stopName ??
                                   (_hunting
                                       ? 'Somewhere around you'
@@ -1044,7 +1459,9 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
             null,
             _scanning
                 ? 'Fill the frame with one object, then shoot'
-                : 'Frame the shot and tap the shutter',
+                // The hold is the only part of this screen that is not
+                // self-evident, so it is the part the hint spends its words on.
+                : 'Tap to shoot · hold to film',
           )
         : switch (_stage) {
             _Stage.scanning => (
@@ -1122,19 +1539,33 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
           ),
           if (!_hunting) ...[
             const SizedBox(height: 12),
-            CameraModeSelector(
-              labels: [for (final mode in CaptureMode.values) mode.label],
-              index: _captureMode.index,
-              enabled: !_busy,
-              onChanged: (index) =>
-                  setState(() => _captureMode = CaptureMode.values[index]),
-            ),
+            // Hidden while filming: a mode strip that can still be swiped
+            // under a running recording is a way to end up in 3D Scan with a
+            // clip half-taken. Hidden for a quest too — there is only one mode
+            // that can answer it, so a strip would offer choices that lead
+            // nowhere.
+            if (_recording)
+              _RecordingPill(elapsed: _recordingElapsed)
+            else if (_questing)
+              _IntentPill(intent: widget.intent)
+            else
+              CameraModeSelector(
+                labels: [for (final mode in CaptureMode.values) mode.label],
+                index: _captureMode.index,
+                enabled: !_busy,
+                onChanged: (index) =>
+                    setState(() => _captureMode = CaptureMode.values[index]),
+              ),
             const SizedBox(height: 8),
           ] else
             const SizedBox(height: 20),
           _ShutterButton(
             enabled: _canShoot,
             onTap: _capture,
+            onHoldStart: _canFilm ? _startRecording : null,
+            onHoldEnd: _canFilm ? _stopRecording : null,
+            recording: _recording,
+            progress: _recordingProgress,
             icon: _scanning
                 ? Icons.view_in_ar_rounded
                 : Icons.camera_alt_rounded,
@@ -1151,25 +1582,37 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   /// almost every shot is for; retaking is a shade quieter but the same size,
   /// since it is the reason this step exists at all.
   Widget _buildReviewFooter() {
+    // A clip and a photo are reviewed the same way and in the same place; only
+    // the words differ. "Discard" rather than "Retake" because releasing the
+    // shutter already ended the take — there is nothing to retake, only
+    // something to throw away.
+    final isClip = _pendingVideoPath != null;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 34),
       child: Row(
         children: [
           Expanded(
             child: _ReviewButton(
-              label: 'Retake',
-              icon: Icons.refresh_rounded,
-              onTap: _retakeShot,
+              label: isClip ? 'Discard' : 'Retake',
+              icon: isClip ? Icons.delete_outline_rounded : Icons.refresh_rounded,
+              onTap: isClip ? _discardClip : _retakeShot,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _ReviewButton(
-              label: _pendingScan ? 'Scan it' : 'Use photo',
-              icon: _pendingScan
-                  ? Icons.view_in_ar_rounded
-                  : Icons.check_rounded,
-              onTap: _keepShot,
+              label: isClip
+                  ? 'Keep ${_pendingVideoLength.inSeconds}s clip'
+                  : _pendingScan
+                      ? 'Scan it'
+                      : 'Use photo',
+              icon: isClip
+                  ? Icons.check_rounded
+                  : _pendingScan
+                      ? Icons.view_in_ar_rounded
+                      : Icons.check_rounded,
+              onTap: isClip ? _keepClip : _keepShot,
               filled: true,
             ),
           ),
@@ -1224,6 +1667,46 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 // [ScaffoldMessengerState] both outlive the screen, so results still land in
 // the folder and on screen.
 
+/// Moves a finished clip out of the camera plugin's temp directory and into
+/// the folder.
+///
+/// The move matters: `stopVideoRecording` hands back a path under the app's
+/// **cache** directory, which the OS may reclaim at any time. A capture the
+/// traveller has not uploaded yet must live in documents, which is backed up
+/// and never evicted — the same rule the plan applies to un-uploaded photos.
+Future<void> _finishVideoCapture({
+  required String sourcePath,
+  required Duration length,
+  required AppBloc bloc,
+  required ScaffoldMessengerState messenger,
+}) async {
+  try {
+    final directory = await getApplicationDocumentsDirectory();
+    final destination =
+        '${directory.path}/clip_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+    final source = File(sourcePath);
+    try {
+      await source.rename(destination);
+    } on FileSystemException {
+      // rename() cannot cross filesystems, and on some devices the cache and
+      // documents directories are on different mounts. Copy, then drop the
+      // original.
+      await source.copy(destination);
+      await source.delete().catchError((_) => source);
+    }
+
+    bloc.add(AddCapturedArtifactEvent(destination, kindLabel: 'Video', kind: 'video'));
+    messenger.showSnackBar(SnackBar(
+      content: Text('${length.inSeconds}s clip saved to your folder'),
+    ));
+  } catch (e) {
+    messenger.showSnackBar(
+      SnackBar(content: Text("Couldn't save that clip: ${e.toString()}")),
+    );
+  }
+}
+
 /// Saves [frame] straight to the folder — the plain photo shutter, and the
 /// shot that ends a fennec hunt.
 ///
@@ -1244,15 +1727,25 @@ Future<void> _finishPhotoCapture({
         '${directory.path}/capture_${DateTime.now().millisecondsSinceEpoch}.jpg';
     await File(path).writeAsBytes(frame, flush: true);
 
-    // Locally first, so the photo is in the folder whatever the network does.
-    // A hunt photo keeps the label its task implies; a photo taken from the
-    // nav bar is just a photo.
-    bloc.add(AddCapturedArtifactEvent(path, kindLabel: caught ? null : 'Photo'));
-    messenger.showSnackBar(SnackBar(
-      content: Text(caught
-          ? 'Fennec caught — saved to your folder'
-          : 'Photo saved to your folder'),
-    ));
+    if (caught) {
+      // A caught fennec is not one of the traveller's own photographs, and
+      // filing it among them was the wrong shelf: the folder is for what they
+      // made, the collection album is for what they found. Only the fact of
+      // the catch is reported, which is what finishes a mascot quest.
+      bloc.add(const MascotCaughtEvent());
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Fennec caught!')),
+      );
+      // Nothing refers to the snapshot any more — the server validates a catch
+      // from the fix and the signed token, never the picture — so leaving it
+      // in documents would be a file that accumulates and is never read.
+      unawaited(File(path).delete().catchError((_) => File(path)));
+    } else {
+      bloc.add(AddCapturedArtifactEvent(path, kindLabel: 'Photo', kind: 'photo'));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Photo saved to your folder')),
+      );
+    }
   } catch (e) {
     messenger.showSnackBar(
       SnackBar(content: Text("Couldn't save that shot: ${e.toString()}")),
@@ -1509,38 +2002,387 @@ class _ReviewButton extends StatelessWidget {
   }
 }
 
-class _ShutterButton extends StatelessWidget {
+/// Replays a just-filmed clip, looping, while it is kept or discarded.
+///
+/// Owns its own controller so the capture screen does not have to thread one
+/// through its lifecycle: building this widget starts playback and disposing
+/// it releases the decoder, which is exactly the lifetime the review has.
+///
+/// Looping rather than playing once and stopping on a black frame — the
+/// decision being made is "is this clip any good", and that is easier to answer
+/// while it is running than from a still of wherever it happened to end.
+class _ClipReview extends StatefulWidget {
+  const _ClipReview({super.key, required this.path});
+
+  final String path;
+
+  @override
+  State<_ClipReview> createState() => _ClipReviewState();
+}
+
+class _ClipReviewState extends State<_ClipReview> {
+  VideoPlayerController? _controller;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_open());
+  }
+
+  Future<void> _open() async {
+    final controller = VideoPlayerController.file(File(widget.path));
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.play();
+    } catch (_) {
+      await controller.dispose();
+      if (mounted) setState(() => _failed = true);
+      return;
+    }
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    setState(() => _controller = controller);
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) {
+      // The clip exists but will not decode. Saying so beats a black rectangle
+      // the traveller would read as a broken app rather than a broken file.
+      return const ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              "That clip won't play back. Discard it and film again.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final controller = _controller;
+    if (controller == null) {
+      return const ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white30),
+          ),
+        ),
+      );
+    }
+
+    // Cover, not contain — the replay should sit exactly where the viewfinder
+    // was, and letterboxing it would make the clip look like it was framed
+    // differently from the shot that was just taken.
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox(
+          width: controller.value.size.width,
+          height: controller.value.size.height,
+          child: VideoPlayer(controller),
+        ),
+      ),
+    );
+  }
+}
+
+/// What the open quest is asking for, in the mode strip's place.
+///
+/// The strip is gone because there is nothing to switch between, so this fills
+/// the same slot rather than leaving a gap and shifting the shutter up the
+/// screen. It states the requirement plainly — including the minimum length,
+/// which is the one rule a traveller could otherwise only discover by failing
+/// it.
+class _IntentPill extends StatelessWidget {
+  const _IntentPill({required this.intent});
+
+  final CaptureIntent intent;
+
+  @override
+  Widget build(BuildContext context) {
+    final (IconData icon, String text) = switch (intent) {
+      CaptureIntent.video => (
+          Icons.videocam_rounded,
+          'Hold to film · ${_kMinQuestClip.inSeconds}s minimum',
+        ),
+      _ => (Icons.photo_camera_rounded, 'Tap to take the photo'),
+    };
+
+    return SizedBox(
+      height: 34,
+      child: Center(
+        child: GlassSurface(
+          tint: GlassTint.dark,
+          borderRadius: AppTheme.brPill,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: AppTheme.sand),
+              const SizedBox(width: 7),
+              Text(
+                text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The elapsed-time readout, in the mode strip's place while filming.
+///
+/// It sits exactly where the mode names were rather than somewhere new, so
+/// nothing under the thumb moves when recording starts — and the swap itself
+/// is the clearest signal that the shutter has changed meaning.
+class _RecordingPill extends StatelessWidget {
+  const _RecordingPill({required this.elapsed});
+
+  final Duration elapsed;
+
+  @override
+  Widget build(BuildContext context) {
+    final seconds = elapsed.inSeconds;
+    final remaining = _kMaxClipDuration.inSeconds - seconds;
+
+    return SizedBox(
+      height: 34,
+      child: Center(
+        child: GlassSurface(
+          tint: GlassTint.dark,
+          borderRadius: AppTheme.brPill,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: AppTheme.error,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '0:${seconds.toString().padLeft(2, '0')}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+              // Only mentioned near the cap: a countdown running from the first
+              // second would make a 30-second limit feel like a stopwatch.
+              if (remaining <= 10) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '${remaining}s left',
+                  style: const TextStyle(color: Colors.white70, fontSize: 11),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tap to shoot, hold to film.
+///
+/// The hold is deliberately not a `GestureDetector.onLongPress`: that fires
+/// once, after the delay, with no signal for the release — and a shutter needs
+/// both ends of the press. `onTapDown`/`onTapUp` plus a timer gives the whole
+/// gesture: press starts a clock, holding past [_kHoldToFilmDelay] begins
+/// filming, and whichever way the finger leaves ends it. A press that lifts
+/// before the delay was a tap and takes a photo.
+///
+/// While filming the button turns red and a white ring fills around its edge.
+/// The ring is the clip's remaining length made visible: full means the
+/// thirty-second cap has been reached and the take has ended itself. Without
+/// it the cap arrives as a surprise mid-pan, which is the one thing a shutter
+/// should never do.
+class _ShutterButton extends StatefulWidget {
   const _ShutterButton({
     required this.enabled,
     required this.onTap,
+    this.onHoldStart,
+    this.onHoldEnd,
+    this.recording = false,
+    this.progress = 0,
     this.icon = Icons.camera_alt_rounded,
   });
 
   final bool enabled;
   final VoidCallback onTap;
 
+  /// Null when this shutter cannot film — the hunt, and 3D Scan mode.
+  final VoidCallback? onHoldStart;
+  final VoidCallback? onHoldEnd;
+
+  final bool recording;
+
+  /// How much of the clip's maximum length has been used, 0..1.
+  final double progress;
+
   /// Says what kind of shot this is about to take — the mode strip above says
   /// it in words, this says it where the thumb already is.
   final IconData icon;
 
   @override
+  State<_ShutterButton> createState() => _ShutterButtonState();
+}
+
+class _ShutterButtonState extends State<_ShutterButton> {
+  Timer? _holdTimer;
+  bool _pressed = false;
+  bool _heldLongEnough = false;
+
+  bool get _canFilm => widget.onHoldStart != null;
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onDown() {
+    if (!widget.enabled && !widget.recording) return;
+    setState(() => _pressed = true);
+    _heldLongEnough = false;
+    if (!_canFilm) return;
+
+    _holdTimer = Timer(_kHoldToFilmDelay, () {
+      _heldLongEnough = true;
+      widget.onHoldStart?.call();
+    });
+  }
+
+  void _onUp({required bool cancelled}) {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    if (!_pressed) return;
+    setState(() => _pressed = false);
+
+    if (_heldLongEnough) {
+      _heldLongEnough = false;
+      widget.onHoldEnd?.call();
+      return;
+    }
+    // A drag off the button cancels rather than shoots — the same escape hatch
+    // every button has, and the only way out of an accidental press.
+    if (!cancelled && widget.enabled) widget.onTap();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return PressableScale(
-      onTap: enabled ? onTap : null,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 240),
-        width: 74,
-        height: 74,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: enabled ? AppTheme.accent : Colors.white24,
-          border: Border.all(color: Colors.white70, width: 3),
-          boxShadow: enabled ? AppTheme.shadowLg : null,
-        ),
-        child: Icon(
-          icon,
-          color: enabled ? AppTheme.onAccent : Colors.white54,
-          size: 28,
+    final recording = widget.recording;
+    final live = widget.enabled || recording;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _onDown(),
+      onTapUp: (_) => _onUp(cancelled: false),
+      onTapCancel: () => _onUp(cancelled: true),
+      child: AnimatedScale(
+        scale: _pressed ? 0.94 : 1,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: SizedBox(
+          width: 74,
+          height: 74,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 240),
+                width: 74,
+                height: 74,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: recording
+                      ? AppTheme.error
+                      : live
+                          ? AppTheme.accent
+                          : Colors.white24,
+                  // While filming the ring below is the border, so the static
+                  // one steps aside rather than sitting under it at a slightly
+                  // different radius.
+                  border: recording
+                      ? null
+                      : Border.all(color: Colors.white70, width: 3),
+                  boxShadow: live ? AppTheme.shadowLg : null,
+                ),
+              ),
+
+              if (recording) ...[
+                // The unfilled track, so the ring reads as a gauge with a
+                // remainder rather than an arc that appeared from nowhere.
+                SizedBox(
+                  width: 74,
+                  height: 74,
+                  child: CircularProgressIndicator(
+                    value: 1,
+                    strokeWidth: 3.5,
+                    valueColor: AlwaysStoppedAnimation(Colors.white.withValues(alpha: 0.28)),
+                  ),
+                ),
+                SizedBox(
+                  width: 74,
+                  height: 74,
+                  child: CircularProgressIndicator(
+                    value: widget.progress.clamp(0.0, 1.0),
+                    strokeWidth: 3.5,
+                    strokeCap: StrokeCap.round,
+                    backgroundColor: Colors.transparent,
+                    valueColor: const AlwaysStoppedAnimation(Colors.white),
+                  ),
+                ),
+                // A circle, not a square: the take ends when the finger lifts,
+                // so this is a recording indicator rather than a stop button,
+                // and a square would invite a press that does nothing.
+                const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                  ),
+                ),
+              ] else
+                Icon(
+                  widget.icon,
+                  color: live ? AppTheme.onAccent : Colors.white54,
+                  size: 28,
+                ),
+            ],
+          ),
         ),
       ),
     );

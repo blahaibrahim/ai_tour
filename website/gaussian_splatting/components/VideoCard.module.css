@@ -1,0 +1,109 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform var(--motion-fast) var(--motion-curve),
+    box-shadow var(--motion-base) var(--motion-curve),
+    border-color var(--motion-base) var(--motion-curve);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* The app's press feedback: the whole surface dips under the finger. */
+.card:active {
+  transform: scale(0.98);
+}
+
+.selected {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+}
+
+.thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--ink);
+}
+
+.thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Scrim under the badges, fading to a transparent navy rather than a
+   transparent black so the midtones don't go grey. */
+.scrim {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 56px;
+  background: linear-gradient(rgba(20, 37, 74, 0.55), rgba(20, 37, 74, 0));
+  pointer-events: none;
+}
+
+.badges {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-secondary);
+}
+
+.badgeReady {
+  background: var(--sand);
+  color: #783b1e;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.name {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.scene {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}

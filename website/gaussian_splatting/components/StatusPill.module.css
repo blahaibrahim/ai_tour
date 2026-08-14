@@ -1,0 +1,60 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.queued {
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+}
+
+.running {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.running .dot {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.succeeded {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.failed {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.canceled {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(1.5);
+  }
+}

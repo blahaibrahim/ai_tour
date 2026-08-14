@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import 'package:latlong2/latlong.dart';
 import '../../models/location.dart';
 import '../../models/location_data.dart';
+import '../../models/quest_type.dart';
 import '../../models/route.dart';
 
 /// A single message in a chat conversation (detail panel).
@@ -37,6 +38,7 @@ class AppState extends Equatable {
     this.isInterpretingPrompt = false,
     this.promptInterpreted = false,
     this.tripDays = 1,
+    this.hoursPerDay = defaultHoursPerDay,
     this.transportMode = TransportMode.hybrid,
     this.isLoadingOptions = false,
     // --- generated route ---
@@ -56,6 +58,7 @@ class AppState extends Equatable {
     this.points = 0,
     this.lifetimePoints,
     this.taskRegenerationsLeft = 3,
+    this.offeredQuestTypes = const [],
     this.videoPlaying = false,
     this.folderSearch = '',
     this.capturedArtifacts = const [],
@@ -68,6 +71,7 @@ class AppState extends Equatable {
     this.routeErrorCode,
     this.arTestingMode = true,
     this.testMascotSpawn,
+    this.reviewExhausted = false,
     this.isRestoringSession = true,
   })  : selectedRegions = selectedRegions ?? regions,
         selectedCategoryKeys = selectedCategoryKeys ?? const {},
@@ -80,13 +84,26 @@ class AppState extends Equatable {
   /// and looking, not twenty-four: budgeting a full calendar day would tell
   /// the module a traveller is available through the night and produce a
   /// route that only fits if they never sleep.
-  static const int minutesPerTouringDay = 8 * 60;
+  static const int minutesPerTouringDay = defaultHoursPerDay * 60;
 
   /// Trip lengths the picker offers, in days. Capped at 4 because
   /// 4 × 8 h = 1920 min is comfortably inside the server's 3-day
   /// (4320-minute) ceiling, and past that the day-count flag is the honest
   /// answer rather than a longer single route.
   static const List<int> tripDayOptions = [1, 2, 3, 4];
+
+  /// Touring hours in one of those days.
+  ///
+  /// Days alone were too coarse to say what people actually have: "I land at
+  /// two and fly out tomorrow" is half a day, and rounding it up to eight
+  /// hours produces a route they cannot finish — which the traveller reads as
+  /// the app being wrong rather than as their own budget being optimistic.
+  ///
+  /// Two is the floor because the server refuses anything under 30 minutes and
+  /// most single stops here run 20–45 minutes of dwell alone. Twelve is the
+  /// ceiling because past that it stops being a touring day.
+  static const List<int> hoursPerDayOptions = [2, 4, 6, 8, 10, 12];
+  static const int defaultHoursPerDay = 8;
 
   static const double minRadiusKm = 5;
   static const double maxRadiusKm = 60;
@@ -125,13 +142,17 @@ class AppState extends Equatable {
   final bool promptInterpreted;
 
   final int tripDays;
+
+  /// Touring hours in each of [tripDays]. See [hoursPerDayOptions].
+  final int hoursPerDay;
+
   final TransportMode transportMode;
   final bool isLoadingOptions;
 
-  /// The wire value. Derived, because days are what the traveller chose and
-  /// minutes are only what the request happens to be expressed in — storing
-  /// both invites them to disagree.
-  int get timeBudgetMinutes => tripDays * minutesPerTouringDay;
+  /// The wire value. Derived, because days and hours are what the traveller
+  /// chose and minutes are only what the request happens to be expressed in —
+  /// storing the total alongside its parts invites them to disagree.
+  int get timeBudgetMinutes => tripDays * hoursPerDay * 60;
 
   // --- generated route -------------------------------------------------------
 
@@ -177,7 +198,96 @@ class AppState extends Equatable {
   /// the other.
   final int? lifetimePoints;
 
+  /// True when the review ran out of stops to offer before the budget was
+  /// filled. Distinguishes "keep swiping" from "this city has no more", which
+  /// are the same empty deck and very different messages.
+  final bool reviewExhausted;
+
   final int taskRegenerationsLeft;
+
+  /// Quest types already offered at each stop, indexed alongside [tasks].
+  ///
+  /// This is what "no do-overs" is enforced against: regenerating a quest
+  /// picks a type that has never been shown at that stop, so a traveller who
+  /// starts on the fennec hunt cannot be handed it again. History rather than
+  /// a counter, because the rule is about *which* ones were seen, and a count
+  /// cannot answer that.
+  final List<Set<String>> offeredQuestTypes;
+
+  // --- review budget gate ----------------------------------------------------
+
+  /// Minutes of travel the generated route spends per stop.
+  ///
+  /// Derived rather than assumed: the route's own estimate minus the dwell it
+  /// accounts for is its travel, and dividing by its stop count gives what one
+  /// stop costs to reach. Using the server's own numbers means the gate agrees
+  /// with the route the server actually built, instead of a constant that
+  /// drifts from it.
+  double get _travelPerStopMinutes {
+    final r = route;
+    if (r == null || r.stops.isEmpty) return 0;
+    final dwell = r.stops.fold<int>(0, (sum, s) => sum + s.dwellMinutes);
+    final travel = r.estimatedTotalDurationMinutes - dwell;
+    if (travel <= 0) return 0;
+    return travel / r.stops.length;
+  }
+
+  /// What the stops kept so far add up to, in the same accounting the route
+  /// itself uses: dwell plus that stop's share of the travel.
+  int get acceptedMinutes {
+    if (accepted.isEmpty) return 0;
+    final dwell = accepted.fold<int>(0, (sum, l) => sum + l.dwellMinutes);
+    return (dwell + _travelPerStopMinutes * accepted.length).round();
+  }
+
+  /// The bar the review has to clear.
+  ///
+  /// Not the raw budget. A city's catalogue frequently cannot fill a whole day
+  /// — Constantine's "culture" theme has one POI in it — so requiring the full
+  /// budget would leave the traveller stuck behind a button that can never
+  /// unlock. The route the module produced is the most it could offer, so
+  /// clearing *that* is the honest test of "you kept enough".
+  int get requiredMinutes {
+    final r = route;
+    if (r == null) return 0;
+    return r.estimatedTotalDurationMinutes < timeBudgetMinutes
+        ? r.estimatedTotalDurationMinutes
+        : timeBudgetMinutes;
+  }
+
+  /// True once the kept stops fill the time the traveller asked for.
+  bool get budgetFilled => route == null || acceptedMinutes >= requiredMinutes;
+
+  /// Whether the route can lose one more stop and still fill the budget.
+  ///
+  /// The review screen's delete is the same decision the swipe screen's reject
+  /// is, one screen later, so it answers to the same rule: a traveller may trim
+  /// their day, but not below the day they asked for.
+  bool canRemoveStop(int dwellMinutes) {
+    final r = route;
+    if (r == null || r.stops.length <= 1) return false;
+    final after = r.estimatedTotalDurationMinutes - dwellMinutes - _travelPerStopMinutes;
+    return after >= requiredMinutes;
+  }
+
+  /// Stops that have not been offered yet — the deck plus anything held back.
+  bool get hasMoreCandidates =>
+      currentIndex < queue.length || (route?.alternates.isNotEmpty ?? false);
+
+  /// Quest types still unoffered at the current stop.
+  Set<String> get remainingQuestTypes {
+    if (currentStopIdx >= offeredQuestTypes.length) return kQuestTypes.toSet();
+    return kQuestTypes.toSet().difference(offeredQuestTypes[currentStopIdx]);
+  }
+
+  /// Whether the current stop's quest can still be swapped. Two limits, and
+  /// either one ends it: the per-tour regeneration budget, and having run out
+  /// of types this stop has not already shown.
+  bool get canRegenerateQuest =>
+      taskRegenerationsLeft > 0 &&
+      remainingQuestTypes.isNotEmpty &&
+      currentStopIdx < tasks.length &&
+      tasks[currentStopIdx].state == 'pending';
   final bool videoPlaying;
   final String folderSearch;
   final List<Artifact> capturedArtifacts;
@@ -335,6 +445,7 @@ class AppState extends Equatable {
     bool? isInterpretingPrompt,
     bool? promptInterpreted,
     int? tripDays,
+    int? hoursPerDay,
     TransportMode? transportMode,
     bool? isLoadingOptions,
     Object? route = _sentinel,
@@ -352,7 +463,9 @@ class AppState extends Equatable {
     int? currentStopIdx,
     int? points,
     Object? lifetimePoints = _sentinel,
+    bool? reviewExhausted,
     int? taskRegenerationsLeft,
+    List<Set<String>>? offeredQuestTypes,
     bool? videoPlaying,
     String? folderSearch,
     List<Artifact>? capturedArtifacts,
@@ -383,6 +496,7 @@ class AppState extends Equatable {
       isInterpretingPrompt: isInterpretingPrompt ?? this.isInterpretingPrompt,
       promptInterpreted: promptInterpreted ?? this.promptInterpreted,
       tripDays: tripDays ?? this.tripDays,
+      hoursPerDay: hoursPerDay ?? this.hoursPerDay,
       transportMode: transportMode ?? this.transportMode,
       isLoadingOptions: isLoadingOptions ?? this.isLoadingOptions,
       route: route == _sentinel ? this.route : route as GeneratedRoute?,
@@ -401,7 +515,9 @@ class AppState extends Equatable {
       points: points ?? this.points,
       lifetimePoints:
           lifetimePoints == _sentinel ? this.lifetimePoints : lifetimePoints as int?,
+      reviewExhausted: reviewExhausted ?? this.reviewExhausted,
       taskRegenerationsLeft: taskRegenerationsLeft ?? this.taskRegenerationsLeft,
+      offeredQuestTypes: offeredQuestTypes ?? this.offeredQuestTypes,
       videoPlaying: videoPlaying ?? this.videoPlaying,
       folderSearch: folderSearch ?? this.folderSearch,
       capturedArtifacts: capturedArtifacts ?? this.capturedArtifacts,
@@ -436,6 +552,7 @@ class AppState extends Equatable {
         isInterpretingPrompt,
         promptInterpreted,
         tripDays,
+        hoursPerDay,
         transportMode,
         isLoadingOptions,
         route,
@@ -453,7 +570,9 @@ class AppState extends Equatable {
         currentStopIdx,
         points,
         lifetimePoints,
+        reviewExhausted,
         taskRegenerationsLeft,
+        offeredQuestTypes,
         videoPlaying,
         folderSearch,
         capturedArtifacts,

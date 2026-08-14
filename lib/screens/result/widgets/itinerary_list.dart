@@ -41,12 +41,14 @@ class ItineraryList extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (route.segmentInto(route.stops[i]) case final segment?)
+                if (route.legInto(i) case final segment?)
                   _LegRow(segment: segment),
                 _StopRow(
                   stop: route.stops[i],
                   index: i,
-                  modifyMode: state.modifyMode,
+                  // Trimming stops below the requested budget is refused, so
+                  // the control that would do it is not offered.
+                  modifyMode: state.modifyMode && state.canRemoveStop(route.stops[i].dwellMinutes),
                   onTap: () => bloc.add(
                     OpenDetailEvent(route.stops[i].toLocation(regionLabel: regionLabel)),
                   ),

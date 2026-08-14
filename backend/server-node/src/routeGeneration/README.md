@@ -1,22 +1,116 @@
-# Route Generation Module — skeleton
+# Route Generation Module
 
 Implements the layering in *Route Generation Module — Technical Design
-Specification v1.0*. **Nothing below Layer 1 is built.** Every domain, adapter
-and repository method throws `NotImplementedError` naming itself.
-
-The endpoints, the contracts, the schema and the error vocabulary are done, so
-the Flutter client can be developed against the real shape now.
+Specification v1.0*. **All five layers are built.** The pipeline runs
+end to end against Supabase: three pilot cities, 35 published POIs, real
+clustering, TSP ordering, time estimation and persistence.
 
 ## Current behaviour
 
-`ROUTE_GENERATION_MODE` (env, default `fixture`):
+`ROUTE_GENERATION_MODE` (env, default `real`):
 
 | Value | What the endpoints do |
 |---|---|
-| `fixture` | Serve `fixtures.ts` — a real two-cluster Algiers route with drive and walk segments. Logs a loud warning at boot. |
-| `real` | Call `orchestrator.ts`, which throws `501 not_implemented` naming the first missing component. |
+| `real` | Run `orchestrator.ts` against the `pois` / `cities` / `themes` tables. |
+| `fixture` | Serve `fixtures.ts` — a two-cluster Algiers route, invented. For working on the app with no database, no provider key and no network. Logs a loud warning at boot. |
 
-Flip the default in `index.ts` when the orchestrator lands. No endpoint changes.
+## The routing provider
+
+`GRAPHHOPPER_API_KEY` (env) selects the real adapter. **With no key set the
+module still works**, but `StraightLineRoutingProvider` stands in and every
+duration and distance becomes a great-circle estimate with a 1.35 detour
+factor — it says so in the logs on every construction. That is deliberate: the
+alternative is a 503 on every request on any machine without a key, which makes
+the module impossible to develop or demo against.
+
+Rate limiting is a process-wide token bucket (`ROUTING_PROVIDER_RPS`,
+`ROUTING_PROVIDER_BURST`), not a fixed sleep. It costs nothing when calls are
+spread out and throttles only when they genuinely bunch up.
+
+## Caching
+
+Three kinds of entry, all behind `CacheAdapter`, all currently in-memory with
+a TTL:
+
+| Entry | Key | TTL | Calls saved |
+|---|---|---|---|
+| Matrix | city + profile + **fingerprint of the exact point set** | 24 h | 1–2 per request |
+| Isochrone | POI + 15-min budget bucket + profile | 24 h | 1 per request |
+| **Leg** (NOT IN SPEC) | **coordinate pair + profile, nothing else** | 7 d | **one per hop** — the bulk |
+
+Two of these are worth explaining.
+
+**The matrix key is a coordinate fingerprint, not a point count.** The
+reference implementation keys on `mode:pointCount`, which returns one point
+set's matrix for any other set of the same size — and its own pipeline trips
+that immediately, caching the walking matrix over the unordered POI list and
+then reading it back for the *ordered* list. Same length, same profile, wrong
+rows. The travel times come out plausible and wrong.
+
+**Leg keys carry no city, theme or route id.** That is the whole point: the
+Casbah→Ketchaoua walk is the same leg in a history route, a culture route and
+an everything route, at every time budget, for every traveller. Scoping it to
+the request that created it would throw away almost all of its value.
+Direction *is* part of the key — A→B and B→A differ on a one-way street.
+
+Measured against a live GraphHopper free key, Algiers:
+
+```
+history (cold)             14.5s   8/10 segments with real geometry
+history (warm)              6.0s   8/10
+all (shares history legs)   9.4s  14/14
+all (warm)                  0.6s  14/14
+```
+
+The third line is the one to notice. Cached legs did not just make it faster —
+they made it *better*: with half the hops served from cache, the remaining
+calls fit inside the free plan's per-minute limit, so every segment came back
+with real geometry where an uncached run had produced none.
+
+Failures are deliberately **not** cached. An estimate stored for a week would
+keep being served long after the rate limit that caused it had cleared.
+
+### Backends
+
+`REDIS_URL` picks one, decided once at boot by `initCache()` and logged:
+
+| `REDIS_URL` | Backend |
+|---|---|
+| unset | `InMemoryCacheAdapter` — process-local, cold after every restart |
+| set and answering | `ResilientCacheAdapter(RedisCacheAdapter)` — durable, shared across replicas |
+| set but unreachable | in-memory, with the reason in the startup log |
+
+Any `redis://` / `rediss://` URL works — a local container, Redis Cloud,
+Upstash — because only GET and SET-with-expiry are used.
+
+```bash
+docker run -d -p 6379:6379 redis:7-alpine
+# backend/.env
+REDIS_URL=redis://localhost:6379
+```
+
+**Redis is wrapped, not trusted.** The reference implementation commits to a
+backend at boot, so a Redis that dies an hour later makes every cache read
+throw — and the orchestrator's `cache.getMatrix` call is not inside its try
+block, which turns a cache outage into a 500 on a request that could have been
+answered by just asking the provider. Everything in this cache is recomputable
+by definition, so `ResilientCacheAdapter` reads through to memory on any Redis
+error and writes to both. An outage costs latency and quota, never a request.
+
+### Not done
+
+- **`warmActiveCityMatrices`** (spec §8's nightly job) is a stub. With the leg
+  cache in place the version worth writing warms legs, not just matrices —
+  and with Redis behind it, warming is now worth doing at all, since the
+  result outlives the process that did it.
+
+## Tests
+
+`npm test` runs `src/testRouteGeneration.ts`: the pure domain layer against
+fixed inputs, then a live end-to-end generation per theme when `SUPABASE_URL`
+is set (skipped loudly when it is not). No test run ever calls a routing
+provider — the straight-line adapter stands in, so free-tier quota is never
+spent (spec §11).
 
 ## Layout
 

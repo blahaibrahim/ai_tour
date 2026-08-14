@@ -259,6 +259,7 @@ class RouteStop extends Equatable {
         lat: lat,
         lng: lng,
         remotePhotoUrl: photoUrl,
+        dwellMinutes: dwellMinutes,
         task: const Task(type: 'photo', label: 'Take a photo of this location.'),
       );
 
@@ -329,6 +330,7 @@ class GeneratedRoute extends Equatable {
     required this.timeBudgetMinutes,
     required this.transportMode,
     required this.stops,
+    this.alternates = const [],
     required this.segments,
     required this.estimatedTotalDurationMinutes,
     required this.dayCountFlag,
@@ -341,6 +343,15 @@ class GeneratedRoute extends Equatable {
   final int timeBudgetMinutes;
   final TransportMode transportMode;
   final List<RouteStop> stops;
+
+  /// Eligible stops the budget could not fit, best first.
+  ///
+  /// The review step spends these: rejecting a stop takes the route under the
+  /// budget the traveller asked for, and without replacements the only options
+  /// were to accept a shorter day or to block them entirely. Not part of the
+  /// route — no ordering, no segments, `sequenceOrder` is -1.
+  final List<RouteStop> alternates;
+
   final List<RouteSegment> segments;
   final int estimatedTotalDurationMinutes;
 
@@ -356,6 +367,10 @@ class GeneratedRoute extends Equatable {
         theme: json['theme'] as String? ?? '',
         timeBudgetMinutes: (json['time_budget_minutes'] as num?)?.toInt() ?? 0,
         transportMode: TransportMode.fromWire(json['transport_mode'] as String?),
+        alternates: (json['alternates'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(RouteStop.fromJson)
+            .toList(),
         stops: (json['stops'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(RouteStop.fromJson)
@@ -370,6 +385,25 @@ class GeneratedRoute extends Equatable {
         generatedAt: DateTime.tryParse(json['generated_at'] as String? ?? ''),
       );
 
+  /// A copy with a different pool of held-back candidates.
+  ///
+  /// Narrow on purpose: the route itself is immutable once generated — its
+  /// ordering, segments and duration describe one exact stop set — and the only
+  /// thing the review is allowed to consume is the pool beside it.
+  GeneratedRoute copyWithAlternates(List<RouteStop> next) => GeneratedRoute(
+        id: id,
+        cityId: cityId,
+        theme: theme,
+        timeBudgetMinutes: timeBudgetMinutes,
+        transportMode: transportMode,
+        stops: stops,
+        alternates: next,
+        segments: segments,
+        estimatedTotalDurationMinutes: estimatedTotalDurationMinutes,
+        dayCountFlag: dayCountFlag,
+        generatedAt: generatedAt,
+      );
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'city_id': cityId,
@@ -377,6 +411,10 @@ class GeneratedRoute extends Equatable {
         'time_budget_minutes': timeBudgetMinutes,
         'transport_mode': transportMode.wire,
         'stops': stops.map((s) => s.toJson()).toList(),
+        // Persisted with the session so a restored review still has
+        // replacements to offer — a traveller who closed the app mid-swipe
+        // would otherwise come back to a deck that cannot be refilled.
+        'alternates': alternates.map((s) => s.toJson()).toList(),
         'segments': segments.map((s) => s.toJson()).toList(),
         'estimated_total_duration_minutes': estimatedTotalDurationMinutes,
         'day_count_flag': dayCountFlag,
@@ -408,11 +446,24 @@ class GeneratedRoute extends Equatable {
   int get dwellMinutes => stops.fold(0, (sum, s) => sum + s.dwellMinutes);
 
   /// The leg that leads *into* [stop], or null for the first stop.
-  RouteSegment? segmentInto(RouteStop stop) {
-    for (final segment in segments) {
-      if (segment.toPoiId == stop.poiId) return segment;
-    }
-    return null;
+  /// The leg that leads into the stop at [stopIndex], or null for the first.
+  ///
+  /// Indexed by position, not matched on `toPoiId`. Matching on the id looked
+  /// right and silently hid every drive: an inter-cluster leg runs anchor to
+  /// anchor, so both its POI ids are null by design — which POI in the arriving
+  /// cluster you walk to first is decided after you get there. Nothing ever
+  /// equalled a stop's id, so the itinerary rendered walks only and a route
+  /// that involved driving across the city looked like one continuous stroll.
+  ///
+  /// Position works because the server emits legs in exactly the order the
+  /// stops are visited — one drive into each cluster after the first, then that
+  /// cluster's internal walks — which is `stops.length - 1` legs, each one
+  /// sitting between consecutive stops.
+  RouteSegment? legInto(int stopIndex) {
+    if (stopIndex <= 0) return null;
+    final legIndex = stopIndex - 1;
+    if (legIndex >= segments.length) return null;
+    return segments[legIndex];
   }
 
   GeneratedRoute copyWith({List<RouteStop>? stops, List<RouteSegment>? segments}) =>

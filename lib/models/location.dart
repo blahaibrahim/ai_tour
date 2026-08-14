@@ -70,6 +70,14 @@ class Location {
   final bool photoIsStock;
   final String? photoStockNote;
 
+  /// How long this stop is expected to take, from `pois.avg_visit_duration_minutes`.
+  ///
+  /// Carried on the Location and not just the RouteStop because the review
+  /// step works in Locations, and it is what the budget gate counts: a
+  /// traveller cannot be told whether they have kept enough of their day
+  /// without knowing what each card costs.
+  final int dwellMinutes;
+
   const Location({
     required this.id,
     required this.name,
@@ -78,6 +86,7 @@ class Location {
     required this.distanceKm,
     required this.blurb,
     required this.task,
+    this.dwellMinutes = 0,
     required this.lat,
     required this.lng,
     this.reason,

@@ -9,6 +9,11 @@ environment:
 dependencies:
   ar_flutter_plugin_2:
     path: packages/ar_flutter_plugin_2
+  # The plain capture screen's viewfinder. The AR plugin cannot serve it:
+  # ARCore/ARKit hold the camera exclusively and expose only `snapshot()`, a
+  # single still over a method channel, so there is no way to record video
+  # through it. The hunt keeps the AR stack; only the plain camera swaps.
+  camera: ^0.11.0
   crypto: ^3.0.3
   equatable: ^2.1.0
   firebase_core: ^3.8.1
@@ -36,6 +41,10 @@ dependencies:
   supabase_flutter: ^2.8.4
   table_calendar: ^3.2.0
   vector_math: ^2.2.0
+  # Replays a just-recorded clip so it can be kept or discarded, the way a
+  # photo is. Without playback the only honest option was to file every clip
+  # unseen — you cannot judge a video from a still of its first frame.
+  video_player: ^2.9.2
 
 # ar_flutter_plugin_2 pins geolocator ^12 (it only uses it for cloud anchors,
 # which this app doesn't). Overriding keeps the rest of the app on the current

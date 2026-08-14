@@ -76,6 +76,77 @@ export const Config = {
   // row in `private.app_settings` — that endpoint is the one route with no
   // user session behind it, so this is the whole of its authentication.
   NOTIFY_HOOK_SECRET: process.env.NOTIFY_HOOK_SECRET,
+
+  // --- route generation (src/routeGeneration) ------------------------------
+  // Which module the route endpoints answer from. `fixture` serves
+  // src/routeGeneration/fixtures.ts; `real` runs the orchestrator.
+  ROUTE_GENERATION_MODE: process.env.ROUTE_GENERATION_MODE ?? "fixture",
+
+  // Where the route cache lives. Unset means in-memory: correct, and exactly
+  // what ran before Redis was an option, but process-local — every restart is
+  // cold, and two replicas each pay for the same legs.
+  //
+  // Any redis:// or rediss:// URL works (local container, Redis Cloud,
+  // Upstash); the adapter uses only GET and SET-with-expiry.
+  REDIS_URL: process.env.REDIS_URL,
+
+  // The routing provider's key. GraphHopper is primary (free plan, no card);
+  // OpenRouteService is the documented alternate (spec §6).
+  //
+  // Set neither and route generation still works: the adapter falls back to
+  // straight-line estimates and says so in the logs. That is deliberate — the
+  // alternative is that every request 503s on a machine without a key, which
+  // makes the whole module untestable locally for the sake of a purity that
+  // buys nothing.
+  GRAPHHOPPER_API_KEY: process.env.GRAPHHOPPER_API_KEY,
+  ORS_API_KEY: process.env.ORS_API_KEY,
+
+  // Sustained requests per second allowed to the provider, and how many may
+  // be spent at once. Measured against the free plan: it answers even modest
+  // bursts with "Minutely API limit heavily violated", so both default low.
+  // Raise them on a paid plan — the whole cold-request latency is these two
+  // numbers times the call count.
+  ROUTING_PROVIDER_RPS: Number.parseFloat(process.env.ROUTING_PROVIDER_RPS ?? "1"),
+  ROUTING_PROVIDER_BURST: Number.parseInt(process.env.ROUTING_PROVIDER_BURST ?? "2", 10),
+
+  // How far apart two clusters can be and still be walked between.
+  //
+  // Clustering decides which POIs are walked *within*; without this, every hop
+  // between clusters was tagged `drive` however short it was — so two stops
+  // 600 m apart in central Algiers, a seven-minute walk, told the traveller to
+  // get in a car. The cluster radius cannot fix that on its own: widening it
+  // enough to absorb the hop also merges stops that genuinely are a drive
+  // apart, because it changes what "one walkable group" means.
+  //
+  // 800 m is roughly a ten-minute walk on the flat. Algiers is not flat, which
+  // is exactly why this is configurable rather than a constant.
+  ROUTE_WALKABLE_HOP_METERS: Number.parseInt(
+    process.env.ROUTE_WALKABLE_HOP_METERS ?? "800",
+    10,
+  ),
+
+  // Largest matrix the plan accepts, per axis. The GraphHopper free plan
+  // answers a 6-point request with "Too many points for Matrix API: 6,
+  // allowed: 5"; paid plans allow far more. Larger sets are tiled into blocks
+  // of this size.
+  ROUTING_PROVIDER_MATRIX_MAX_POINTS: Number.parseInt(
+    process.env.ROUTING_PROVIDER_MATRIX_MAX_POINTS ?? "5",
+    10,
+  ),
+
+  // How many tiled matrix calls one request may spend before the orchestrator
+  // gives up and orders by straight-line distance instead. Tiling is
+  // ceil(n/max)² calls, so 15 stops at 5 per call is 9.
+  //
+  // Defaults to 1 — a matrix that fits in a single call, and no tiling. On the
+  // free plan the per-minute limit is the binding constraint, not the daily
+  // credit count, and nine matrix calls crowd out the /route calls that draw
+  // the polylines the traveller actually sees. Raise it on a paid plan, where
+  // both limits are wide enough for the ordering to be worth paying for.
+  ROUTING_PROVIDER_MATRIX_MAX_CALLS: Number.parseInt(
+    process.env.ROUTING_PROVIDER_MATRIX_MAX_CALLS ?? "1",
+    10,
+  ),
 } as const;
 
 /**

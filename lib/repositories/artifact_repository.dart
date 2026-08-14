@@ -82,10 +82,14 @@ class ArtifactRepository {
       id: row['id'] as String,
       name: name,
       region: artifactAreaLabel(name),
+      // 'photo' fell through to 'Scan' here, which mislabelled every restored
+      // photograph as a 3D scan — and now decides which viewer opens, so it
+      // would also have sent photos to the cube instead of showing them.
       kindLabel: switch (kind) {
         'model' => '3D Model',
         'video' => 'Video',
         'fennec' => 'Fennec',
+        'photo' => 'Photo',
         _ => 'Scan',
       },
       // The capture bucket is private, so this is a storage key, not a URL —

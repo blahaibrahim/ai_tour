@@ -1,0 +1,145 @@
+.card {
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.scene {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chevron {
+  color: var(--text-secondary);
+  transition: transform var(--motion-base) var(--motion-curve);
+  font-size: 12px;
+}
+
+.open {
+  transform: rotate(90deg);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.log {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--ink);
+  color: var(--on-navy);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.err {
+  color: var(--amber);
+}
+
+/* The dashboard's own lines — the commands it ran, not the pipeline's output. */
+.sys {
+  color: #8fa8d8;
+}
+
+.empty {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.artifacts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.artifactLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.artifact {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  overflow-x: auto;
+}
+
+.copy {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font-family: var(--font-body), sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.cancel {
+  padding: 8px var(--space-4);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--error);
+  cursor: pointer;
+}
+
+.cancel:hover {
+  background: var(--error-soft);
+}

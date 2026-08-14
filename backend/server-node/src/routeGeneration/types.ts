@@ -56,6 +56,22 @@ export interface Category {
   colorHex: string | null;
 }
 
+/**
+ * A theme, as the request builder's chips render it.
+ *
+ * NOT IN SPEC — §7's schema has no themes table: `routes` stores a `theme`
+ * string and `pois` carry a `category_id`, with nothing joining them. The
+ * mapping has to live somewhere, and a table (`themes` + `theme_categories`,
+ * migration 20260814102500) keeps the "config, not code changes" property §2
+ * rests on, which a constant in the codebase would not.
+ */
+export interface Theme {
+  key: string;
+  labelEn: string;
+  labelFr: string;
+  labelAr: string;
+}
+
 export interface Poi {
   id: string;
   cityId: string;
@@ -84,6 +100,12 @@ export interface Poi {
   photoAttribution: string | null;
   photoLicense: string | null;
   photoSourceUrl: string | null;
+  /**
+   * How much this place is worth visiting, roughly 0–100, from the ingestion
+   * pipeline's scoring. Null for anything never scored — hand-authored rows —
+   * which the budget fit treats as mid-ranked rather than worthless.
+   */
+  interestScore: number | null;
 }
 
 export interface CityConfig {
@@ -223,6 +245,20 @@ export interface RouteResponse {
   estimatedTotalDurationMinutes: number;
   dayCountFlag: number;
   generatedAt: string;
+  /**
+   * Eligible POIs that did not make the budget, best first.
+   *
+   * NOT IN SPEC. The app lets a traveller reject stops during review, and
+   * every rejection takes the route further under the budget they asked for —
+   * with nothing to offer in its place, because the response only ever carried
+   * the stops it had chosen. These are the next-best candidates, so a rejected
+   * stop can be replaced rather than simply lost.
+   *
+   * Not part of the route: no ordering, no segments, and `sequenceOrder` is
+   * -1. They become real stops only if the client sends them back through a
+   * generate call.
+   */
+  alternates: RouteStop[];
 }
 
 // --- progress ---------------------------------------------------------------
