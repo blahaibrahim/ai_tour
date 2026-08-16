@@ -1,58 +1,63 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
-import type { Job, JobInput } from "@/lib/jobs";
-import type { VideoFile } from "@/lib/videos";
-
-import { JobCard } from "./JobCard";
-import { RunPanel } from "./RunPanel";
-import { VideoCard } from "./VideoCard";
+import { Overview } from "./Overview";
+import { Studio } from "./Studio";
 import styles from "./Dashboard.module.css";
 
-interface VolumeOverview {
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "studio", label: "Studio" },
+] as const;
+
+type Tab = (typeof TABS)[number]["id"];
+
+export interface VolumeOverview {
   volume: string;
   uploaded: string[];
   started: string[];
   error?: string;
 }
 
+function subscribeToHash(onChange: () => void) {
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
+}
+
+/**
+ * The shell: the brand, the Volume chip, and which of the two views is on.
+ *
+ * The Volume overview lives here rather than in the Studio because the chip in
+ * the header shows it on every tab, and it costs two `modal volume ls` calls —
+ * one fetch, passed down, instead of one per tab switch.
+ */
 export function Dashboard() {
-  const [videos, setVideos] = useState<VideoFile[]>([]);
-  const [videoDir, setVideoDir] = useState("");
+  // The selection lives in the URL fragment rather than in state, so a view can
+  // be linked to and reloaded into. Read through useSyncExternalStore because
+  // `location` does not exist during the server render.
+  const hash = useSyncExternalStore(
+    subscribeToHash,
+    () => window.location.hash.slice(1),
+    () => "",
+  );
+
+  // `#studio/16/<poi-id>/<clip>/<ply>` — the tab, then whatever that tab wants
+  // to remember. Segments are encoded because a clip is a filename and can
+  // hold spaces and other characters a bare fragment would mangle.
+  const segments = hash.split("/").filter(Boolean).map(decodeURIComponent);
+  const tab: Tab = TABS.some((entry) => entry.id === segments[0])
+    ? (segments[0] as Tab)
+    : "overview";
+
   const [volume, setVolume] = useState<VolumeOverview | null>(null);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  // Bumped when a run finishes, which is what makes the chip re-read the
+  // Volume without the Studio reaching into this component's state.
+  const [generation, setGeneration] = useState(0);
+  const invalidateVolume = useCallback(() => setGeneration((n) => n + 1), []);
 
   useEffect(() => {
-    let live = true;
-    void (async () => {
-      const [library, overview] = await Promise.all([
-        fetch("/api/videos").then((res) => res.json()),
-        fetch("/api/volume").then((res) => res.json()),
-      ]);
-      if (!live) return;
-      setVideos(library.videos as VideoFile[]);
-      setVideoDir(library.videoDir as string);
-      setVolume(overview as VolumeOverview);
-    })();
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  // One event stream carries every job's state and its log tail.
-  useEffect(() => {
-    const source = new EventSource("/api/jobs/events");
-    source.onmessage = (event) => setJobs(JSON.parse(event.data).jobs as Job[]);
-    return () => source.close();
-  }, []);
-
-  // A finished run changes what the Volume holds, which is what the badges and
-  // the cost estimate are read off.
-  const finished = jobs.filter((job) => job.finishedAt).length;
-  useEffect(() => {
-    if (finished === 0) return;
     let live = true;
     void (async () => {
       const overview = await fetch("/api/volume").then((res) => res.json());
@@ -61,57 +66,29 @@ export function Dashboard() {
     return () => {
       live = false;
     };
-  }, [finished]);
+  }, [generation]);
 
-  const selectedVideo = useMemo(
-    () => videos.find((video) => video.file === selected) ?? null,
-    [videos, selected],
-  );
-
-  const activeByScene = useMemo(() => {
-    const map = new Map<string, Job>();
-    for (const job of jobs) {
-      if (job.status === "running" || job.status === "queued") {
-        map.set(job.scene, job);
-      }
-    }
-    return map;
-  }, [jobs]);
-
-  const start = useCallback(
-    async (input: Omit<JobInput, "video">): Promise<string | null> => {
-      if (!selectedVideo) return "no video selected";
-      const response = await fetch("/api/jobs", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...input, video: selectedVideo.file }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        return (data as { error?: string }).error ?? "could not start the run";
-      }
-      return null;
-    },
-    [selectedVideo],
-  );
+  const navigate = useCallback((next: string[]) => {
+    window.location.hash = ["studio", ...next].map(encodeURIComponent).join("/");
+  }, []);
 
   return (
     <main className={styles.page}>
       <header className={styles.header}>
         <div className={styles.brand}>
-          <span className={styles.mark} aria-hidden>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
-              <path
-                d="M15.5 8.5 10.8 10.8 8.5 15.5l4.7-2.3z"
-                fill="currentColor"
-              />
-            </svg>
-          </span>
+          <Image
+            className={styles.mark}
+            src="/logo.png"
+            alt=""
+            width={52}
+            height={52}
+            priority
+          />
           <div>
-            <h1 className={styles.title}>Splat Studio</h1>
+            <h1 className={styles.title}>Massar Studio</h1>
             <p className={styles.tagline}>
-              Turn a location video into a 3D Gaussian splat, on Modal.
+              The catalogue, what explorers captured in it, and the splats
+              trained from that footage.
             </p>
           </div>
         </div>
@@ -126,71 +103,34 @@ export function Dashboard() {
         </div>
       </header>
 
+      <nav className={styles.tabs} aria-label="Views">
+        {TABS.map((entry) => (
+          <a
+            key={entry.id}
+            href={`#${entry.id}`}
+            className={`${styles.tab} ${tab === entry.id ? styles.tabActive : ""}`}
+            aria-current={tab === entry.id ? "page" : undefined}
+          >
+            {entry.label}
+          </a>
+        ))}
+      </nav>
+
       {volume?.error ? (
         <p className={`${styles.notice} ${styles.warning}`} style={{ marginBottom: 24 }}>
           {volume.error}
         </p>
       ) : null}
 
-      <div className={styles.split}>
-        <div className={styles.column}>
-          <section>
-            <h2 className={styles.sectionTitle}>
-              Captures <span className={styles.count}>{videos.length}</span>
-            </h2>
-            {videos.length === 0 ? (
-              <p className={styles.notice}>
-                No clips yet. Drop a video into{" "}
-                <span className={styles.path}>{videoDir}</span> and reload. A slow
-                full orbit of 30–60 seconds reconstructs best.
-              </p>
-            ) : (
-              <div className={styles.grid}>
-                {videos.map((video) => (
-                  <VideoCard
-                    key={video.file}
-                    video={video}
-                    selected={video.file === selected}
-                    uploaded={volume?.uploaded.includes(video.scene) ?? false}
-                    hasScene={volume?.started.includes(video.scene) ?? false}
-                    running={activeByScene.has(video.scene)}
-                    onSelect={() => setSelected(video.file)}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section>
-            <h2 className={styles.sectionTitle}>
-              Runs <span className={styles.count}>{jobs.length}</span>
-            </h2>
-            {jobs.length === 0 ? (
-              <p className={styles.notice}>
-                Nothing has run yet. Runs are kept in memory — restarting the
-                dev server forgets them, but every stage output stays cached in
-                the Volume.
-              </p>
-            ) : (
-              <div className={styles.jobs}>
-                {jobs.map((job, index) => (
-                  <JobCard key={job.id} job={job} defaultOpen={index === 0} />
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-
-        <aside className={styles.rail}>
-          <RunPanel
-            video={selectedVideo}
-            activeJob={
-              selectedVideo ? activeByScene.get(selectedVideo.scene) ?? null : null
-            }
-            onStart={start}
-          />
-        </aside>
-      </div>
+      {tab === "overview" ? <Overview /> : null}
+      {tab === "studio" ? (
+        <Studio
+          path={segments.slice(1)}
+          volume={volume}
+          onVolumeChange={invalidateVolume}
+          onNavigate={navigate}
+        />
+      ) : null}
     </main>
   );
 }

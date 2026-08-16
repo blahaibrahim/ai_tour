@@ -1,5 +1,5 @@
 .page {
-  max-width: 1240px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: var(--space-8) var(--space-5) var(--space-8);
 }
@@ -9,7 +9,46 @@
   align-items: flex-start;
   gap: var(--space-4);
   flex-wrap: wrap;
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-5);
+}
+
+/* A bounded track with the active view filled in — the web twin of the app's
+   segmented control, for a choice that is few, fixed and exclusive. */
+.tabs {
+  display: inline-flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  margin-bottom: var(--space-6);
+  border-radius: var(--radius-pill);
+  background: var(--surface-alt);
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 var(--space-5);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-curve),
+    color var(--motion-fast) var(--motion-curve);
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tabActive {
+  background: var(--surface);
+  color: var(--accent-dark);
+  box-shadow: var(--shadow-sm);
 }
 
 .brand {
@@ -20,15 +59,13 @@
   min-width: 260px;
 }
 
+/* The app's own icon — the same fennec-and-compass the Flutter build ships,
+   downscaled from assets/icon/app-icon-transparent.png. */
 .mark {
-  display: grid;
-  place-items: center;
   width: 52px;
   height: 52px;
-  border-radius: var(--radius-md);
-  background: var(--deep-navy);
-  color: var(--sand);
   flex: none;
+  object-fit: contain;
 }
 
 .title {
@@ -60,66 +97,6 @@
   color: var(--text);
 }
 
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
-  gap: var(--space-6);
-  align-items: start;
-}
-
-@media (max-width: 1000px) {
-  .split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .rail {
-    position: static;
-  }
-}
-
-.rail {
-  position: sticky;
-  top: var(--space-5);
-}
-
-.column {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-}
-
-.sectionTitle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-3);
-  font-family: var(--font-body), sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-
-.count {
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-alt);
-  letter-spacing: 0.4px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: var(--space-4);
-}
-
-.jobs {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
 .notice {
   padding: var(--space-4);
   border: 1px dashed var(--divider);
@@ -135,11 +112,4 @@
   background: var(--warning-soft);
   color: var(--warning);
   font-weight: 500;
-}
-
-.path {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  color: var(--text);
-  word-break: break-all;
 }

@@ -1,0 +1,144 @@
+.box {
+  position: relative;
+}
+
+.map {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Algeria is nearly as tall as it is wide, so at half the page width the
+     map would otherwise push the stop list a screen and a half down. The
+     viewBox scales to fit inside this. */
+  max-height: 46vh;
+  /* The pan gesture owns the pointer; without this a drag scrolls the page. */
+  touch-action: none;
+  cursor: grab;
+}
+
+.panning {
+  cursor: grabbing;
+}
+
+.wilaya {
+  /* A hairline in the surface color, so touching wilayas separate by a gap
+     rather than by a drawn border adding ink that isn't data. Non-scaling so
+     the gap stays a hairline at 40x instead of swallowing small wilayas. */
+  stroke: var(--surface);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+  transition: fill var(--motion-fast) var(--motion-curve);
+}
+
+.panning .wilaya {
+  cursor: grabbing;
+}
+
+.wilaya:hover {
+  stroke: var(--ink);
+}
+
+.selected {
+  stroke: var(--secondary-accent);
+  stroke-width: 3;
+  /* Raised above its neighbours so the outline is not half-covered by the
+     shape drawn after it. */
+  paint-order: stroke;
+}
+
+.wilaya:focus-visible {
+  outline: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.tooltip {
+  position: absolute;
+  transform: translate(12px, -50%);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--deep-navy);
+  color: var(--cream);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  z-index: 2;
+}
+
+/* --- zoom controls ------------------------------------------------------ */
+
+.controls {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.control {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.control:hover:not(:disabled) {
+  background: var(--surface-alt);
+}
+
+.control:disabled {
+  color: var(--divider);
+  cursor: default;
+}
+
+/* --- legend ------------------------------------------------------------- */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.swatch {
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.legendLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0 var(--space-2);
+}
+
+.loading {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}

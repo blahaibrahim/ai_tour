@@ -9,6 +9,11 @@ environment:
 dependencies:
   ar_flutter_plugin_2:
     path: packages/ar_flutter_plugin_2
+  # Backs NetImage. Flutter's own Image.network cache is memory-only, so every
+  # cold start re-downloaded every catalogue photo over what is often a mobile
+  # connection. This one persists to disk, and lets a thumbnail be cached under
+  # a stable key even when the URL that fetched it was a rotating signed one.
+  cached_network_image: ^3.4.1
   # The plain capture screen's viewfinder. The AR plugin cannot serve it:
   # ARCore/ARKit hold the camera exclusively and expose only `snapshot()`, a
   # single still over a method channel, so there is no way to record video
@@ -22,6 +27,7 @@ dependencies:
     sdk: flutter
   flutter_3d_controller: ^2.0.0
   flutter_bloc: ^9.1.1
+  flutter_cache_manager: ^3.4.2
   flutter_compass: ^0.8.1
   flutter_dotenv: ^5.2.0
   flutter_image_compress: ^2.3.0

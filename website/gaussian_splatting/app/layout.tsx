@@ -16,8 +16,10 @@ const body = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Splat Studio",
-  description: "Turn a location video into a 3D Gaussian splat, on Modal.",
+  title: "Massar Studio",
+  description:
+    "The tour catalogue, what explorers captured in it, and the Gaussian " +
+    "splats trained from that footage.",
 };
 
 export default function RootLayout({

@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
+import '../../../services/image_prefetch.dart';
 import '../../../theme.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/pressable_scale.dart';
 import '../../../widgets/staggered_entrance.dart';
+
+/// Width of one upcoming-stop card. Named because the prefetch has to size its
+/// requests to it, and a card that changed width without the prefetch following
+/// would quietly warm the wrong size and be missed at display time.
+const double _cardWidth = 220;
 
 /// Horizontal scroll of stops after the current one so the user can see
 /// what is coming up on the route.
@@ -24,6 +30,17 @@ class UpcomingStopsRow extends StatelessWidget {
     );
 
     if (upcoming.isEmpty) return const SizedBox.shrink();
+
+    // The row is lazy, so only the two or three cards that fit are built and
+    // the rest start downloading the moment they're scrolled to — which is
+    // exactly when the shimmer is most obvious. Warming them here means the
+    // scroll reveals photos instead. Repeat calls are cheap: already-fetched
+    // URLs are skipped.
+    ImagePrefetch.warm(
+      [for (final loc in upcoming) loc.thumbUrl],
+      logicalWidth: _cardWidth,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -57,7 +74,7 @@ class UpcomingStopsRow extends StatelessWidget {
                 child: PressableScale(
                   onTap: () => bloc.add(OpenDetailEvent(loc)),
                   child: SizedBox(
-                    width: 220,
+                    width: _cardWidth,
                     child: Container(
                       decoration: BoxDecoration(borderRadius: AppTheme.brLg, boxShadow: AppTheme.shadowSm),
                       clipBehavior: Clip.antiAlias,

@@ -141,8 +141,16 @@ Volume `gsplat-data`:
 
 ## When it doesn't work
 
-Reconstruction quality is mostly a property of the footage, and the pipeline
-can't fix a bad capture:
+**`ModuleNotFoundError` inside the GPU container** — gsplat is installed with
+`--no-deps`, so the `pip_install` line above it *is* gsplat's dependency list.
+Anything gsplat imports that pip does not install for us has to be named there
+or the failure only shows up on the first rasterize, inside a billed L4.
+`packaging` went missing exactly this way: gsplat's `cuda/_backend.py` imports
+it and torch does not pull it in. `--stage build` is what catches this, for
+about a cent — which is why it is rung 1.
+
+Reconstruction quality is otherwise mostly a property of the footage, and the
+pipeline can't fix a bad capture:
 
 - **"only N/M frames registered"** — the capture has too little parallax or too
   little texture. Orbit more slowly, keep the subject filling the frame, avoid

@@ -48,7 +48,17 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _liveCentre = ValueNotifier(context.read<AppBloc>().state.mapCenter);
+    final centre = context.read<AppBloc>().state.mapCenter;
+    _liveCentre = ValueNotifier(centre);
+    // Seed the applied centre so the first [_syncCameraToState] is a no-op.
+    //
+    // Without this the screen opens framed on the whole north of the country
+    // (see [_northAlgeria]) and is then immediately yanked down to whichever
+    // single city the state happens to hold — the country view would flash past
+    // in one frame and the picker would open zoomed into a city the traveller
+    // never chose. The state centre is a *routing* value, not the camera's
+    // opening position.
+    _appliedCenter = centre;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _entered = true);
     });
@@ -140,6 +150,19 @@ class _Map extends StatefulWidget {
   State<_Map> createState() => _MapState();
 }
 
+/// The stretch of country the picker opens on: from Tlemcen in the west to El
+/// Tarf in the east, and inland far enough to take in Batna and Djelfa.
+///
+/// The screen used to open at zoom 11, which is a city — one wilaya filled the
+/// viewport, and the map's own question ("which parts of the country?") could
+/// not be answered without first zooming out to find the rest of it. Framing
+/// the populated north instead means every wilaya a route can currently be
+/// built in is on screen from the first frame.
+final _northAlgeria = LatLngBounds(
+  const LatLng(33.6, -2.4),
+  const LatLng(37.3, 8.8),
+);
+
 class _MapState extends State<_Map> {
   List<WilayaPolygon>? _wilayas;
 
@@ -162,7 +185,15 @@ class _MapState extends State<_Map> {
       mapController: widget.controller,
       options: MapOptions(
         initialCenter: widget.state.mapCenter,
-        initialZoom: 11,
+        // A fit rather than a centre/zoom pair, because the right zoom for
+        // "all of northern Algeria" depends on the shape of the screen — the
+        // number that frames it on a tall phone crops the east and west ends
+        // off a tablet. The bottom padding keeps the fitted region clear of
+        // the planner panel docked over it.
+        initialCameraFit: CameraFit.bounds(
+          bounds: _northAlgeria,
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 180),
+        ),
         minZoom: 4,
         maxZoom: 18,
         onTap: (tapPosition, point) {

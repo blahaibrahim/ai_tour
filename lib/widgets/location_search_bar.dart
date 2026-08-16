@@ -80,7 +80,7 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
       if (first.polygons.isNotEmpty && first.polygons.first.isNotEmpty) {
         final pt = first.polygons.first.first;
         context.read<AppBloc>().add(SetMapCenterEvent(pt));
-        context.read<AppBloc>().add(ToggleWilayaEvent(first.id));
+        context.read<AppBloc>().add(SelectWilayaEvent(first.id));
       }
     }
   }
@@ -144,7 +144,7 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
                   final pt = place.polygons.first.first;
                   context.read<AppBloc>().add(SetMapCenterEvent(pt));
                   // Auto select it too!
-                  context.read<AppBloc>().add(ToggleWilayaEvent(place.id));
+                  context.read<AppBloc>().add(SelectWilayaEvent(place.id));
                 }
               },
             );

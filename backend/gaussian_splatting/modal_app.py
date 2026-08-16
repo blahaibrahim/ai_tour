@@ -93,7 +93,14 @@ sfm_image = (
 train_image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install("torch==2.4.0", index_url="https://download.pytorch.org/whl/cu124")
-    .pip_install("ninja", "jaxtyping", "rich>=12", "numpy<2", "pillow")
+    # This list *is* gsplat's dependency list, because of the --no-deps below:
+    # anything gsplat imports and pip does not install for us has to be named
+    # here, or the import only fails on the first rasterize — inside a billed
+    # L4 container. `packaging` is imported by gsplat/cuda/_backend.py and is
+    # not a torch dependency, which is exactly how it went missing.
+    .pip_install(
+        "ninja", "jaxtyping", "rich>=12", "numpy<2", "pillow", "packaging"
+    )
     # --no-deps because the gsplat wheel index hosts only gsplat; letting pip
     # resolve dependencies against it would fail to find jaxtyping/rich, and
     # letting it reach PyPI risks pulling the JIT-compiling sdist instead.

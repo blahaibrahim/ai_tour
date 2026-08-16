@@ -81,9 +81,24 @@ class ToggleCategoryEvent extends AppEvent {
   List<Object?> get props => [categoryKey];
 }
 
-/// Toggles a Wilaya in the selection set.
+/// Tapping a wilaya on the map: selects it, or clears it if it was already the
+/// selected one.
 class ToggleWilayaEvent extends AppEvent {
   const ToggleWilayaEvent(this.wilayaId);
+  final String wilayaId;
+
+  @override
+  List<Object?> get props => [wilayaId];
+}
+
+/// Selects a wilaya outright, with no toggle-off.
+///
+/// Search needs this and the map tap does not. Picking "Oran" from a list of
+/// search results is a statement about what the traveller wants, not a switch
+/// being flipped — routing it through [ToggleWilayaEvent] meant searching for
+/// the wilaya you already had selected silently deselected it.
+class SelectWilayaEvent extends AppEvent {
+  const SelectWilayaEvent(this.wilayaId);
   final String wilayaId;
 
   @override

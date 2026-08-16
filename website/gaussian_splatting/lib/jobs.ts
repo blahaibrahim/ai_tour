@@ -2,7 +2,15 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 
-import { MAX_LOG_LINES, MODAL_BIN, PIPELINE_DIR, VOLUME_NAME } from "./config";
+import {
+  AUTO_FETCH_SPLATS,
+  MAX_LOG_LINES,
+  MODAL_BIN,
+  MODAL_ENV,
+  PIPELINE_DIR,
+  SPLAT_CACHE_DIR,
+  VOLUME_NAME,
+} from "./config";
 import {
   estimate,
   touchesGpu,
@@ -10,7 +18,7 @@ import {
   type SceneType,
   type Stage,
 } from "./pipeline";
-import { listPath } from "./volume";
+import { fetchSplat, listPath, sceneStatus } from "./volume";
 import { absolutePathOf, resolveVideo } from "./videos";
 
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
@@ -199,7 +207,7 @@ async function run(job: Job) {
 
     const raw = await listPath("/raw");
     const alreadyUploaded = raw.entries.some((entry) =>
-      path.posix.basename(entry.Filename).startsWith(`${job.scene}.`),
+      path.posix.basename(entry.filename).startsWith(`${job.scene}.`),
     );
 
     if (alreadyUploaded && !job.reupload) {
@@ -241,6 +249,7 @@ async function run(job: Job) {
     await exec(job, MODAL_BIN, args, PIPELINE_DIR);
 
     job.status = "succeeded";
+    await collect(job);
   } catch (err) {
     // A killed process lands here too; report it as the cancel it was.
     job.status = store.children.get(job.id)?.killed ? "canceled" : "failed";
@@ -250,6 +259,43 @@ async function run(job: Job) {
     store.children.delete(job.id);
     job.finishedAt = new Date().toISOString();
     changed();
+  }
+}
+
+/**
+ * Copy whatever point clouds the run produced onto this machine.
+ *
+ * The Volume is still the durable record; this is what makes the result
+ * *openable* without a second deliberate step — the dashboard's viewer reads
+ * the local file, and so does anything else you want to drop it on.
+ *
+ * Deliberately never fails the job. The expensive, irreversible part already
+ * succeeded by the time this runs: a download that did not work is a nuisance
+ * you can retry from the splat card for free, not a run to mark as failed.
+ */
+async function collect(job: Job) {
+  if (!AUTO_FETCH_SPLATS) return;
+
+  try {
+    const status = await sceneStatus(job.scene);
+    const pending = status.plys.filter((ply) => !ply.cached);
+    if (pending.length === 0) return;
+
+    for (const ply of pending) {
+      log(job, "sys", `fetching ${ply.name} (${ply.size}) to ${SPLAT_CACHE_DIR}`);
+      try {
+        log(job, "sys", `saved ${await fetchSplat(job.scene, ply.name)}`);
+      } catch (err) {
+        log(
+          job,
+          "sys",
+          `could not fetch ${ply.name}: ${(err as Error).message} — it is still ` +
+            `in the Volume, and the splat card can retry it`,
+        );
+      }
+    }
+  } catch (err) {
+    log(job, "sys", `could not list the scene output: ${(err as Error).message}`);
   }
 }
 
@@ -265,7 +311,7 @@ function exec(
     const child = spawn(bin, args, {
       cwd,
       windowsHide: true,
-      env: { ...process.env, PYTHONUNBUFFERED: "1", TERM: "dumb" },
+      env: { ...process.env, ...MODAL_ENV },
     });
     store.children.set(job.id, child);
 

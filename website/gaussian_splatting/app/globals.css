@@ -39,6 +39,29 @@
   --error: #c8452f;
   --error-soft: #fae4e0;
 
+  /*
+   * Chart colors.
+   *
+   * Every quantity on this dashboard is a magnitude — how many POIs, how many
+   * captures, how far a scene got — and magnitude takes ONE hue, not a set of
+   * identity colors. So there is a single data hue (the compass blue the rest
+   * of the chrome already uses) and one ordered ramp of it for the pipeline
+   * funnel and the wilaya map.
+   *
+   * The ramp is validated, not eyeballed: monotone OKLCH lightness, every
+   * adjacent gap >= 0.06, and the light end at 2.33:1 against the white card
+   * surface — the floor below which a step stops being visible at all.
+   * Re-run the check before changing a step.
+   */
+  --data: var(--compass-blue);
+  --data-1: #96b2dd;
+  --data-2: #7397cc;
+  --data-3: #4f77b6;
+  --data-4: #2f549a; /* the compass blue itself */
+  --data-5: #1b3663;
+  /* The track a bar sits in, and the fill for "none of this here". */
+  --data-track: #eef2f8;
+
   /* Corner radii — the app's rounded, soft-edged shape language */
   --radius-sm: 10px;
   --radius-md: 16px;

@@ -1,0 +1,304 @@
+/*
+ * The chart primitives. Everything here draws one quantity in one hue — see
+ * the note on --data in globals.css for why there is no categorical palette.
+ */
+
+.card {
+  padding: var(--space-5);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardTitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  font-family: var(--font-body), sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.cardNote {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+
+/* --- hero figure -------------------------------------------------------- */
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.heroValue {
+  /* Proportional figures: tabular-nums makes a big number look loose. */
+  font-family: var(--font-body), sans-serif;
+  font-size: 56px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -2px;
+  color: var(--ink);
+}
+
+.heroLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* --- stat tiles --------------------------------------------------------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-3);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.tileLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tileValue {
+  font-family: var(--font-body), sans-serif;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.6px;
+  color: var(--ink);
+}
+
+.tileHint {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* --- bar list ----------------------------------------------------------- */
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  /* The surface gap that separates adjacent bars, doing the work a border
+     would otherwise do with ink that isn't data. */
+  gap: var(--space-3);
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(100px, 44%) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.barLabel {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barTrack {
+  display: block;
+  height: 12px;
+  border-radius: 4px;
+  background: var(--data-track);
+}
+
+.barFill {
+  /* Both of these are spans, so without this the width and height simply do
+     not apply and the bar renders as an empty track. */
+  display: block;
+  height: 100%;
+  min-width: 3px;
+  /* Square where it meets the baseline, rounded at the data end. */
+  border-radius: 0 4px 4px 0;
+  background: var(--data);
+  transition: width var(--motion-base) var(--motion-curve);
+}
+
+.barValue {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 34px;
+  text-align: right;
+}
+
+/* --- funnel ------------------------------------------------------------- */
+
+.funnel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.funnelRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.funnelTrack {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.funnelBar {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 34px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  /* Set inside a filled bar, so it takes the on-fill ink rather than a text
+     token — the one place a label sits on top of the data color. */
+  color: var(--on-accent);
+  white-space: nowrap;
+  transition: width var(--motion-base) var(--motion-curve);
+}
+
+/* The step label rides outside the bar whenever the bar is too short to hold
+   it with padding, rather than being clipped. */
+.funnelOutside {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.funnelCount {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.funnelDrop {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding-left: var(--space-1);
+}
+
+/* --- status list -------------------------------------------------------- */
+
+.statuses {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+}
+
+.statusIcon {
+  width: 18px;
+  text-align: center;
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.statusLabel {
+  flex: 1;
+  color: var(--text);
+}
+
+.statusCount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.good {
+  color: var(--success);
+}
+.warn {
+  color: var(--warning);
+}
+.bad {
+  color: var(--error);
+}
+.idle {
+  color: var(--text-secondary);
+}
+
+/* --- sparkline ---------------------------------------------------------- */
+
+.sparkBox {
+  position: relative;
+  height: 92px;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.sparkArea {
+  fill: var(--data);
+  opacity: 0.1;
+}
+
+.sparkLine {
+  fill: none;
+  stroke: var(--data);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sparkDot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--data);
+  /* The surface ring keeps the end marker legible where it crosses the line. */
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.sparkFoot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.empty {
+  padding: var(--space-4) 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}

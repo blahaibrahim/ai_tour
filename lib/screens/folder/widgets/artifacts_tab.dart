@@ -259,7 +259,14 @@ class _StoredCapturePreviewState extends State<_StoredCapturePreview> {
     if (_url == null) {
       return ArtifactCubeThumbnail(artifact: widget.artifact, size: 104);
     }
-    return NetImage(url: _url!, fit: BoxFit.cover);
+    // Keyed on the storage path, not the URL: the URL is a signed one that
+    // expires hourly, so caching under it would re-download the same capture
+    // every hour and strand the previous copy under a key nothing looks up.
+    return NetImage(
+      url: _url!,
+      cacheKey: widget.artifact.photoUrl,
+      fit: BoxFit.cover,
+    );
   }
 }
 

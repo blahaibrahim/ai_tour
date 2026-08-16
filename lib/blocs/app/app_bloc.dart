@@ -48,6 +48,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<SelectThemeEvent>(_onSelectTheme);
     on<ToggleCategoryEvent>(_onToggleCategory);
     on<ToggleWilayaEvent>(_onToggleWilaya);
+    on<SelectWilayaEvent>(_onSelectWilaya);
     on<SetPromptEvent>(_onSetPrompt);
     on<InterpretPromptEvent>(_onInterpretPrompt);
     on<SetTripDaysEvent>(_onSetTripDays);
@@ -301,14 +302,32 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     emit(state.copyWith(hoursPerDay: event.hours, routeError: null, routeErrorCode: null));
   }
 
+  /// Selects the tapped wilaya, replacing whatever was selected before.
+  ///
+  /// One at a time, deliberately. A multi-wilaya trip is not something the rest
+  /// of the app can honour yet: generation asks the server for a single city
+  /// ([_onGenerateRoute]), so a second selection changed the highlighting on the
+  /// map and nothing else — the traveller picked Oran *and* Constantine and got
+  /// a route through whichever one city the camera happened to sit nearest. A
+  /// selection the product silently ignores is worse than one it won't let you
+  /// make, so until routes can span wilayas, the UI only offers what it can
+  /// deliver.
+  ///
+  /// Tapping a second wilaya replaces the first rather than being refused: the
+  /// tap is unambiguous about what the traveller now wants, and a dead tap with
+  /// no feedback reads as a broken map. Tapping the selected one clears it.
+  ///
+  /// The state stays a `Set` so that lifting this restriction is deleting a
+  /// reducer rather than reshaping the state and everything that reads it.
   void _onToggleWilaya(ToggleWilayaEvent event, Emitter<AppState> emit) {
-    final updated = Set<String>.from(state.selectedWilayas);
-    if (updated.contains(event.wilayaId)) {
-      updated.remove(event.wilayaId);
-    } else {
-      updated.add(event.wilayaId);
-    }
-    emit(state.copyWith(selectedWilayas: updated));
+    final wasSelected = state.selectedWilayas.contains(event.wilayaId);
+    emit(state.copyWith(
+      selectedWilayas: wasSelected ? const <String>{} : {event.wilayaId},
+    ));
+  }
+
+  void _onSelectWilaya(SelectWilayaEvent event, Emitter<AppState> emit) {
+    emit(state.copyWith(selectedWilayas: {event.wilayaId}));
   }
 
   void _onSetPrompt(SetPromptEvent event, Emitter<AppState> emit) {

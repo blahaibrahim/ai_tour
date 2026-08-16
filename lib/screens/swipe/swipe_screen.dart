@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
+import '../../blocs/app/app_state.dart';
 import '../../models/route.dart' show formatMinutes;
+import '../../services/image_prefetch.dart';
 import '../../theme.dart';
 import '../../widgets/app_backdrop.dart';
 import '../../widgets/glass_surface.dart';
@@ -32,6 +34,19 @@ class _SwipeScreenState extends State<SwipeScreen>
 
   late AnimationController _animationController;
   late Animation<Offset> _flyAnimation;
+
+  /// How many cards ahead of the current one to fetch photos for.
+  ///
+  /// The stack only builds three cards deep, so without prefetching anyone
+  /// swiping faster than the network meets a shimmer on every card. Card photos
+  /// are full-bleed and so not cheap: this is far enough to stay ahead of a
+  /// quick reviewer, and short enough that a forty-stop deck isn't downloaded
+  /// whole to look at six.
+  static const int _prefetchDepth = 8;
+
+  /// Deck position the prefetch last ran for. A drag rebuilds this screen on
+  /// every pointer move, and the work should happen once per card.
+  int? _prefetchedFrom;
 
   @override
   void initState() {
@@ -110,6 +125,22 @@ class _SwipeScreenState extends State<SwipeScreen>
   void _onBtnInfo() {
     final loc = context.read<AppBloc>().state.currentLoc;
     if (loc != null) context.read<AppBloc>().add(OpenDetailEvent(loc));
+  }
+
+  /// Starts downloading photos for the cards just out of sight, sized for the
+  /// card they will be drawn on.
+  void _prefetchDeck(AppState state, double cardWidth) {
+    final from = state.currentIndex;
+    if (_prefetchedFrom == from) return;
+    _prefetchedFrom = from;
+
+    final end = math.min(state.queue.length, from + _prefetchDepth);
+    if (from >= end) return;
+    ImagePrefetch.warm(
+      [for (var i = from; i < end; i++) state.queue[i].photoUrl],
+      logicalWidth: cardWidth,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
   }
 
   @override
@@ -229,6 +260,11 @@ class _SwipeScreenState extends State<SwipeScreen>
                       cardW = maxH * cardAspectRatio;
                     }
                     final topGap = (constraints.maxHeight - cardH) / 2;
+
+                    // Now that the card size is known, get the photos for the
+                    // cards behind the visible three moving. Guarded internally
+                    // so a drag's rebuilds don't re-queue them.
+                    _prefetchDeck(state, cardW);
 
                     return Stack(
                       alignment: Alignment.center,
