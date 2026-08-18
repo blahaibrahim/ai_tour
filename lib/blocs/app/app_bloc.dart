@@ -80,6 +80,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<RecordCheckpointEvent>(_onRecordCheckpoint);
     on<CompleteTaskEvent>(_onCompleteTask);
     on<RegenerateTaskEvent>(_onRegenerateTask);
+    on<GrantQuestRerollsEvent>(_onGrantQuestRerolls);
     on<AdvanceStopEvent>(_onAdvanceStop);
     on<NavHomeEvent>(_onNavHome);
     on<AddCapturedArtifactEvent>(_onAddCapturedArtifact);
@@ -97,6 +98,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<LoadSavedLocationsEvent>(_onLoadSavedLocations);
     on<LoadArtifactsEvent>(_onLoadArtifacts);
     on<LoadPointsEvent>(_onLoadPoints);
+    on<LoadRouteHistoryEvent>(_onLoadRouteHistory);
 
     on<InitTestMascotSpawnEvent>(_onInitTestMascotSpawn);
     on<ToggleArTestingModeEvent>(_onToggleArTestingMode);
@@ -170,7 +172,9 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     final next = change.nextState;
     if (const ['swipe', 'result', 'overview'].contains(next.screen)) {
       SessionRepository.saveSession(next);
-    } else if (next.screen == 'map' && next.route == null && !next.isRestoringSession) {
+    } else if (const ['home', 'map'].contains(next.screen) &&
+        next.route == null &&
+        !next.isRestoringSession) {
       // Gated on the restore having finished: LoadRouteOptionsEvent,
       // LoadSavedLocationsEvent and LoadArtifactsEvent all fire alongside
       // RestoreSessionEvent at startup and routinely emit *before* it — each
@@ -917,10 +921,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       add(RecordCheckpointEvent(stops[stopIdx].poiId));
     }
 
-    final total = await _recordCompletion(stopIdx: stopIdx, task: t);
-    // The ledger write can outlive the bloc — a task finished as the app is
-    // being closed. Emitting into a closed bloc throws.
-    if (total != null && !isClosed) emit(state.copyWith(lifetimePoints: total));
+    _emitTotals(await _recordCompletion(stopIdx: stopIdx, task: t), emit);
   }
 
   /// Writes one finished task to the durable per-user ledger.
@@ -930,10 +931,11 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   /// once: [_onCompleteTask] and [_onAddCapturedArtifact] both finish the
   /// current stop's task, and a capture that answers a task goes through both.
   ///
-  /// Returns the traveller's new lifetime total, or null when it could not be
+  /// Returns the traveller's new counters, or null when they could not be
   /// determined (no session, or a first-ever award on a device that has never
   /// synced a baseline).
-  Future<int?> _recordCompletion({required int stopIdx, required Task task}) async {
+  Future<PointsTotals?> _recordCompletion(
+      {required int stopIdx, required Task task}) async {
     final routeId = state.route?.id ?? state.progress?.routeId;
     // Without a route there is nothing stable to key on, and an unkeyed award
     // would be counted again on every replay. Skipping is the safe direction:
@@ -941,13 +943,68 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     if (routeId == null || routeId.isEmpty) return null;
 
     final stops = state.routeStops;
+    final fix = await _completionFix();
     return PointsRepository.recordCompletion(
       completionKey: '$routeId:stop:$stopIdx',
       points: task.points,
       routeId: routeId,
       poiId: stopIdx < stops.length ? stops[stopIdx].poiId : null,
       taskType: task.type,
+      lat: fix?.latitude,
+      lng: fix?.longitude,
+      accuracyMeters: fix?.accuracy,
     );
+  }
+
+  /// Where the phone is, for the server to check a completion against.
+  ///
+  /// Three rules, all of them about not making this worse than no answer:
+  ///
+  ///  * **It never prompts.** A permission dialog appearing the instant a
+  ///    traveller finishes a task would read as a punishment for finishing it.
+  ///    If the permission is not already held, the completion goes up without a
+  ///    fix and scores at the reduced rate.
+  ///  * **It gives up quickly.** Five seconds, and a stale last-known fix is
+  ///    only used if it is under two minutes old. An hour-old fix from the
+  ///    hotel would fail a check the traveller should have passed.
+  ///  * **It never throws.** Every failure is the same as having no fix.
+  Future<Position?> _completionFix() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) {
+        return null;
+      }
+      if (!await Geolocator.isLocationServiceEnabled()) return null;
+
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null &&
+          DateTime.now().difference(last.timestamp) < const Duration(minutes: 2)) {
+        return last;
+      }
+
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 5),
+        ),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Pushes the server's counters into state, if they arrived and there is
+  /// still a bloc to put them in.
+  ///
+  /// The ledger write can outlive the bloc — a task finished as the app is
+  /// being closed — and emitting into a closed bloc throws.
+  void _emitTotals(PointsTotals? totals, Emitter<AppState> emit) {
+    if (totals == null || isClosed) return;
+    emit(state.copyWith(
+      lifetimePoints: totals.total,
+      pointsBalance: totals.balance,
+    ));
   }
 
   /// Reads the traveller's saved score, and pushes up anything stranded offline.
@@ -958,19 +1015,36 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   /// user's score.
   Future<void> _onLoadPoints(LoadPointsEvent event, Emitter<AppState> emit) async {
     if (Supabase.instance.client.auth.currentUser == null) {
-      emit(state.copyWith(lifetimePoints: null));
+      emit(state.copyWith(lifetimePoints: null, pointsBalance: null));
       return;
     }
 
-    final cached = await PointsRepository.cachedTotal();
+    final cached = await PointsRepository.cachedTotals();
     if (isClosed) return;
-    if (cached != null && cached != state.lifetimePoints) {
-      emit(state.copyWith(lifetimePoints: cached));
+    if (cached != null && cached.total != state.lifetimePoints) {
+      _emitTotals(cached, emit);
     }
 
     await PointsRepository.flushOutbox();
-    final total = await PointsRepository.fetchTotal();
-    if (total != null && !isClosed) emit(state.copyWith(lifetimePoints: total));
+    _emitTotals(await PointsRepository.fetchTotals(), emit);
+  }
+
+  /// Fills the home screen's history.
+  ///
+  /// Signed out, the list is emptied rather than left alone: routes belong to
+  /// an account, and the next traveller on this device must not see the last
+  /// one's.
+  Future<void> _onLoadRouteHistory(
+      LoadRouteHistoryEvent event, Emitter<AppState> emit) async {
+    if (Supabase.instance.client.auth.currentUser == null) {
+      emit(state.copyWith(routeHistory: const [], isLoadingRouteHistory: false));
+      return;
+    }
+
+    emit(state.copyWith(isLoadingRouteHistory: true));
+    final routes = await RouteRepository.fetchMyRoutes();
+    if (isClosed) return;
+    emit(state.copyWith(routeHistory: routes, isLoadingRouteHistory: false));
   }
 
   /// Swaps the current stop's quest for one it has not offered before.
@@ -1029,6 +1103,21 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     ));
   }
 
+  /// Adds swaps bought with points to the tour in progress.
+  ///
+  /// Only while one is running. [LeaveTourEvent] resets the counter to 3, so a
+  /// grant made outside a tour would be silently thrown away — the rewards
+  /// screen refuses the sale for the same reason, and this is the second half
+  /// of that rule rather than a duplicate of it: the screen stops the purchase,
+  /// this stops a grant that somehow arrives anyway from looking like it worked.
+  void _onGrantQuestRerolls(
+      GrantQuestRerollsEvent event, Emitter<AppState> emit) {
+    if (!state.routeAccepted || event.count <= 0) return;
+    emit(state.copyWith(
+      taskRegenerationsLeft: state.taskRegenerationsLeft + event.count,
+    ));
+  }
+
   void _onAdvanceStop(AdvanceStopEvent event, Emitter<AppState> emit) {
     if (state.currentStopIdx < state.accepted.length - 1) {
       emit(state.copyWith(currentStopIdx: state.currentStopIdx + 1));
@@ -1036,7 +1125,10 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   }
 
   void _onNavHome(NavHomeEvent event, Emitter<AppState> emit) {
-    emit(state.copyWith(screen: state.routeAccepted ? 'overview' : 'map'));
+    // The middle nav button is one destination with two identities: the walk in
+    // progress if there is one, and otherwise the home screen — which is where
+    // a new route is started from and where past ones are listed.
+    emit(state.copyWith(screen: state.routeAccepted ? 'overview' : 'home'));
   }
 
   // ---------------------------------------------------------------------------
@@ -1139,8 +1231,8 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       // Same ledger, same key as [_onCompleteTask] would have used for this
       // stop — a capture that answers a task is one completion, however it was
       // finished.
-      final total = await _recordCompletion(stopIdx: stopIdx, task: currentTask);
-      if (total != null && !isClosed) emit(state.copyWith(lifetimePoints: total));
+      _emitTotals(
+          await _recordCompletion(stopIdx: stopIdx, task: currentTask), emit);
     } else {
       emit(state.copyWith(capturedArtifacts: newArtifacts));
     }
@@ -1167,8 +1259,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     final stops = state.routeStops;
     if (stopIdx < stops.length) add(RecordCheckpointEvent(stops[stopIdx].poiId));
 
-    final total = await _recordCompletion(stopIdx: stopIdx, task: task);
-    if (total != null && !isClosed) emit(state.copyWith(lifetimePoints: total));
+    _emitTotals(await _recordCompletion(stopIdx: stopIdx, task: task), emit);
   }
 
   // ---------------------------------------------------------------------------
@@ -1449,7 +1540,10 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   void _onLeaveTour(LeaveTourEvent event, Emitter<AppState> emit) {
     _thinkTimer?.cancel();
     emit(state.copyWith(
-      screen: 'map',
+      // Home, not the planning screen. Leaving a tour is not the same as
+      // deciding to build another one straight away, and the route just
+      // finished is the first thing the history there will show.
+      screen: 'home',
       route: null,
       progress: null,
       queue: const [],

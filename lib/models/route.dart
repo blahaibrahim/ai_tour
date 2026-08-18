@@ -529,6 +529,85 @@ class RouteProgress extends Equatable {
   List<Object?> get props => [id, routeId, status, visitedPoiIds];
 }
 
+/// A past route, as the home screen's history lists it.
+///
+/// Deliberately not a [GeneratedRoute]. Rehydrating one means expanding its
+/// stops back out of the catalogue and resolving three locales per stop; a list
+/// of twenty would do that twenty times to draw twenty lines. The full route is
+/// fetched only when one is opened — see `OpenRouteByIdEvent`.
+class RouteSummary extends Equatable {
+  const RouteSummary({
+    required this.id,
+    required this.cityId,
+    required this.theme,
+    required this.transportMode,
+    required this.stopCount,
+    required this.estimatedTotalDurationMinutes,
+    this.cityName,
+    this.timeBudgetMinutes = 0,
+    this.dayCountFlag = 1,
+    this.generatedAt,
+  });
+
+  final String id;
+  final String cityId;
+
+  /// Null when the city has left the catalogue since. The card falls back to
+  /// the theme rather than printing a uuid at the traveller.
+  final String? cityName;
+
+  final String theme;
+  final TransportMode transportMode;
+  final int stopCount;
+  final int estimatedTotalDurationMinutes;
+  final int timeBudgetMinutes;
+  final int dayCountFlag;
+  final DateTime? generatedAt;
+
+  /// What the card leads with. The city is the thing a traveller recognises;
+  /// the theme is the fallback, and only then the id.
+  String get title => cityName ?? _themeLabel;
+
+  String get _themeLabel =>
+      theme.isEmpty ? 'Route' : theme[0].toUpperCase() + theme.substring(1);
+
+  /// "6 stops · 4h · Drive + walk" — the line under the title.
+  String get subtitle => [
+        '$stopCount ${stopCount == 1 ? 'stop' : 'stops'}',
+        formatMinutes(estimatedTotalDurationMinutes),
+        transportMode.label,
+      ].join(' · ');
+
+  factory RouteSummary.fromJson(Map<String, dynamic> json) => RouteSummary(
+        id: json['id'] as String,
+        cityId: json['cityId'] as String? ?? json['city_id'] as String? ?? '',
+        cityName: json['cityName'] as String? ?? json['city_name'] as String?,
+        theme: json['theme'] as String? ?? '',
+        transportMode: TransportMode.fromWire(
+            json['transportMode'] as String? ?? json['transport_mode'] as String?),
+        stopCount: (json['stopCount'] as num?)?.toInt() ??
+            (json['stop_count'] as num?)?.toInt() ??
+            0,
+        estimatedTotalDurationMinutes:
+            (json['estimatedTotalDurationMinutes'] as num?)?.toInt() ??
+                (json['estimated_total_duration_minutes'] as num?)?.toInt() ??
+                0,
+        timeBudgetMinutes: (json['timeBudgetMinutes'] as num?)?.toInt() ??
+            (json['time_budget_minutes'] as num?)?.toInt() ??
+            0,
+        dayCountFlag: (json['dayCountFlag'] as num?)?.toInt() ??
+            (json['day_count_flag'] as num?)?.toInt() ??
+            1,
+        generatedAt: DateTime.tryParse(
+            (json['generatedAt'] ?? json['generated_at']) as String? ?? ''),
+      );
+
+  @override
+  List<Object?> get props => [id, cityId, cityName, theme, transportMode,
+        stopCount, estimatedTotalDurationMinutes, timeBudgetMinutes,
+        dayCountFlag, generatedAt];
+}
+
 /// Formats a duration in minutes the way the route surfaces show it.
 String formatMinutes(int minutes) {
   if (minutes < 60) return '$minutes min';

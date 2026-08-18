@@ -1,2 +1,14 @@
-gaussian splatting (test)
-Quest design
+flutter app:
+I will integrate an LLM to infer preferences, remove gemini as the llm used and use only open source models
+I will implement offline support for after the route generation (assume GPS coverage)
+I will implement localization
+
+web stuff:
+I will have a web dashboard that mirrors the app (only route generations and info, no AR or quests)
+I will be notifying users with some of the renders their submissions helped make (triggered from the gaussian splatting dashboard)
+I will deploy the backend and submit the apk for the app
+
+docs and submission
+I will prepare the submission files as requested
+I will provide a decent privacy policy
+I will seed the db with more POIs

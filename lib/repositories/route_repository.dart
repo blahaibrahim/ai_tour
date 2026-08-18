@@ -97,6 +97,27 @@ class RouteRepository {
     return GeneratedRoute.fromJson(data);
   }
 
+  /// The traveller's own past routes, newest first.
+  ///
+  /// Returns an empty list rather than throwing on any failure — including a
+  /// real one. This feeds a history list on the home screen, which has an empty
+  /// state that reads perfectly well as "you have not made one yet"; an error
+  /// banner on the first screen after launch would be a worse answer to a
+  /// question nobody asked. There is deliberately no [DemoData] fallback
+  /// either: inventing a past route a traveller never took, which then opens as
+  /// something else, is worse than showing none.
+  static Future<List<RouteSummary>> fetchMyRoutes({int limit = 20}) async {
+    try {
+      final data = await ApiClient.get('/api/routes/mine?limit=$limit');
+      return (data['routes'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(RouteSummary.fromJson)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Re-generates a route without the given stops, after the review step.
   ///
   /// NOT IN THE DESIGN SPEC — routes are specified as immutable once

@@ -6,6 +6,7 @@ import '../../blocs/app/app_state.dart';
 import '../../theme.dart';
 import '../../widgets/app_backdrop.dart';
 import '../../widgets/glass_surface.dart';
+import '../../widgets/points_pill.dart';
 import '../../widgets/pressable_scale.dart';
 import '../settings/settings_screen.dart';
 import 'widgets/current_stop_card.dart';
@@ -59,36 +60,17 @@ class OverviewScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: AppTheme.space3),
-                    Semantics(
-                      label: '${state.points} points earned',
-                      excludeSemantics: true,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.space3,
-                          vertical: AppTheme.space2 - 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.14),
-                          borderRadius: AppTheme.brPill,
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.stars_rounded, size: 15, color: AppTheme.sand),
-                            const SizedBox(width: AppTheme.space1),
-                            Text(
-                              '${state.points}',
-                              style: const TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    // This pill counts *this walk*, not the wallet — that is
+                    // what the overview screen is a readout of. The shop beside
+                    // it spends the balance, which is a different number, so the
+                    // semantic label says which one this is rather than leaving
+                    // the two to be read as the same figure.
+                    PointsPill(
+                      value: state.points,
+                      semanticLabel: '${state.points} points earned on this route',
                     ),
+                    const SizedBox(width: AppTheme.space2),
+                    const ShopButton(),
                     const SizedBox(width: AppTheme.space2),
                     PressableScale(
                       onTap: () => Navigator.push(

@@ -165,6 +165,24 @@ function serializeStop(s: routeGeneration.RouteStop): Record<string, unknown> {
   };
 }
 
+/** Snake_case on the wire, like `serializeRoute` — the client reads both
+ * shapes from the same module and a mixed convention is a bug waiting to be
+ * written. */
+function serializeRouteSummary(s: routeGeneration.RouteSummary): Record<string, unknown> {
+  return {
+    id: s.id,
+    city_id: s.cityId,
+    city_name: s.cityName,
+    theme: s.theme,
+    transport_mode: s.transportMode,
+    time_budget_minutes: s.timeBudgetMinutes,
+    estimated_total_duration_minutes: s.estimatedTotalDurationMinutes,
+    day_count_flag: s.dayCountFlag,
+    stop_count: s.stopCount,
+    generated_at: s.generatedAt,
+  };
+}
+
 function serializeRoute(route: routeGeneration.RouteResponse): Record<string, unknown> {
   return {
     id: route.id,
@@ -327,6 +345,34 @@ routesRouter.post(
         );
       }
       return res;
+    } catch (error) {
+      return sendError(res, error);
+    }
+  }),
+);
+
+/**
+ * The caller's own past routes, newest first.
+ *
+ * **Registered before `/api/routes/:routeId` on purpose.** Express matches in
+ * registration order, so the other way round this path is captured as a route
+ * id and answered with the uuid-shape 400 — a confusing failure for something
+ * that looks like it should work.
+ */
+routesRouter.get(
+  "/api/routes/mine",
+  asyncHandler(async (req, res) => {
+    const auth = await authenticateAndRateLimit(req, "list_routes", 300, "1 hour");
+    if (auth.failure) return res.status(auth.failure.status).json(auth.failure.body);
+
+    const raw = Number(req.query.limit ?? 20);
+    // Clamped rather than rejected: a bad limit is not worth an error the
+    // client has to handle, and an unbounded one is worth refusing.
+    const limit = Number.isFinite(raw) ? Math.min(Math.max(Math.trunc(raw), 1), 50) : 20;
+
+    try {
+      const routes = await routeGeneration.listRoutes(auth.user.id, limit);
+      return res.json({ routes: routes.map(serializeRouteSummary) });
     } catch (error) {
       return sendError(res, error);
     }

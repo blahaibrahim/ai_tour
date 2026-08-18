@@ -328,6 +328,19 @@ class RegenerateTaskEvent extends AppEvent {
   const RegenerateTaskEvent();
 }
 
+/// Adds quest swaps bought on the rewards screen to the tour in progress.
+///
+/// The count comes from the reward's own `grant_quest_rerolls`, so a larger
+/// pack is a catalogue row rather than a second event.
+class GrantQuestRerollsEvent extends AppEvent {
+  const GrantQuestRerollsEvent(this.count);
+
+  final int count;
+
+  @override
+  List<Object?> get props => [count];
+}
+
 class AdvanceStopEvent extends AppEvent {
   const AdvanceStopEvent();
 }
@@ -372,6 +385,14 @@ class MascotCaughtEvent extends AppEvent {
 
 class LeaveTourEvent extends AppEvent {
   const LeaveTourEvent();
+}
+
+/// Loads the traveller's past routes for the home screen's history.
+class LoadRouteHistoryEvent extends AppEvent {
+  const LoadRouteHistoryEvent();
+
+  @override
+  List<Object?> get props => [];
 }
 
 /// Loads the user's persisted bookmarks from Supabase into state.

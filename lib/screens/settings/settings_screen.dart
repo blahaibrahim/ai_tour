@@ -70,6 +70,10 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 32),
+            // No REWARDS row here. The shop is reached from the header on Home
+            // and Overview, next to the points count — a currency belongs
+            // beside the number that counts it, not three taps away in a
+            // settings list.
             _buildSettingSection(
               title: 'ACCOUNT',
               children: const [_AccountSettings()],

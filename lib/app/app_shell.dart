@@ -15,6 +15,7 @@ import '../screens/map/map_screen.dart';
 import '../screens/thinking/thinking_screen.dart';
 import '../screens/swipe/swipe_screen.dart';
 import '../screens/result/result_screen.dart';
+import '../screens/home/home_screen.dart';
 import '../screens/overview/overview_screen.dart';
 import '../screens/folder/folder_screen.dart';
 import '../screens/areas_map/areas_map_screen.dart';
@@ -143,6 +144,9 @@ class _AppShellBody extends StatelessWidget {
       case 'result':
         currentScreen = const ResultScreen();
         break;
+      case 'home':
+        currentScreen = const HomeScreen();
+        break;
       case 'overview':
         currentScreen = const OverviewScreen();
         break;
@@ -156,7 +160,10 @@ class _AppShellBody extends StatelessWidget {
         currentScreen = const MapScreen();
     }
 
-    final showNavBar = ['overview', 'folder', 'areasMap'].contains(state.screen);
+    // `home` and `overview` are the same nav destination wearing two faces —
+    // the walk in progress if there is one, the launch screen otherwise.
+    final showNavBar =
+        ['home', 'overview', 'folder', 'areasMap'].contains(state.screen);
 
     return Scaffold(
       body: Stack(
@@ -191,7 +198,8 @@ class _AppShellBody extends StatelessWidget {
                           NavButton(
                             icon: Icons.home_outlined,
                             label: 'Home',
-                            isActive: state.screen == 'overview',
+                            isActive: state.screen == 'home' ||
+                                state.screen == 'overview',
                             onTap: () => context.read<AppBloc>().add(const NavHomeEvent()),
                           ),
                           const SizedBox(width: 4),

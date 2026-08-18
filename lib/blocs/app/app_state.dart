@@ -23,7 +23,7 @@ class ChatMessage extends Equatable {
 /// All fields are final. Mutations produce a new [AppState] via [copyWith].
 class AppState extends Equatable {
   const AppState({
-    this.screen = 'map',
+    this.screen = 'home',
     this.mapCenter = const LatLng(36.7538, 3.0588),
     List<String>? selectedRegions,
     // --- route request ---
@@ -57,6 +57,9 @@ class AppState extends Equatable {
     this.currentStopIdx = 0,
     this.points = 0,
     this.lifetimePoints,
+    this.pointsBalance,
+    this.routeHistory = const [],
+    this.isLoadingRouteHistory = false,
     this.taskRegenerationsLeft = 3,
     this.offeredQuestTypes = const [],
     this.videoPlaying = false,
@@ -197,6 +200,26 @@ class AppState extends Equatable {
   /// have different lifetimes: leaving a tour zeroes one and must not touch
   /// the other.
   final int? lifetimePoints;
+
+  /// What is left to spend, mirrored from `profiles.points_balance`.
+  ///
+  /// Not [lifetimePoints] minus anything. A task finished away from the stop it
+  /// belongs to scores but does not reach the wallet, so the two counters drift
+  /// apart on purpose and only the server knows by how much.
+  ///
+  /// Null means "not known yet", for the same reason it does on
+  /// [lifetimePoints]: an unsynced device showing a balance of 0 would tell a
+  /// traveller they cannot afford something they can.
+  final int? pointsBalance;
+
+  /// Past routes, newest first, for the home screen's history.
+  ///
+  /// Empty covers both "none yet" and "could not be fetched" — the screen shows
+  /// the same invitation to make one either way, which is the useful thing to
+  /// say in both cases. [isLoadingRouteHistory] is what distinguishes the empty
+  /// state from the not-yet-known one.
+  final List<RouteSummary> routeHistory;
+  final bool isLoadingRouteHistory;
 
   /// True when the review ran out of stops to offer before the budget was
   /// filled. Distinguishes "keep swiping" from "this city has no more", which
@@ -463,6 +486,9 @@ class AppState extends Equatable {
     int? currentStopIdx,
     int? points,
     Object? lifetimePoints = _sentinel,
+    Object? pointsBalance = _sentinel,
+    List<RouteSummary>? routeHistory,
+    bool? isLoadingRouteHistory,
     bool? reviewExhausted,
     int? taskRegenerationsLeft,
     List<Set<String>>? offeredQuestTypes,
@@ -515,6 +541,10 @@ class AppState extends Equatable {
       points: points ?? this.points,
       lifetimePoints:
           lifetimePoints == _sentinel ? this.lifetimePoints : lifetimePoints as int?,
+      pointsBalance:
+          pointsBalance == _sentinel ? this.pointsBalance : pointsBalance as int?,
+      routeHistory: routeHistory ?? this.routeHistory,
+      isLoadingRouteHistory: isLoadingRouteHistory ?? this.isLoadingRouteHistory,
       reviewExhausted: reviewExhausted ?? this.reviewExhausted,
       taskRegenerationsLeft: taskRegenerationsLeft ?? this.taskRegenerationsLeft,
       offeredQuestTypes: offeredQuestTypes ?? this.offeredQuestTypes,
@@ -570,6 +600,9 @@ class AppState extends Equatable {
         currentStopIdx,
         points,
         lifetimePoints,
+        pointsBalance,
+        routeHistory,
+        isLoadingRouteHistory,
         reviewExhausted,
         taskRegenerationsLeft,
         offeredQuestTypes,

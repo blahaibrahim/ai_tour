@@ -32,6 +32,7 @@ import {
   Progress,
   RouteRequest,
   RouteResponse,
+  RouteSummary,
   Theme,
 } from "./types";
 
@@ -135,6 +136,42 @@ export async function getRoute(
   // them tells an unauthorised caller that a given route id exists.
   if (!route) throw new RouteNotFoundError(routeId);
   return route;
+}
+
+/**
+ * The caller's past routes, newest first.
+ *
+ * Capped rather than paged. A traveller with hundreds of routes is not a case
+ * this app has, and a limit is one parameter where a cursor is a contract —
+ * when it becomes one, that is the moment to add paging rather than now.
+ */
+export async function listRoutes(userId: string, limit = 20): Promise<RouteSummary[]> {
+  if (MODE === "fixture") {
+    // One entry, so the history screen can be developed against something. It
+    // is the same route `getRoute` serves in this mode, summarised, rather than
+    // an invented second one that would open as something else.
+    const route = fixtureRoute({
+      cityId: FIXTURE_CITIES[0].id,
+      theme: "history",
+      timeBudgetMinutes: 240,
+      transportMode: "hybrid",
+    });
+    return [
+      {
+        id: route.id,
+        cityId: route.cityId,
+        cityName: FIXTURE_CITIES[0].name,
+        theme: route.theme,
+        transportMode: route.transportMode,
+        timeBudgetMinutes: route.timeBudgetMinutes,
+        estimatedTotalDurationMinutes: route.estimatedTotalDurationMinutes,
+        dayCountFlag: route.dayCountFlag,
+        stopCount: route.stops.length,
+        generatedAt: route.generatedAt,
+      },
+    ];
+  }
+  return getRouteRepository().listForUser(userId, limit);
 }
 
 export async function startProgress(routeId: string): Promise<Progress> {

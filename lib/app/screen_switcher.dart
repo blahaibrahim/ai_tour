@@ -15,8 +15,19 @@ class ScreenSwitcher extends StatefulWidget {
 }
 
 class _ScreenSwitcherState extends State<ScreenSwitcher> {
-  /// The nav bar's destinations, left to right.
-  static const List<String> _navOrder = ['areasMap', 'overview', 'folder'];
+  /// Which nav-bar button each screen sits under, left to right.
+  ///
+  /// A map rather than a list because `home` and `overview` share the middle
+  /// button — it is one destination whose identity depends on whether a tour is
+  /// running. Sharing a slot also gives that pair a direction of 0, so starting
+  /// or leaving a tour rises and fades rather than sliding sideways, which is
+  /// right: nothing moved along the bar.
+  static const Map<String, int> _navSlot = {
+    'areasMap': 0,
+    'home': 1,
+    'overview': 1,
+    'folder': 2,
+  };
 
   late String _current = widget.screen;
 
@@ -29,9 +40,10 @@ class _ScreenSwitcherState extends State<ScreenSwitcher> {
     super.didUpdateWidget(oldWidget);
     if (widget.screen == _current) return;
 
-    final from = _navOrder.indexOf(_current);
-    final to = _navOrder.indexOf(widget.screen);
-    _direction = (from < 0 || to < 0) ? 0 : (to > from ? 1 : -1);
+    final from = _navSlot[_current];
+    final to = _navSlot[widget.screen];
+    _direction =
+        (from == null || to == null || from == to) ? 0 : (to > from ? 1 : -1);
     _current = widget.screen;
   }
 

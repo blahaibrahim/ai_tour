@@ -261,6 +261,30 @@ export interface RouteResponse {
   alternates: RouteStop[];
 }
 
+/**
+ * A past route, as a list shows it.
+ *
+ * Deliberately not a `RouteResponse`. Rehydrating one route means an RPC that
+ * joins `route_stops` back onto `pois` and resolves three locales per stop; a
+ * history screen showing twenty of them would do that twenty times to render
+ * twenty single lines. This is what the row actually needs, read straight off
+ * `routes` with one lookup for the city name — and the full route is fetched
+ * only when a traveller opens one.
+ */
+export interface RouteSummary {
+  id: string;
+  cityId: string;
+  /** Resolved for display. Null when the city is no longer in the catalogue. */
+  cityName: string | null;
+  theme: string;
+  transportMode: TransportMode;
+  timeBudgetMinutes: number;
+  estimatedTotalDurationMinutes: number;
+  dayCountFlag: number;
+  stopCount: number;
+  generatedAt: string;
+}
+
 // --- progress ---------------------------------------------------------------
 
 export interface Progress {

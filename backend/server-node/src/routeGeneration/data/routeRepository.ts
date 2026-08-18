@@ -28,6 +28,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAdminClient } from "../../ingestion/supabaseAdmin";
 import { getLogger } from "../../logger";
 import { unwrap } from "../../supabase";
+import { getCityConfigRepository } from "./cityConfigRepository";
 import {
   Locale,
   Progress,
@@ -35,6 +36,7 @@ import {
   ProgressStatus,
   RouteResponse,
   RouteStop,
+  RouteSummary,
   Segment,
   TransportMode,
 } from "../types";
@@ -61,6 +63,15 @@ export interface RouteRepository {
 
   /** The caller's most recent route — what "resume my tour" reads. */
   findLatestForUser(userId: string, locale?: Locale): Promise<RouteResponse | null>;
+
+  /**
+   * The caller's routes, newest first, as summaries rather than full routes.
+   *
+   * See the note on `RouteSummary` for why this does not reuse `findById`: a
+   * history list of twenty routes would otherwise run twenty stop-expansion
+   * RPCs to draw twenty lines of text.
+   */
+  listForUser(userId: string, limit: number): Promise<RouteSummary[]>;
 }
 
 export interface ProgressRepository {
@@ -92,6 +103,21 @@ interface RouteRow {
   estimated_total_duration_minutes: number;
   day_count_flag: number;
   generated_at: string;
+}
+
+/** One row of the history list. `route_stops(count)` embeds as a one-element
+ * array holding the child count, which is PostgREST's shape for an aggregate
+ * embed and not a mistake. */
+interface RouteSummaryRow {
+  id: string;
+  city_id: string;
+  theme: string;
+  transport_mode: string;
+  time_budget_minutes: number;
+  estimated_total_duration_minutes: number;
+  day_count_flag: number;
+  generated_at: string;
+  route_stops: Array<{ count: number }> | null;
 }
 
 /** One row as `public.route_stops_expanded` returns it. */
@@ -252,6 +278,49 @@ class SupabaseRouteRepository implements RouteRepository {
     );
     const row = rows?.[0];
     return row ? this.hydrate(row, locale) : null;
+  }
+
+  async listForUser(userId: string, limit: number): Promise<RouteSummary[]> {
+    // `route_stops(count)` is a PostgREST aggregate embed: it returns the
+    // number of children per parent without sending the children, which is the
+    // whole point of a summary. The stop list itself is fetched only when a
+    // traveller opens one of these.
+    const rows = await unwrap<RouteSummaryRow[]>(
+      this.db
+        .from("routes")
+        .select(
+          "id, city_id, theme, transport_mode, time_budget_minutes, " +
+            "estimated_total_duration_minutes, day_count_flag, generated_at, " +
+            "route_stops(count)",
+        )
+        .eq("user_id", userId)
+        .order("generated_at", { ascending: false })
+        .limit(limit),
+    );
+    if (!rows?.length) return [];
+
+    // Names come from the cached city repository, so a history of twenty routes
+    // across three cities is three lookups on a cold cache and none on a warm
+    // one — not twenty joins.
+    const cities = getCityConfigRepository();
+    const names = new Map<string, string | null>();
+    for (const id of new Set(rows.map((r) => r.city_id))) {
+      if (!id) continue;
+      names.set(id, (await cities.findById(id))?.name ?? null);
+    }
+
+    return rows.map((row) => ({
+      id: row.id,
+      cityId: row.city_id,
+      cityName: names.get(row.city_id) ?? null,
+      theme: row.theme,
+      transportMode: row.transport_mode as TransportMode,
+      timeBudgetMinutes: row.time_budget_minutes,
+      estimatedTotalDurationMinutes: row.estimated_total_duration_minutes,
+      dayCountFlag: row.day_count_flag,
+      stopCount: row.route_stops?.[0]?.count ?? 0,
+      generatedAt: row.generated_at,
+    }));
   }
 
   private async hydrate(row: RouteRow, locale: Locale): Promise<RouteResponse> {
