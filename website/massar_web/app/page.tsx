@@ -51,13 +51,26 @@ export const metadata: Metadata = {
 /**
  * Where "Download for Android" points.
  *
- * By default the release build itself, served from `public/`, so the button
- * hands over the APK rather than sending the visitor somewhere to look for it.
- * That file is gitignored — at 138 MB it is over GitHub's per-file limit — so a
- * deployment built from a clone needs either the file copied in alongside the
- * build or `NEXT_PUBLIC_APP_DOWNLOAD_URL` pointed at a hosted copy.
+ * The repository's releases page, because the APK cannot travel with the site.
+ * At 138 MB it is over GitHub's per-file limit, so it cannot be committed, and
+ * a Vercel build made from a clone therefore has nothing to serve from
+ * `public/` — which is exactly how the first deployment shipped a button onto
+ * a 404.
+ *
+ * The releases page rather than a direct asset URL: it is the one target that
+ * cannot 404, whatever is or is not uploaded behind it. Once a release carries
+ * the APK, `NEXT_PUBLIC_APP_DOWNLOAD_URL` can point straight at the file — the
+ * conventional stable form is
+ * `https://github.com/<owner>/<repo>/releases/latest/download/<asset>.apk`,
+ * which always resolves to the newest release's copy — and the button becomes
+ * a one-click download again.
+ *
+ * Anonymous downloads need the repository to be public; release assets on a
+ * private repository ask the visitor to sign in.
  */
-const APK_URL = process.env.NEXT_PUBLIC_APP_DOWNLOAD_URL ?? "/app-release.apk";
+const APK_URL =
+  process.env.NEXT_PUBLIC_APP_DOWNLOAD_URL ??
+  "https://github.com/blahaibrahim/ai_tour/releases";
 
 /** Shown next to the button. Nobody on mobile data wants a 138 MB surprise. */
 const APK_SIZE = "138 MB";
@@ -151,11 +164,11 @@ function Hero({ webHref, webLabel }: { webHref: string; webLabel: string }) {
           long-form version of this choice — with what each surface can and
           cannot do — is at the bottom, once the page has earned the detail. */}
       <div className={styles.heroActions}>
-        {/* `download` rather than a plain link: the APK is same-origin by
-            default, so this saves it instead of letting the browser decide
-            what to do with an unfamiliar type. It is inert when
-            NEXT_PUBLIC_APP_DOWNLOAD_URL points somewhere else, which is
-            correct — a cross-origin host owns that decision. */}
+        {/* `download` is deliberately kept though it is inert against the
+            default target: the attribute only applies same-origin, and a
+            cross-origin host owns that decision itself. It earns its place the
+            moment NEXT_PUBLIC_APP_DOWNLOAD_URL names a local path, which is
+            the other supported way to serve the APK. */}
         <a className={`btn btn-primary ${styles.heroCta}`} href={APK_URL} download>
           <Download size={18} aria-hidden />
           Download for Android
