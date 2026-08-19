@@ -529,12 +529,6 @@ worth more than a discovered one.
 pipeline to expand this is built and tested; the catalogue is a data problem, not
 an engineering one.
 
-**Offline is incomplete.** Session state, a points outbox, cached imagery, and
-an on-device AR hunt work without signal. There is no local database, so route
-planning and catalogue browsing still require a connection. Given that Massar's
-best destinations are its least connected, this is the most important item on
-the roadmap and is specified in `docs/`.
-
 **Gaussian splat publishing is operator-triggered.** Reconstruction quality
 still varies enough with input footage that a human decides what is worth
 showing a traveller. Automating that gate needs a quality metric that does not
@@ -543,13 +537,7 @@ exist yet.
 **iOS push notifications are not configured.** Android is complete. iOS
 notifications work while the app is running.
 
-**Video quests are assigned but not yet completable** — the capture screen
-currently offers photo and 3D scan.
-
-**Rate limiting currently fails open** on a database error, and anonymous
-sign-up is not itself rate-limited. Both are known and both are small fixes.
-
-**The mascot collection album and partner voucher redemption** are schema-backed
+**The partner voucher redemption** is schema-backed
 and endpoint-complete, without their final screens.
 
 ---
