@@ -37,15 +37,28 @@ class BackendMonitor {
 
   bool get isOffline => status.value == BackendStatus.offline;
 
-  /// Pings `/api/health` once, with a short deadline so a dead server never
-  /// leaves the splash/banner stuck on "checking".
+  /// How long the *first* probe waits before calling it: short, so a dead
+  /// server never leaves the splash/banner stuck on "checking".
+  static const Duration _firstProbeTimeout = Duration(seconds: 5);
+
+  /// How long a background retry waits — much longer, because nothing is
+  /// blocked on it and because the thing it is most often waiting for is a
+  /// free-tier instance waking up, which takes ~45 s from cold. A retry that
+  /// gave up at 5 s would never once catch the wake it had itself triggered,
+  /// and the app would sit on demo data until somebody restarted it.
+  static const Duration _retryProbeTimeout = Duration(seconds: 30);
+
+  /// Pings `/api/health` once.
   Future<void> checkNow() async {
     if (_checking) return;
     _checking = true;
     try {
       final uri = Uri.parse('${AppConfig.apiBaseUrl}/api/health');
-      final response =
-          await http.get(uri).timeout(const Duration(seconds: 5));
+      final response = await http.get(uri).timeout(
+            status.value == BackendStatus.checking
+                ? _firstProbeTimeout
+                : _retryProbeTimeout,
+          );
       if (response.statusCode >= 200 && response.statusCode < 300) {
         reportSuccess();
       } else {

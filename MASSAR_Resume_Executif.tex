@@ -1,0 +1,147 @@
+%=======================================================================
+%  MASSAR — Résumé Exécutif
+%  Compilation : pdflatex MASSAR_Resume_Executif.tex
+%=======================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage[left=1.6cm,right=1.6cm,top=1.3cm,bottom=1.0cm]{geometry}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{multicol}
+
+\definecolor{accent}{HTML}{0F3D3E}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.25em}
+\setlength{\columnsep}{1.4em}
+\setlength{\multicolsep}{4pt}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{\thesection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{0.7em}{0.3em}
+
+\setlist[itemize]{leftmargin=1.2em,itemsep=0.28em,topsep=0.15em,parsep=0pt}
+\renewcommand{\labelitemi}{\textcolor{accent}{\textbullet}}
+
+\newcommand{\hrulethin}{\vspace{-0.7em}\par\noindent{\color{accent}\rule{\linewidth}{0.5pt}}\par\vspace{-0.45em}}
+
+\begin{document}
+
+%----------------------------- En-tête --------------------------------
+{\Huge\bfseries\color{accent} MASSAR}\\[0.2em]
+{\large Le compagnon de voyage augmenté du patrimoine algérien}
+
+\vspace{0.4em}
+{\color{accent}\rule{\linewidth}{1.2pt}}
+\vspace{-0.4em}
+
+\textbf{Projet}~: MASSAR \hfill \textbf{Catégorie}~: Axe Rêve (01) \hfill \textbf{Document}~: Résumé Exécutif
+
+{\color{accent}\rule{\linewidth}{0.5pt}}
+
+%=======================================================================
+\section{L'Objectif et la Vision}\hrulethin
+%=======================================================================
+
+Le tourisme se regarde plus qu'il ne se vit. Devant les colonnes de Djemila ou les ruelles de la Casbah, le visiteur photographie, repart, et le récit lui échappe. Les outils censés l'accompagner sont passifs, et cessent de fonctionner là où le patrimoine est le plus spectaculaire — Sahara, Tassili, Timgad, partout sans 4G.
+
+\textbf{Massar renverse cette équation}~: un itinéraire intelligent taillé pour le temps du voyageur, une chasse au trésor en Réalité Augmentée à chaque étape, et un appareil photo qui transforme ce qu'il capture en objet 3D.
+
+\textit{Massar est une plateforme immersive qui transforme les touristes d'observateurs passifs en explorateurs actifs. La Réalité Augmentée et la modélisation 3D les font « rêver » et créent un lien profond avec le patrimoine algérien — \textbf{y compris hors connexion}.}
+
+%=======================================================================
+\section{La Solution : L'Expérience Massar}\hrulethin
+%=======================================================================
+
+\begin{itemize}
+  \item \textbf{L'Itinéraire Intelligent.} Le touriste définit sa ville, son thème et son temps disponible~; l'application génère en moins d'une seconde un parcours ordonné. Il peut décrire son envie en texte libre, accepter ou écarter chaque étape par \emph{swipe}, et poser toute question sur un lieu.
+  \item \textbf{L'Immersion AR — La Chasse au Fennec.} À chaque étape historique, le voyageur cherche un fennec caché en Réalité Augmentée. Un guidage « chaud~/~froid » le rapproche, la détection de plan pose la mascotte au sol. \textbf{La chasse fonctionne intégralement hors connexion.}
+  \item \textbf{La Création 3D — Le Souvenir Numérique.} Le touriste capture un objet physique — artisanat, poterie, ruine — en photo ou vidéo. L'IA le transforme en \textbf{modèle 3D rotatif et conservable}, rangé dans son dossier personnel.
+  \item \textbf{La boucle qui referme tout.} Les vidéos tournées sur site alimentent la reconstruction du patrimoine~; quand elle est publiée, \textbf{le voyageur qui y a contribué est notifié}. Produit touristique et numérisation du patrimoine ne font qu'un.
+  \item \textbf{Points et récompenses.} Quêtes et captures rapportent des points~: un total à vie qui établit le rang, un portefeuille dépensable dans un catalogue de récompenses.
+\end{itemize}
+
+%=======================================================================
+\section{Innovation Technique}\hrulethin
+%=======================================================================
+
+\begin{itemize}
+  \item \textbf{Modélisation 3D et IA générative.} Deux pipelines GPU sur NVIDIA L4~: \textbf{Hunyuan3D} (image $\rightarrow$ maillage \textbf{GLB}) et \textbf{3D Gaussian Splatting INRIA} (vidéo $\rightarrow$ splat, via \textbf{COLMAP}). Le pipeline est étagé~: l'étape géométrique tourne sur CPU bon marché et sert de porte de contrôle avant toute dépense GPU.
+  \item \textbf{Moteur ARCore « offline-first ».} Autorité partagée~: le \textbf{serveur} dit \emph{où} se trouve l'objet AR, le \textbf{client} calcule la distance hors ligne et le pose sur le sol détecté par ARCore. Aucun des deux ne suffit seul — et c'est ce qui fait fonctionner la chasse sans 4G.
+  \item \textbf{Placement à azimut préservé.} Le GPS grand public dérive de $\pm$5–15~m et la boussole urbaine de $\pm$10–15\textdegree{}. Massar place le fennec à distance fixe dans la direction vraie, aligné sur le sol réel, plutôt qu'à une coordonnée absolue qui l'aurait mis dans un mur.
+  \item \textbf{Routage et LLMs.} Regroupement \textbf{K-Means}, ordonnancement par \textbf{TSP} et isochrones produisent le parcours~; les \textbf{modèles de langage} assurent le texte libre, les descriptions, les quêtes et la conversation ancrée.
+  \item \textbf{Anti-triche.} Toute capture est validée côté serveur~: jeton signé à durée de vie courte, \emph{nonce} idempotent, contrôle de position. Un client modifié ne peut pas fabriquer de points.
+\end{itemize}
+
+%=======================================================================
+\section{Impact Touristique}\hrulethin
+%=======================================================================
+
+\begin{itemize}
+  \item \textbf{Attractivité (Rêve).} Un objet 3D que l'on fait tourner capte bien plus l'attention qu'une photo. Chaque visiteur devient ambassadeur et génère un \textbf{marketing organique et viral pour la destination Algérie}, à coût d'acquisition nul.
+  \item \textbf{Rétention et gamification.} La chasse au trésor AR \textbf{oblige le touriste à rester plus longtemps sur les sites} et à en explorer les détails culturels~: pour trouver le fennec, il faut contourner, lever la tête, s'approcher — regarder vraiment.
+  \item \textbf{Impact économique B2B.} \textbf{Les points gagnés se transforment en récompenses physiques} chez les artisans et cafés locaux~: Massar devient un canal de trafic qualifié vers l'économie de proximité et stimule une \textbf{économie circulaire}.
+\end{itemize}
+
+%=======================================================================
+\section{Faisabilité et Scalabilité}\hrulethin
+%=======================================================================
+
+\begin{itemize}
+  \item \textbf{Zéro matériel spécialisé.} Contrairement aux solutions VR nécessitant des casques coûteux, Massar fonctionne sur des \textbf{smartphones Android milieu de gamme standards}, via ARCore, ML Kit, appareil photo et GPS. Aucun équipement à installer sur les sites.
+  \item \textbf{Déploiement national.} L'architecture passe de nos \textbf{3 villes pilotes — Alger, Oran, Constantine} — à \textbf{l'ensemble des 58 wilayas par simple ajout de données (POI)}. Le pipeline d'ingestion est déjà construit et testé.
+  \item \textbf{Coûts maîtrisés.} Le GPU n'est consommé qu'à la demande, derrière une estimation de coût. Toute la chaîne est libre et auto-hébergeable.
+\end{itemize}
+
+%=======================================================================
+\section{Éthique, Cybersécurité et Souveraineté}\hrulethin
+%=======================================================================
+
+\begin{itemize}
+  \item \textbf{Souveraineté des données.} Contrairement aux applications utilisant des API étrangères fermées, l'infrastructure de Massar est conçue pour être \textbf{hébergée localement sur des serveurs algériens} (Icosnet, AIGrid). \textbf{Aucun modèle 3D du patrimoine national n'est exporté vers des clouds étrangers}~: la reconstruction repose sur des modèles à poids ouverts auto-hébergés.
+  \item \textbf{Respect de la loi 18-07.} L'application privilégie l'\textbf{accès anonyme}, garantissant une friction minimale et la protection absolue des données personnelles. Traitement minimisé, consentement explicite, cloisonnement de chaque donnée à son propriétaire, suppression de compte et purge automatique.
+  \item \textbf{Éthique du contenu.} Les contenus générés sont ancrés dans le dossier documentaire de chaque lieu, ce qui borne ce qu'un modèle peut énoncer sur un site culturel ou religieux.
+\end{itemize}
+
+%=======================================================================
+\section*{\color{accent}Panorama des fonctionnalités}\hrulethin
+%=======================================================================
+
+{\footnotesize
+\begin{multicols}{2}
+\raggedright
+\textbf{Planification} — carte de l'Algérie~; ville, thème, catégorie~; budget-temps~; marche, voiture, hybride~; texte libre par LLM~; swipe et alternatives~; affinage~; conversation ancrée~; lieux enregistrés.
+
+\textbf{Sur le parcours} — vue d'ensemble~; étapes à venir~; quêtes photo, vidéo, chasse~; détection d'arrivée~; vérification par position réelle~; progression persistante.
+
+\textbf{Réalité Augmentée} — chasse au fennec~; autorité partagée~; distance calculée sur l'appareil~; bandes de proximité~; GPS adaptatif~; azimut préservé~; capture signée~; collection~; repli sans ARCore.
+
+\textbf{Capture et 3D} — viseur à deux modes~; pré-vérification ML Kit~; image~$\rightarrow$~GLB~; vidéo~$\rightarrow$~splat 3DGS~; visualiseurs GLB et WebGL~; dossier d'artefacts~; cache permanent~; crédits et remboursements.
+
+\textbf{Points et récompenses} — total à vie et portefeuille séparés~; catalogue~; récompenses numériques~; bons partenaires~; débit atomique.
+
+\textbf{Notifications} — itinéraire prêt~; modèle 3D prêt~; mascotte à proximité~; reconstruction publiée~; heures de silence~; préférences par catégorie.
+
+\textbf{Langues} — français, arabe, anglais~; RTL intégral~; typographies adaptées~; bascule sans redémarrage.
+
+\textbf{Compagnon web} — authentification~; génération d'itinéraire~; carte~; vue d'ensemble~; lieux enregistrés et points~; paramètres.
+
+\textbf{Studio opérateur} — analytique en direct~; entonnoir du pipeline 3D~; carte des wilayas~; journal et coût en temps réel~; publication vers les voyageurs.
+
+\textbf{Socle} — API Express~/~TypeScript~; Postgres~+~PostGIS~; stockage et temps réel~; sécurité au niveau de la ligne~; ingestion OSM~/~Wikidata~; cache~; mode hors ligne~; tests.
+\end{multicols}}
+
+\vspace{0.3em}
+{\color{accent}\rule{\linewidth}{0.5pt}}
+\vspace{-0.5em}
+
+\begin{center}
+\textbf{Massar ne se contente pas de montrer l'Algérie}~: il la fait explorer, rêver, et entrer dans un patrimoine numérique national.
+\end{center}
+
+\end{document}

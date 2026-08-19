@@ -26,7 +26,7 @@ export default async function SettingsPage() {
     <AppBackdrop>
       <main className={styles.page}>
         <header className={styles.header}>
-          <Link href="/" className={styles.back} aria-label="Back">
+          <Link href="/home" className={styles.back} aria-label="Back">
             <ChevronLeft size={20} aria-hidden />
           </Link>
           <h1 className={styles.title}>Settings</h1>

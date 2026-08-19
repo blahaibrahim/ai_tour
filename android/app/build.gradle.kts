@@ -54,10 +54,12 @@ android {
     }
 
     buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+        getByName("release") {
+            // Change "release" to "debug" here:
             signingConfig = signingConfigs.getByName("debug")
+            
+            // Keep our ProGuard rule:
+            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }
 }

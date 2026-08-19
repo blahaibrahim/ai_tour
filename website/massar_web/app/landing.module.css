@@ -1,0 +1,561 @@
+/*
+ * The landing page.
+ *
+ * Wider than the rest of the site — the app screens are a 760px column because
+ * they are a phone screen rendered in a browser, and this one is not. Every
+ * value below is a token from `globals.css`; the only literals are the two
+ * places the page needs an alpha over the duotone ground.
+ */
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-5) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* --- chrome --------------------------------------------------------------- */
+
+.siteHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mark {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.wordmarkText {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--ink);
+}
+
+.wordmarkArabic {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(20, 37, 74, 0.5);
+}
+
+.headerLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--divider);
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent-dark);
+  transition: background var(--motion-fast) var(--motion-curve);
+}
+
+.headerLink:hover {
+  background: #ffffff;
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-6);
+  border-top: 1px solid rgba(20, 37, 74, 0.12);
+  text-align: center;
+}
+
+.footerLine {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(20, 37, 74, 0.7);
+}
+
+.footerMeta {
+  margin: 0;
+  font-size: 11.5px;
+  color: rgba(20, 37, 74, 0.5);
+}
+
+/* --- sections ------------------------------------------------------------- */
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 72px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.sectionHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 620px;
+}
+
+.sectionTitle {
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+/* --- hero ----------------------------------------------------------------- */
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 680px;
+  padding: var(--space-8) 0 var(--space-4);
+}
+
+.heroTitle {
+  font-size: clamp(32px, 5vw, 46px);
+  line-height: 1.08;
+  letter-spacing: -1.2px;
+}
+
+.heroLede {
+  margin: 0;
+  font-size: 16.5px;
+  line-height: 1.55;
+  color: rgba(20, 37, 74, 0.78);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.heroCta {
+  box-shadow: var(--shadow-lg);
+}
+
+/* `.btn-outline` is transparent, which over the warm end of the duotone ramp
+   reads as a floating border rather than a button. White fills it in without
+   competing with the primary beside it. */
+.heroCtaAlt {
+  background: rgba(255, 255, 255, 0.86);
+  border-color: rgba(255, 255, 255, 0.9);
+  color: var(--accent-dark);
+  box-shadow: var(--shadow-sm);
+}
+
+.heroCtaAlt:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+.heroFootnote {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(20, 37, 74, 0.6);
+}
+
+/* --- the loop ------------------------------------------------------------- */
+
+.steps {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "badge icon"
+    "badge title"
+    "badge body";
+  align-items: start;
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.stepBadge {
+  grid-area: badge;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.stepIcon {
+  grid-area: icon;
+  display: none;
+  color: var(--accent);
+}
+
+.stepTitle {
+  grid-area: title;
+  font-size: 15.5px;
+}
+
+.stepBody {
+  grid-area: body;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(20, 37, 74, 0.68);
+}
+
+/*
+ * On a wide viewport the five steps become five columns joined by a dashed
+ * rule — the same 5/6 dash rhythm the backdrop's travel trails and the route
+ * map's walking legs are drawn with, so the sequence reads as a route rather
+ * than as a list that happens to be horizontal.
+ */
+@media (min-width: 880px) {
+  .steps {
+    position: relative;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-3);
+  }
+
+  .steps::before {
+    content: "";
+    position: absolute;
+    top: 39px;
+    left: 10%;
+    right: 10%;
+    height: 1.6px;
+    background-image: repeating-linear-gradient(
+      to right,
+      rgba(20, 37, 74, 0.28) 0 5px,
+      transparent 5px 11px
+    );
+  }
+
+  .step {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "badge"
+      "icon"
+      "title"
+      "body";
+    justify-items: center;
+    text-align: center;
+    gap: var(--space-2);
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .stepBadge {
+    /* Sits on the dashed rule, with a ring of the page ground punched out
+       around it so the line appears to pass behind rather than through. */
+    box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.66);
+  }
+
+  .stepIcon {
+    display: inline-flex;
+  }
+}
+
+/* --- features ------------------------------------------------------------- */
+
+.featureGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  gap: var(--space-4);
+}
+
+.feature {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.featureIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* The app's onboarding tints its slides the same way: blue for planning, amber
+   for anything done with the camera in hand. */
+.featureIcon[data-tint="warm"] {
+  background: var(--secondary-soft);
+  color: var(--walk-color);
+}
+
+.featureTitle {
+  font-size: 16px;
+}
+
+.featureBody {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(20, 37, 74, 0.68);
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  font-size: 12.5px;
+  color: rgba(20, 37, 74, 0.75);
+}
+
+.factIcon {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+/* --- heritage ------------------------------------------------------------- */
+
+/* The one dark panel on the page, on the same deep navy the route screens open
+   on — this is the claim the product is built around, and it gets the weight. */
+.heritage {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+  padding: var(--space-8) var(--space-6);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(148deg, var(--deep-navy) 0%, #1d3565 60%, var(--accent-dark) 100%);
+  color: #ffffff;
+  box-shadow: var(--shadow-lg);
+}
+
+.heritageCopy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 620px;
+}
+
+.heritageTitle {
+  font-size: clamp(22px, 3vw, 28px);
+  line-height: 1.18;
+  color: #ffffff;
+}
+
+.heritageBody {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.pipeline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pipelineStage {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--on-navy);
+}
+
+/* Amber, because this is the same warm accent the capture half of the app
+   carries, and the pipeline is what the capture half feeds. */
+.pipelineDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--secondary-accent);
+}
+
+@media (min-width: 880px) {
+  .heritage {
+    padding: 56px var(--space-8);
+  }
+}
+
+/* --- the choice ----------------------------------------------------------- */
+
+.ways {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (min-width: 820px) {
+  .ways {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.way {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+}
+
+.wayApp {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-lg);
+}
+
+.wayIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.wayIconWeb {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.wayTitle {
+  font-size: 19px;
+  color: inherit;
+}
+
+.wayLede {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(20, 37, 74, 0.68);
+}
+
+.wayApp .wayLede {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.wayList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.wayItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.wayBullet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+  margin-top: 1px;
+  color: var(--success);
+}
+
+.wayApp .wayBullet {
+  color: var(--sand);
+}
+
+.wayItem[data-has="false"] .wayBullet {
+  color: rgba(20, 37, 74, 0.35);
+}
+
+.wayLabel {
+  color: rgba(20, 37, 74, 0.8);
+}
+
+.wayItem[data-has="false"] .wayLabel {
+  color: rgba(20, 37, 74, 0.55);
+}
+
+.wayLabelOnDark {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.wayCta {
+  margin-top: auto;
+}
+
+.wayFootnote {
+  margin: 0;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: rgba(20, 37, 74, 0.55);
+}
+
+.wayFootnoteOnDark {
+  color: rgba(255, 255, 255, 0.7);
+}

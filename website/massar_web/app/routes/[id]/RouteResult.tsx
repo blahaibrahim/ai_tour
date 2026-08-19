@@ -113,7 +113,7 @@ export default function RouteResult({ route: initialRoute }: { route: GeneratedR
                 the app labels them because it has nothing underneath it. */}
             <RouteMap route={route} />
           </div>
-          <Link href="/" className={styles.floatingBack} aria-label="Back to your routes">
+          <Link href="/home" className={styles.floatingBack} aria-label="Back to your routes">
             <ChevronLeft size={19} aria-hidden />
           </Link>
         </header>

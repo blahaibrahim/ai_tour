@@ -39,7 +39,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && !request.nextUrl.pathname.startsWith("/login")) {
+  if (!user && !isPublic(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
@@ -47,6 +47,19 @@ export async function proxy(request: NextRequest) {
   }
 
   return response;
+}
+
+/**
+ * The two pages a visitor with no session is allowed to see: the landing page
+ * and the form.
+ *
+ * `/` is matched exactly rather than by prefix, which every path shares — the
+ * whole site would be public. Everything else still bounces to `/login`, so a
+ * deep link to a route survives sign-in as a link somebody can retry, rather
+ * than dumping the visitor on the marketing page with no idea what happened.
+ */
+function isPublic(pathname: string): boolean {
+  return pathname === "/" || pathname.startsWith("/login");
 }
 
 export const config = {
@@ -60,6 +73,12 @@ export const config = {
      * one comes back as a 200 full of HTML. A JSON caller deserves a status it
      * can branch on, not a sign-in page it will fail to parse.
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|geojson)$).*)",
+    /*
+     * `apk` is in the extension list for the same reason the images are: the
+     * landing page's download button is public, and a session check on it
+     * answers a signed-out visitor with a redirect to `/login`. A browser
+     * following that saves the sign-in page under the name of the APK.
+     */
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|geojson|apk)$).*)",
   ],
 };

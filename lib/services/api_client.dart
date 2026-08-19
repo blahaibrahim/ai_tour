@@ -48,12 +48,20 @@ class ApiClient {
 
   /// Deadline for a single request.
   ///
-  /// Route generation is the slowest call the app makes and the module budgets
-  /// it at 1.5 s cold, so 20 s is generous rather than tight. It exists because
-  /// the default is *no* deadline: on a captive portal or a dropped mobile
-  /// connection the future never completes, and the thinking screen spins
-  /// forever with no error and no way back.
-  static const Duration _timeout = Duration(seconds: 20);
+  /// It exists because the default is *no* deadline: on a captive portal or a
+  /// dropped mobile connection the future never completes, and the thinking
+  /// screen spins forever with no error and no way back.
+  ///
+  /// Sized by the host rather than by the work. Route generation is the
+  /// slowest call the app makes and the module budgets it at 1.5 s warm — but
+  /// the deployed backend runs on a free tier that spins the instance down
+  /// after a quiet spell, and the request that wakes it measures ~45 s before
+  /// a byte comes back. At the old 20 s every call made in the first minute
+  /// after a cold open failed, which read as "the backend is unreachable" when
+  /// it was merely asleep. 75 s clears a measured cold start with room to
+  /// spare; the connection-level failures this guard is really for still
+  /// surface long before it, from the socket rather than from here.
+  static const Duration _timeout = Duration(seconds: 75);
 
   static Future<Map<String, String>> _headers() async {
     var session = Supabase.instance.client.auth.currentSession;

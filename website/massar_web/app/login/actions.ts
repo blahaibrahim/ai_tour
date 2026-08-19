@@ -26,7 +26,7 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/");
+  redirect("/home");
 }
 
 export async function signup(formData: FormData) {
@@ -54,12 +54,19 @@ export async function signup(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/");
+  redirect("/home");
 }
 
+/**
+ * Sign out to the landing page rather than to the form.
+ *
+ * `/login` would work — the proxy would let it through — but it reads as
+ * "signed out, now sign back in". The landing page is the public front door,
+ * and it still carries the way back in.
+ */
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
   revalidatePath("/", "layout");
-  redirect("/login");
+  redirect("/");
 }

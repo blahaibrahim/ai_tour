@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# The Android build the landing page serves from /app-release.apk.
+#
+# Copied in from `build/app/outputs/flutter-apk/` rather than committed: it is
+# 138 MB, and GitHub refuses any file over 100 MB, so tracking it here would
+# make the repository unpushable. A deployment built from a git clone therefore
+# has no APK behind the download button — either drop the file in as part of
+# the deploy, or point NEXT_PUBLIC_APP_DOWNLOAD_URL at a hosted copy.
+/public/*.apk

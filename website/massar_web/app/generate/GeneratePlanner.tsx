@@ -188,7 +188,7 @@ export default function GeneratePlanner({
         <WilayaMap cities={cities} cityId={cityId} onSelect={setCityId} />
       </div>
 
-      <Link href="/" className={styles.back}>
+      <Link href="/home" className={styles.back}>
         <ChevronLeft size={18} aria-hidden />
         Back
       </Link>

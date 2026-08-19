@@ -1,5 +1,5 @@
 import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Configuration loader that reads from the root `.env` file first,
@@ -27,6 +27,18 @@ class AppConfig {
     return const String.fromEnvironment('SUPABASE_ANON_KEY').trim();
   }
 
+  /// The deployed backend, used when nothing else says otherwise.
+  ///
+  /// `.env` is gitignored and bundled as an asset, so a build made anywhere
+  /// but a configured working copy — CI, a fresh clone, a teammate's machine —
+  /// ships without one. `dotenv.load` degrades quietly in that case, which
+  /// used to leave a *release* APK pointing at `10.0.2.2:8000`: the emulator's
+  /// alias for the host machine, which on a real phone is nothing at all, and
+  /// which the network security config blocks as cleartext besides. The app
+  /// then looked broken in exactly the way a missing backend looks broken.
+  static const String _deployedApiBaseUrl =
+      'https://ai-tour-backend.onrender.com';
+
   static String get apiBaseUrl {
     final fromDotenv = dotenv.maybeGet('API_BASE_URL');
     if (fromDotenv != null && fromDotenv.isNotEmpty) return fromDotenv;
@@ -34,11 +46,16 @@ class AppConfig {
     const fromEnv = String.fromEnvironment('API_BASE_URL');
     if (fromEnv.isNotEmpty) return fromEnv;
 
-    // Fallback based on platform for local development
+    // A release build has no business guessing at a loopback address: there is
+    // no dev server behind it, so the deployment is the only useful answer.
+    if (kReleaseMode) return _deployedApiBaseUrl;
+
+    // Debug and profile builds keep the local-development guesses, so running
+    // against a server on the host machine still needs no configuration.
     if (!kIsWeb && Platform.isAndroid) {
       return 'http://10.0.2.2:8000'; // Android Emulator
     }
-    
+
     return 'http://localhost:8000'; // iOS Simulator, Web, Desktop
   }
 
