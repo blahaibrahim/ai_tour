@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
 import '../../../models/location.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../theme.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/pressable_scale.dart';
@@ -67,7 +68,7 @@ class SwipeCard extends StatelessWidget {
               bottom: 12,
               right: 80,
               child: Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 child: StockPhotoTag(label: loc.photoCredit!),
               ),
             ),
@@ -81,7 +82,8 @@ class SwipeCard extends StatelessWidget {
                 opacity: likeOpacity,
                 child: Transform.rotate(
                   angle: -14 * (math.pi / 180),
-                  child: _buildBadge('LIKE', AppTheme.accent),
+                  child: _buildBadge(
+                      AppLocalizations.of(context).swipeBadgeLike, AppTheme.accent),
                 ),
               ),
             ),
@@ -92,7 +94,8 @@ class SwipeCard extends StatelessWidget {
                 opacity: nopeOpacity,
                 child: Transform.rotate(
                   angle: 14 * (math.pi / 180),
-                  child: _buildBadge('NOPE', AppTheme.textSecondary),
+                  child: _buildBadge(AppLocalizations.of(context).swipeBadgeNope,
+                      AppTheme.textSecondary),
                 ),
               ),
             ),
@@ -103,7 +106,8 @@ class SwipeCard extends StatelessWidget {
               child: Center(
                 child: Opacity(
                   opacity: infoOpacity,
-                  child: _buildBadge('MORE INFO ↓', AppTheme.text),
+                  child: _buildBadge(
+                      AppLocalizations.of(context).swipeBadgeMoreInfo, AppTheme.text),
                 ),
               ),
             ),
@@ -145,7 +149,7 @@ class SwipeCard extends StatelessWidget {
                       PressableScale(
                         onTap: () => context.read<AppBloc>().add(ToggleSavedLocationEvent(loc.id)),
                         child: Padding(
-                          padding: const EdgeInsets.only(left: 12),
+                          padding: const EdgeInsetsDirectional.only(start: 12),
                           child: Icon(
                             state.savedLocationIds.contains(loc.id)
                                 ? Icons.bookmark

@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 import '../../models/location.dart';
 import '../../services/media_cache.dart';
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/artifact_cube.dart';
 import '../../widgets/cube3d.dart';
 import '../../widgets/net_image.dart';
@@ -65,13 +66,13 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
   Future<void> _loadGlbModel() async {
     setState(() => _loadingGlb = true);
     final file = await MediaCache.getModel(widget.artifact.modelPath!);
-    if (mounted) {
-      setState(() {
-        _glbFile = file;
-        _loadingGlb = false;
-        if (file == null) _glbError = 'Could not load 3D model file';
-      });
-    }
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
+    setState(() {
+      _glbFile = file;
+      _loadingGlb = false;
+      if (file == null) _glbError = l10n.viewerCouldNotLoadFile;
+    });
   }
 
   @override
@@ -118,7 +119,7 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 20, 4),
+              padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 20, 4),
               child: Row(
                 children: [
                   PressableScale(
@@ -165,7 +166,7 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 18),
               child: Text(
-                _hintFor(art, isRealGlb),
+                _hintFor(AppLocalizations.of(context), art, isRealGlb),
                 style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
               ),
             ),
@@ -177,15 +178,15 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
 
   Widget _buildGlbViewer() {
     if (_loadingGlb) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: AppTheme.accent),
-            SizedBox(height: 16),
+            const CircularProgressIndicator(color: AppTheme.accent),
+            const SizedBox(height: 16),
             Text(
-              'Loading 3D model…',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              AppLocalizations.of(context).viewerLoadingModel,
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
             ),
           ],
         ),
@@ -205,7 +206,8 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
         src: Uri.file(_glbFile!.path).toString(),
         onError: (error) {
           if (!mounted) return;
-          setState(() => _glbError = 'Could not display 3D model — $error');
+          final l10n = AppLocalizations.of(context);
+          setState(() => _glbError = l10n.viewerCouldNotDisplayError(error));
         },
       );
     }
@@ -219,7 +221,7 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
             const Icon(Icons.warning_amber_rounded, size: 40, color: Colors.amber),
             const SizedBox(height: 12),
             Text(
-              _glbError ?? 'Could not display 3D model',
+              _glbError ?? AppLocalizations.of(context).viewerCouldNotDisplay,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 14),
             ),
@@ -254,11 +256,11 @@ class _ArtifactViewerScreenState extends State<ArtifactViewerScreen>
     return _buildPhotoCubeViewer(art);
   }
 
-  String _hintFor(Artifact art, bool isRealGlb) {
-    if (isRealGlb) return 'Interactive 3D model — touch to rotate';
-    if (_isVideo(art) && _hasMedia(art)) return 'Tap the video to play or pause';
-    if (_hasMedia(art)) return 'Pinch to zoom · drag to pan';
-    return 'Drag to rotate · pinch to zoom';
+  String _hintFor(AppLocalizations l10n, Artifact art, bool isRealGlb) {
+    if (isRealGlb) return l10n.viewerHintInteractive3d;
+    if (_isVideo(art) && _hasMedia(art)) return l10n.viewerHintVideo;
+    if (_hasMedia(art)) return l10n.viewerHintPinchZoom;
+    return l10n.viewerHintDragRotate;
   }
 
   /// The photograph itself.
@@ -410,7 +412,7 @@ class _ClipPlayerState extends State<_ClipPlayer> {
                   size: 32, color: AppTheme.textSecondary),
               const SizedBox(height: 12),
               Text(
-                "This clip can't be played — the file may have been removed.",
+                AppLocalizations.of(context).viewerClipUnplayable,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
               ),
@@ -526,7 +528,7 @@ class _StoredPhotoViewerState extends State<_StoredPhotoViewer> {
     if (url == null) {
       return Center(
         child: Text(
-          "This photo couldn't be loaded.",
+          AppLocalizations.of(context).viewerPhotoUnloadable,
           style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
         ),
       );

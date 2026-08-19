@@ -4,6 +4,7 @@ import '../blocs/app/app_bloc.dart';
 import '../blocs/app/app_event.dart';
 import '../blocs/app/app_state.dart';
 import '../theme.dart';
+import '../l10n/app_localizations.dart';
 import '../models/location.dart';
 import 'glass_surface.dart';
 import 'net_image.dart';
@@ -166,7 +167,7 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                     const SizedBox(height: 16),
 
                     Text(
-                      'ASK THE AI',
+                      AppLocalizations.of(context).detailAskTheAi,
                       style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppTheme.text.withValues(alpha: 0.55)),
                     ),
                     const SizedBox(height: 8),
@@ -180,14 +181,16 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                           style: OutlinedButton.styleFrom(
                             textStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 12.5),
                           ),
-                          child: const Text('Best time to visit?'),
+                          child: Text(
+                              AppLocalizations.of(context).detailBestTimeToVisit),
                         ),
                         OutlinedButton(
                           onPressed: () => context.read<AppBloc>().add(const AskQuestionEvent("How long to explore?")),
                           style: OutlinedButton.styleFrom(
                             textStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 12.5),
                           ),
-                          child: const Text('How long to explore?'),
+                          child: Text(
+                              AppLocalizations.of(context).detailHowLongToExplore),
                         ),
                       ],
                     ),
@@ -195,7 +198,10 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                     if (state.detailConversation.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       ...state.detailConversation.map((msg) {
-                        final isAi = msg.role == 'ai';
+                        // Errors sit on the guide's side of the thread: they
+                        // are a reply to what the traveller asked, even though
+                        // the app rather than the guide wrote them.
+                        final isAi = msg.role != 'user';
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Row(
@@ -219,7 +225,10 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                                     ),
                                   ),
                                   child: Text(
-                                    msg.text,
+                                    msg.role == 'error'
+                                        ? AppLocalizations.of(context)
+                                            .detailGuideUnreachable
+                                        : msg.text,
                                     style: TextStyle(fontSize: 13, height: 1.4, color: isAi ? AppTheme.text : AppTheme.accentDark),
                                   ),
                                 ),
@@ -253,17 +262,20 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                         }
                       },
                       decoration: InputDecoration(
-                        hintText: "Ask anything about this spot...",
+                        hintText: AppLocalizations.of(context).detailAskAnything,
                         hintStyle: TextStyle(color: AppTheme.text.withValues(alpha: 0.4), fontSize: 13),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
-                        contentPadding: const EdgeInsets.fromLTRB(16, 14, 50, 14),
+                        // The 50 clears the send button, which sits at the
+                        // trailing edge — so both have to mirror together.
+                        contentPadding:
+                            const EdgeInsetsDirectional.fromSTEB(16, 14, 50, 14),
                       ),
                     ),
-                    Positioned(
-                      right: 8,
+                    PositionedDirectional(
+                      end: 8,
                       bottom: 8,
                       child: PressableScale(
                         onTap: () {
@@ -298,21 +310,21 @@ class _LocationDetailOverlayState extends State<LocationDetailOverlay> {
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () => context.read<AppBloc>().add(const OnDetailRejectEvent()),
-                        child: const Text('Skip this spot'),
+                        child: Text(AppLocalizations.of(context).detailSkipThisSpot),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () => context.read<AppBloc>().add(const OnDetailAcceptEvent()),
-                        child: const Text('Add to route'),
+                        child: Text(AppLocalizations.of(context).detailAddToRoute),
                       ),
                     ),
                   ] else ...[
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () => context.read<AppBloc>().add(const CloseDetailEvent()),
-                        child: const Text('Close'),
+                        child: Text(AppLocalizations.of(context).actionClose),
                       ),
                     ),
                   ],

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../models/location.dart';
 import '../../../services/media_cache.dart';
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../widgets/glass_surface.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/shimmer.dart';
@@ -47,11 +48,11 @@ class ArtifactsTab extends StatelessWidget {
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              Center(child: _buildMediaPreview(art)),
+                              Center(child: _buildMediaPreview(context, art)),
                               Positioned(
                                 top: 8,
                                 left: 8,
-                                child: _buildBadge(art),
+                                child: _buildBadge(context, art),
                               ),
                             ],
                           ),
@@ -69,7 +70,8 @@ class ArtifactsTab extends StatelessWidget {
                               ),
                               Text(
                                 art.modelStatus == ModelStatus.failed
-                                    ? (modelFailureMessages[art.errorCode] ?? 'Generation failed')
+                                    ? modelFailureMessage(
+                                        AppLocalizations.of(context), art.errorCode)
                                     : art.region,
                                 style: TextStyle(
                                   fontSize: 11,
@@ -92,7 +94,7 @@ class ArtifactsTab extends StatelessWidget {
           );
   }
 
-  Widget _buildMediaPreview(Artifact art) {
+  Widget _buildMediaPreview(BuildContext context, Artifact art) {
     // A clip is not an image, so no image widget can show it. Without this it
     // falls through to Image.file, fails to decode an mp4, and lands on the
     // cube thumbnail — which reads as a broken 3D model rather than as a
@@ -116,7 +118,7 @@ class ArtifactsTab extends StatelessWidget {
     return ArtifactCubeThumbnail(artifact: art, size: 104);
   }
 
-  Widget _buildBadge(Artifact art) {
+  Widget _buildBadge(BuildContext context, Artifact art) {
     if (art.modelStatus == ModelStatus.generating) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -125,18 +127,18 @@ class ArtifactsTab extends StatelessWidget {
           borderRadius: AppTheme.brPill,
           boxShadow: AppTheme.shadowSm,
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
+            const SizedBox(
               width: 10,
               height: 10,
               child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.sand),
             ),
-            SizedBox(width: 6),
+            const SizedBox(width: 6),
             Text(
-              'Generating 3D…',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.sand),
+              AppLocalizations.of(context).artifactGenerating3d,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.sand),
             ),
           ],
         ),
@@ -151,14 +153,14 @@ class ArtifactsTab extends StatelessWidget {
           borderRadius: AppTheme.brPill,
           boxShadow: AppTheme.shadowSm,
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 12, color: Colors.white),
-            SizedBox(width: 4),
+            const Icon(Icons.error_outline, size: 12, color: Colors.white),
+            const SizedBox(width: 4),
             Text(
-              '3D Failed',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+              AppLocalizations.of(context).artifact3dFailed,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
             ),
           ],
         ),
@@ -173,9 +175,9 @@ class ArtifactsTab extends StatelessWidget {
           borderRadius: AppTheme.brPill,
           boxShadow: AppTheme.shadowSm,
         ),
-        child: const Text(
-          '3D Model',
-          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTheme.onAccent),
+        child: Text(
+          AppLocalizations.of(context).artifact3dModel,
+          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTheme.onAccent),
         ),
       );
     }
@@ -206,10 +208,10 @@ class ArtifactsTab extends StatelessWidget {
             child: const Icon(Icons.photo_library_outlined, color: AppTheme.onNavy, size: 32),
           ),
           const SizedBox(height: 16),
-          Text('No scans yet', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 18)),
+          Text(AppLocalizations.of(context).folderNoScans, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 18)),
           const SizedBox(height: 8),
           Text(
-            'Complete scan and video tasks on your route to fill this folder.',
+            AppLocalizations.of(context).folderNoScansBody,
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, color: AppTheme.text.withValues(alpha: 0.7)),
           ),

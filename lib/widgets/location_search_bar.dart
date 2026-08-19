@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import '../blocs/app/app_bloc.dart';
 import '../blocs/app/app_event.dart';
 import '../theme.dart';
+import '../l10n/app_localizations.dart';
 import '../utils/geojson_parser.dart';
 
 class LocationSearchBar extends StatefulWidget {
@@ -28,7 +29,10 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
 
       serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location services disabled.')));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(AppLocalizations.of(context).locationServicesDisabled)));
+        }
         return;
       }
 
@@ -36,26 +40,40 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permissions denied.')));
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(AppLocalizations.of(context).locationPermissionDenied)));
+          }
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permissions permanently denied.')));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(AppLocalizations.of(context)
+                  .locationPermissionPermanentlyDenied)));
+        }
         return;
       }
 
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Locating...')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(AppLocalizations.of(context).locationLocating)));
+      }
 
       final position = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
       bloc.add(SetMapCenterEvent(LatLng(position.latitude, position.longitude)));
     } catch (e) {
       if (context.mounted) {
         if (e.toString().contains('MissingPluginException')) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please completely STOP and restart flutter run to compile the GPS plugin!')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content:
+                  Text(AppLocalizations.of(context).locationRestartRequired)));
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content:
+                  Text(AppLocalizations.of(context).genericError(e.toString()))));
         }
       }
     }
@@ -106,7 +124,7 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
           onChanged: (_) => controller.openView(),
           onSubmitted: _onSubmitted,
           leading: const Icon(Icons.search, size: 19, color: AppTheme.text),
-          hintText: 'Search for a wilaya...',
+          hintText: AppLocalizations.of(context).searchWilayaHint,
           textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 14)),
           hintStyle: WidgetStatePropertyAll(
               TextStyle(color: AppTheme.text.withValues(alpha: 0.5), fontSize: 14)),
@@ -116,13 +134,18 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
         );
       },
       suggestionsBuilder: (BuildContext context, SearchController controller) async {
+        // Read before the await: the suggestions are built after a network
+        // round-trip, by which point this context may be gone.
+        final l10n = AppLocalizations.of(context);
         final query = controller.text;
         final places = await _fetchPlaces(query);
 
         return [
           ListTile(
             leading: const Icon(Icons.my_location, color: AppTheme.accent),
-            title: const Text('My location', style: TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold)),
+            title: Text(l10n.searchMyLocation,
+                style: const TextStyle(
+                    color: AppTheme.accent, fontWeight: FontWeight.bold)),
             onTap: () {
               controller.closeView(controller.text);
               _handleMyLocation(context);
@@ -130,9 +153,9 @@ class _LocationSearchBarState extends State<LocationSearchBar> {
           ),
           const Divider(height: 1),
           if (query.isNotEmpty && places.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text('No wilayas found.'),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(l10n.searchNoWilayas),
             ),
           ...places.map((place) {
             return ListTile(

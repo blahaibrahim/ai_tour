@@ -37,6 +37,11 @@ const MAX_TIME_BUDGET_MINUTES = 3 * 24 * 60;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Bounds the LLM interpretation call's own cost, not a UX judgement — a
+ * description worth reading fits well inside this, and a body far past it is
+ * the one input shape validated away before a Groq call is even attempted. */
+const MAX_PROMPT_LENGTH = 280;
+
 /**
  * Translates a module error into its status code and body.
  *
@@ -103,6 +108,21 @@ function parseRouteRequest(
     categoryKeys = body.category_keys.filter((k): k is string => typeof k === "string").slice(0, 20);
   }
 
+  // From the prompt interpreter (`POST /api/routes/interpret`), not the chip
+  // picker — ranking preference, not a filter, see `RouteRequest`'s own
+  // docstring. Same shape and same 20-key cap as `category_keys` above; kept
+  // as a separate block rather than merged because the two fields answer
+  // different questions and a shared validator would blur that.
+  let preferredCategoryKeys: string[] | undefined;
+  if (body.preferred_category_keys !== undefined) {
+    if (!Array.isArray(body.preferred_category_keys)) {
+      return { error: "bad_request", message: "preferred_category_keys must be an array of strings" };
+    }
+    preferredCategoryKeys = body.preferred_category_keys
+      .filter((k): k is string => typeof k === "string")
+      .slice(0, 20);
+  }
+
   const locale = (body.locale ?? "en") as Locale;
   if (!LOCALES.has(locale)) {
     return { error: "bad_request", message: `locale must be one of ${[...LOCALES].join(", ")}` };
@@ -114,6 +134,7 @@ function parseRouteRequest(
     timeBudgetMinutes: timeBudget,
     transportMode,
     categoryKeys,
+    preferredCategoryKeys,
     locale,
     userId,
     sessionId: typeof body.session_id === "string" ? body.session_id : null,
@@ -268,6 +289,73 @@ routesRouter.get(
           label_fr: t.labelFr,
           label_ar: t.labelAr,
         })),
+      });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  }),
+);
+
+/**
+ * Reads a free-text description of the trip and returns the theme and
+ * preferred categories it maps to — the LLM half of the request builder's
+ * prompt field (`domain/promptInterpreter.ts`).
+ *
+ * Always 200. There is no failure mode a client needs to branch on: an
+ * unparseable prompt, a prompt with nothing recognisable in it, and Groq
+ * being unreachable all come back the same way — `understood: false`, an
+ * empty `category_keys`, and whatever `theme` the caller already had. A
+ * theme is never required (spec-adjacent — see `RouteRequest.theme`'s own
+ * optionality on the client), so there is nothing here worth a 422 or a 503
+ * over; the traveller's route still generates from the unread prompt exactly
+ * as it would from no prompt at all.
+ */
+routesRouter.post(
+  "/api/routes/interpret",
+  asyncHandler(async (req, res) => {
+    // A per-user bucket tighter than the read endpoints': this one spends a
+    // Groq call, unlike `/api/categories`'s two RPC reads.
+    const auth = await authenticateAndRateLimit(req, "interpret_prompt", 120, "1 hour");
+    if (auth.failure) return res.status(auth.failure.status).json(auth.failure.body);
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    if (!prompt || prompt.length > MAX_PROMPT_LENGTH) {
+      return res.status(400).json({
+        error: "bad_request",
+        message: `prompt is required and must be at most ${MAX_PROMPT_LENGTH} characters`,
+      });
+    }
+
+    const cityId = body.city_id;
+    if (typeof cityId !== "string" || !UUID_RE.test(cityId)) {
+      return res.status(400).json({ error: "bad_request", message: "city_id must be a uuid" });
+    }
+
+    const theme = typeof body.theme === "string" ? body.theme.trim() : undefined;
+    if (theme !== undefined && theme.length > 60) {
+      return res.status(400).json({ error: "bad_request", message: "theme must be at most 60 characters" });
+    }
+
+    const locale = (body.locale ?? "en") as Locale;
+    if (!LOCALES.has(locale)) {
+      return res
+        .status(400)
+        .json({ error: "bad_request", message: `locale must be one of ${[...LOCALES].join(", ")}` });
+    }
+
+    try {
+      const result = await routeGeneration.interpretPrompt({
+        prompt,
+        cityId,
+        theme: theme || undefined,
+        locale,
+      });
+      return res.json({
+        theme: result.theme,
+        category_keys: result.categoryKeys,
+        understood: result.understood,
       });
     } catch (error) {
       return sendError(res, error);

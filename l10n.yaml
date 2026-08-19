@@ -1,0 +1,21 @@
+# Drives `flutter gen-l10n`, which pubspec's `generate: true` runs on every
+# build. As of Flutter 3.29 the generated sources are written next to the ARBs
+# (lib/l10n/app_localizations*.dart) rather than into a synthetic package, so
+# they are ordinary library files — checked in, so a fresh clone analyses
+# before it has been built once.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: app_localizations.dart
+
+# English is the source of truth: every string is authored in app_en.arb first,
+# and fr/ar are translations of it. A key absent from a translation falls back
+# to the English text rather than rendering blank, so a partial translation is
+# always shippable. Redirected to a file because otherwise every untranslated
+# key is a warning on stdout, and a wall of those is a wall nobody reads.
+untranslated-messages-file: l10n_missing.txt
+
+# `AppLocalizations.of(context)` returns non-null. It can only be null when the
+# delegate is missing from the MaterialApp, which is a wiring mistake that
+# should blow up loudly at the first lookup rather than be `?.`-guarded at
+# every call site.
+nullable-getter: false

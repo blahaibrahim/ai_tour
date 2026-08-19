@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/reward.dart';
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// Confirms one purchase before it happens.
 ///
@@ -81,40 +82,40 @@ class _RedeemSheet extends StatelessWidget {
             ),
             AppTheme.gap5,
             _Line(
-              label: 'Costs',
-              value: '${reward.costPoints} points',
+              label: AppLocalizations.of(context).redeemCosts,
+              value: AppLocalizations.of(context).balancePoints(reward.costPoints),
               emphasis: true,
             ),
             if (remaining != null) ...[
               const SizedBox(height: 8),
               _Line(
-                label: short ? 'You are short' : 'Left afterwards',
-                value: short
-                    ? '${-remaining} points'
-                    : '$remaining points',
+                label: short
+                    ? AppLocalizations.of(context).redeemYouAreShort
+                    : AppLocalizations.of(context).redeemLeftAfterwards,
+                value: AppLocalizations.of(context)
+                    .balancePoints(short ? -remaining : remaining),
                 tint: short ? AppTheme.error : null,
               ),
             ],
             if (!reward.repeatable) ...[
               AppTheme.gap4,
-              const _Note(
+              _Note(
                 icon: Icons.lock_outline,
-                text: 'Bought once and kept. There is no way to sell it back.',
+                text: AppLocalizations.of(context).redeemNoteInstant,
               ),
             ],
             if (reward.isVoucher) ...[
               AppTheme.gap3,
-              const _Note(
+              _Note(
                 icon: Icons.schedule,
-                text: 'A code to show in person. It lasts 14 days, then the '
-                    'points come back to you.',
+                text: AppLocalizations.of(context).redeemNoteVoucher,
               ),
             ],
             if (reward.kind == RewardKind.physical) ...[
               AppTheme.gap3,
-              const _Note(
+              _Note(
                 icon: Icons.person_outline,
-                text: 'Needs an account — this is something we hand you.',
+                text: AppLocalizations.of(context).redeemNoteManual,
               ),
             ],
             AppTheme.gap6,
@@ -127,7 +128,7 @@ class _RedeemSheet extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       foregroundColor: AppTheme.textSecondary,
                     ),
-                    child: const Text('Not yet'),
+                    child: Text(AppLocalizations.of(context).redeemNotYet),
                   ),
                 ),
                 AppTheme.gap3,
@@ -143,7 +144,9 @@ class _RedeemSheet extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: AppTheme.brMd),
                     ),
-                    child: Text(short ? 'Not enough points' : 'Redeem'),
+                    child: Text(short
+                        ? AppLocalizations.of(context).redeemNotEnoughPoints
+                        : AppLocalizations.of(context).redeemConfirm),
                   ),
                 ),
               ],

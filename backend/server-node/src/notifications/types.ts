@@ -10,7 +10,14 @@
 /** What a notification is *about*. Doubles as the `notification_log.kind`
  * value and as the per-category opt-out column name on `notification_prefs`,
  * so the three never drift apart. */
-export type NotificationKind = "route_ready" | "model_ready" | "mascot_nearby";
+export type NotificationKind =
+  | "route_ready"
+  | "model_ready"
+  | "mascot_nearby"
+  /** Footage this traveller recorded became a gaussian splat. Sent from the
+   * studio dashboard, days after the capture, and the only one of the four
+   * whose subject is a thing to go and look at rather than a status. */
+  | "splat_ready";
 
 export interface PushPayload {
   title: string;
@@ -33,6 +40,7 @@ export interface NotificationPrefs {
   routeReady: boolean;
   modelReady: boolean;
   mascotNearby: boolean;
+  splatReady: boolean;
 }
 
 /** The prefs a user who has never answered the "Notify me" prompt has.
@@ -53,6 +61,7 @@ export function defaultPrefs(userId: string): NotificationPrefs {
     routeReady: true,
     modelReady: true,
     mascotNearby: true,
+    splatReady: true,
   };
 }
 

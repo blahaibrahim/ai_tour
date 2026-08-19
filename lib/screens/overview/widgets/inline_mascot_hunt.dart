@@ -14,6 +14,7 @@ import '../../../services/api_client.dart';
 import '../../../services/heading_service.dart';
 import '../../../services/notification_service.dart';
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../widgets/pressable_scale.dart';
 import '../../ar_hunt/ar_hunt_screen.dart';
 
@@ -287,39 +288,40 @@ class _InlineMascotHuntState extends State<InlineMascotHunt> {
   }
 
   Widget _buildBody(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     // Show loading while fetching the real spawn manifest.
     if (_spawnLoading) {
-      return const _HuntNote(message: 'Loading AR data…', showSpinner: true);
+      return _HuntNote(message: l10n.huntLoadingArData, showSpinner: true);
     }
     switch (_availability) {
       case null:
-        return const _HuntNote(
-          message: 'Finding your position…',
+        return _HuntNote(
+          message: l10n.huntFindingPosition,
           showSpinner: true,
         );
       case HuntAvailability.serviceDisabled:
         return _HuntNote(
           icon: Icons.location_off_outlined,
-          message: 'Turn on location services to start the hunt.',
-          action: ('Try again', _start),
+          message: l10n.huntTurnOnLocation,
+          action: (l10n.actionTryAgain, _start),
         );
       case HuntAvailability.permissionDenied:
         return _HuntNote(
           icon: Icons.location_off_outlined,
-          message: 'The hunt needs your location to guide you to the fennec.',
-          action: ('Allow', _start),
+          message: l10n.huntNeedsLocation,
+          action: (l10n.actionAllow, _start),
         );
       case HuntAvailability.permissionDeniedForever:
         return _HuntNote(
           icon: Icons.location_off_outlined,
-          message: 'Location is turned off for this app. Enable it in Settings to hunt.',
-          action: ('Settings', openAppSettings),
+          message: l10n.huntLocationOffForApp,
+          action: (l10n.actionSettings, openAppSettings),
         );
       case HuntAvailability.ready:
         final state = _state;
         if (state == null) {
-          return const _HuntNote(
-            message: 'Getting a fix on your position…',
+          return _HuntNote(
+            message: l10n.huntGettingFix,
             showSpinner: true,
           );
         }
@@ -352,7 +354,7 @@ class _InlineMascotHuntState extends State<InlineMascotHunt> {
                     children: [
                       Flexible(
                         child: Text(
-                          _bandLabel(state.band),
+                          _bandLabel(AppLocalizations.of(context), state.band),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -364,8 +366,10 @@ class _InlineMascotHuntState extends State<InlineMascotHunt> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _distanceLabel(state.distanceMeters) +
-                            _accuracyNote(state.accuracyMeters),
+                        _distanceLabel(
+                                AppLocalizations.of(context), state.distanceMeters) +
+                            _accuracyNote(AppLocalizations.of(context),
+                                state.accuracyMeters),
                         style: const TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
@@ -376,7 +380,7 @@ class _InlineMascotHuntState extends State<InlineMascotHunt> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _bandHint(state.band),
+                    _bandHint(AppLocalizations.of(context), state.band),
                     maxLines: 2,
                     style: const TextStyle(
                       fontSize: 11.5,
@@ -401,7 +405,7 @@ class _InlineMascotHuntState extends State<InlineMascotHunt> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Testing mode — this fennec was spawned near you, not at the stop.',
+                  AppLocalizations.of(context).huntTestingModeNote,
                   style: TextStyle(
                     fontSize: 10.5,
                     color: AppTheme.text.withValues(alpha: 0.5),
@@ -416,32 +420,32 @@ class _InlineMascotHuntState extends State<InlineMascotHunt> {
   }
 }
 
-String _distanceLabel(double meters) {
-  if (meters < 1) return 'Right under your nose';
-  if (meters < 1000) return '${meters.round()} m away';
-  return '${(meters / 1000).toStringAsFixed(1)} km away';
+String _distanceLabel(AppLocalizations l10n, double meters) {
+  if (meters < 1) return l10n.huntRightUnderYourNose;
+  if (meters < 1000) return l10n.huntMetersAway(meters.round());
+  return l10n.huntKilometersAway((meters / 1000).toStringAsFixed(1));
 }
 
 /// Appended to the distance once the fix is loose enough that walking a few
 /// metres won't visibly move the number — otherwise a noisy GPS reads as a
 /// broken tracker.
-String _accuracyNote(double accuracyMeters) =>
-    accuracyMeters > 15 ? ' ±${accuracyMeters.round()} m' : '';
+String _accuracyNote(AppLocalizations l10n, double accuracyMeters) =>
+    accuracyMeters > 15 ? l10n.huntAccuracyNote(accuracyMeters.round()) : '';
 
-String _bandLabel(ProximityBand band) => switch (band) {
-      ProximityBand.frozen => 'Ice cold',
-      ProximityBand.cold => 'Cold',
-      ProximityBand.warm => 'Getting warmer',
-      ProximityBand.hot => 'Hot!',
-      ProximityBand.burning => "It's right here!",
+String _bandLabel(AppLocalizations l10n, ProximityBand band) => switch (band) {
+      ProximityBand.frozen => l10n.huntBandFrozen,
+      ProximityBand.cold => l10n.huntBandCold,
+      ProximityBand.warm => l10n.huntBandWarm,
+      ProximityBand.hot => l10n.huntBandHot,
+      ProximityBand.burning => l10n.huntBandBurning,
     };
 
-String _bandHint(ProximityBand band) => switch (band) {
-      ProximityBand.frozen => 'Somewhere out there — follow the arrow',
-      ProximityBand.cold => 'Keep exploring in that direction',
-      ProximityBand.warm => "You're on the right track",
-      ProximityBand.hot => 'So close now — a few more steps',
-      ProximityBand.burning => 'Open the camera to catch it',
+String _bandHint(AppLocalizations l10n, ProximityBand band) => switch (band) {
+      ProximityBand.frozen => l10n.huntHintFrozen,
+      ProximityBand.cold => l10n.huntHintCold,
+      ProximityBand.warm => l10n.huntHintWarm,
+      ProximityBand.hot => l10n.huntHintHot,
+      ProximityBand.burning => l10n.huntHintBurning,
     };
 
 Color _bandColor(ProximityBand band) => switch (band) {
@@ -614,7 +618,9 @@ class _CameraCta extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              enabled ? 'Open camera' : 'Get closer to unlock the camera',
+              enabled
+                  ? AppLocalizations.of(context).huntOpenCamera
+                  : AppLocalizations.of(context).huntGetCloser,
               style: TextStyle(
                 color: enabled ? AppTheme.onAccent : AppTheme.textSecondary,
                 fontSize: 12.5,

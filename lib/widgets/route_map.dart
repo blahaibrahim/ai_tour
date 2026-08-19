@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/route.dart';
+import '../l10n/app_localizations.dart';
 import '../theme.dart';
 
 /// Draws a generated route: its legs as polylines and its stops as numbered
@@ -282,6 +283,7 @@ class _StopPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final (background, foreground) = switch ((isActive, isVisited)) {
       (true, _) => (AppTheme.accent, AppTheme.onAccent),
       (_, true) => (AppTheme.success, Colors.white),
@@ -292,8 +294,9 @@ class _StopPin extends StatelessWidget {
 
     return Semantics(
       button: onTap != null,
-      label: 'Stop ${index + 1}, ${stop.name}'
-          '${isActive ? ', current stop' : ''}${isVisited ? ', visited' : ''}',
+      label: l10n.routeSummaryStopSemantic(index + 1, stop.name) +
+          (isActive ? l10n.routeSummaryCurrentStop : '') +
+          (isVisited ? l10n.routeSummaryVisited : ''),
       child: GestureDetector(
         onTap: onTap,
         // The pin is smaller than the minimum tap target, so the marker's full
@@ -341,6 +344,7 @@ class RouteMapLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final hasDrive = route.segments.any((s) => s.mode == SegmentMode.drive);
 
     return Wrap(
@@ -351,12 +355,12 @@ class RouteMapLegend extends StatelessWidget {
           _LegendEntry(
             color: AppTheme.driveColor,
             dashed: false,
-            label: 'Drive · ${formatMinutes(route.driveMinutes)}',
+            label: l10n.routeLegendDrive(formatMinutes(l10n, route.driveMinutes)),
           ),
         _LegendEntry(
           color: AppTheme.walkColor,
           dashed: true,
-          label: 'Walk · ${formatMinutes(route.walkMinutes)}',
+          label: l10n.routeLegendWalk(formatMinutes(l10n, route.walkMinutes)),
         ),
       ],
     );

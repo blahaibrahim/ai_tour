@@ -1,3 +1,8 @@
+import 'dart:convert';
+
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../models/route.dart';
 import '../services/api_client.dart';
 import '../services/backend_monitor.dart';
@@ -20,6 +25,10 @@ import '../services/demo_data.dart';
 /// instead. The bloc turns whatever does get thrown into its own message.
 class RouteRepository {
   const RouteRepository._();
+
+  static String? get _userId => Supabase.instance.client.auth.currentUser?.id;
+  static String _checkpointOutboxKey(String userId) =>
+      'massar_checkpoint_outbox_$userId';
 
   /// Cities, with the rollout status that says whether each can be routed.
   static Future<List<City>> fetchCities() async {
@@ -60,12 +69,19 @@ class RouteRepository {
   }
 
   /// Generates a route. One request, one response.
+  ///
+  /// [categoryKeys] is a hard filter — the request builder's own chip
+  /// selection, narrowing eligibility. [preferredCategoryKeys] is a ranking
+  /// preference — categories `PromptInterpretationRepository` read out of the
+  /// free-text prompt — and never excludes a stop on its own; see
+  /// `RouteRequest.preferredCategoryKeys` on the server for the reasoning.
   static Future<GeneratedRoute> generateRoute({
     required String cityId,
     required String theme,
     required int timeBudgetMinutes,
     required TransportMode transportMode,
     List<String>? categoryKeys,
+    List<String>? preferredCategoryKeys,
     String locale = 'en',
   }) async {
     try {
@@ -75,6 +91,8 @@ class RouteRepository {
         'time_budget_minutes': timeBudgetMinutes,
         'transport_mode': transportMode.wire,
         if (categoryKeys != null && categoryKeys.isNotEmpty) 'category_keys': categoryKeys,
+        if (preferredCategoryKeys != null && preferredCategoryKeys.isNotEmpty)
+          'preferred_category_keys': preferredCategoryKeys,
         'locale': locale,
       });
       return GeneratedRoute.fromJson(data);
@@ -132,6 +150,7 @@ class RouteRepository {
     required int timeBudgetMinutes,
     required TransportMode transportMode,
     List<String>? categoryKeys,
+    List<String>? preferredCategoryKeys,
   }) async {
     try {
       final data = await ApiClient.post('/api/routes/$routeId/refine', body: {
@@ -141,6 +160,8 @@ class RouteRepository {
         'time_budget_minutes': timeBudgetMinutes,
         'transport_mode': transportMode.wire,
         if (categoryKeys != null && categoryKeys.isNotEmpty) 'category_keys': categoryKeys,
+        if (preferredCategoryKeys != null && preferredCategoryKeys.isNotEmpty)
+          'preferred_category_keys': preferredCategoryKeys,
       });
       return GeneratedRoute.fromJson(data);
     } catch (e) {
@@ -196,7 +217,8 @@ class RouteRepository {
   /// Best-effort on purpose: whether the traveller was inside the stop's
   /// `checkpointRadiusMeters`, and for how long, is the AR trigger service's
   /// decision. A dropped checkpoint must not block the tour, so this swallows
-  /// its own failures rather than surfacing them.
+  /// its own failures — but unlike before, failures are **queued** in a
+  /// SharedPreferences outbox and retried when connectivity returns.
   static Future<bool> recordCheckpoint({
     required String progressId,
     required String poiId,
@@ -204,9 +226,109 @@ class RouteRepository {
     try {
       await ApiClient.post('/api/progress/$progressId/checkpoint', body: {'poi_id': poiId});
       return true;
-    } catch (_) {
+    } catch (e) {
+      if (e is ApiException && !e.isRetryable) {
+        // The server answered and explicitly rejected it (e.g. 400 or 409).
+        // Queuing would retry it on every launch forever, so it is dropped.
+        return false;
+      }
+      
+      // Enqueue for later — the tour continues regardless.
+      await _enqueueCheckpoint(_CheckpointEntry(
+        progressId: progressId,
+        poiId: poiId,
+        timestamp: DateTime.now().toIso8601String(),
+      ));
       return false;
     }
+  }
+
+  /// Retries all checkpoints queued while offline. Safe to call often — exits
+  /// immediately when the outbox is empty.
+  ///
+  /// Returns the number of entries that were successfully flushed.
+  static Future<int> flushCheckpointOutbox() async {
+    final userId = _userId;
+    if (userId == null) return 0;
+
+    final pending = await _readCheckpointOutbox(userId);
+    if (pending.isEmpty) return 0;
+
+    final stillPending = <_CheckpointEntry>[];
+    var flushed = 0;
+    for (final entry in pending) {
+      try {
+        await ApiClient.post(
+          '/api/progress/${entry.progressId}/checkpoint',
+          body: {'poi_id': entry.poiId},
+        );
+        flushed++;
+      } catch (e) {
+        if (e is ApiException && !e.isRetryable) {
+          // The server rejected it. Drop it.
+        } else {
+          // Network error or 5xx. Keep it in the outbox.
+          stillPending.add(entry);
+        }
+      }
+    }
+
+    await _writeCheckpointOutbox(userId, stillPending);
+    return flushed;
+  }
+
+  /// How many checkpoint entries are waiting to sync.
+  static Future<int> pendingCheckpointCount() async {
+    final userId = _userId;
+    if (userId == null) return 0;
+    return (await _readCheckpointOutbox(userId)).length;
+  }
+
+  // -- checkpoint outbox internals -------------------------------------------
+
+  static Future<List<_CheckpointEntry>> _readCheckpointOutbox(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_checkpointOutboxKey(userId));
+      if (raw == null || raw.isEmpty) return const [];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return [
+        for (final item in decoded)
+          if (item is Map<String, dynamic>) _CheckpointEntry.fromJson(item),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> _writeCheckpointOutbox(
+      String userId, List<_CheckpointEntry> entries) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (entries.isEmpty) {
+        await prefs.remove(_checkpointOutboxKey(userId));
+        return;
+      }
+      await prefs.setString(
+        _checkpointOutboxKey(userId),
+        jsonEncode([for (final e in entries) e.toJson()]),
+      );
+    } catch (_) {
+      // Losing the queue loses checkpoints — unfortunate but not tour-breaking.
+    }
+  }
+
+  static Future<void> _enqueueCheckpoint(_CheckpointEntry entry) async {
+    final userId = _userId;
+    if (userId == null) return;
+    final pending = await _readCheckpointOutbox(userId);
+    // Deduplicate: same progress + POI means the same arrival.
+    if (pending.any((e) =>
+        e.progressId == entry.progressId && e.poiId == entry.poiId)) {
+      return;
+    }
+    await _writeCheckpointOutbox(userId, [...pending, entry]);
   }
 }
 
@@ -216,3 +338,30 @@ class RouteRepository {
 /// throwing.
 bool _isBackendUnreachable(Object error) =>
     (error is ApiException && error.isTransport) || isConnectivityError(error);
+
+/// A checkpoint recorded during the tour, queued for sync.
+class _CheckpointEntry {
+  const _CheckpointEntry({
+    required this.progressId,
+    required this.poiId,
+    required this.timestamp,
+  });
+
+  final String progressId;
+  final String poiId;
+  final String timestamp;
+
+  Map<String, dynamic> toJson() => {
+        'progress_id': progressId,
+        'poi_id': poiId,
+        'timestamp': timestamp,
+      };
+
+  factory _CheckpointEntry.fromJson(Map<String, dynamic> json) =>
+      _CheckpointEntry(
+        progressId: json['progress_id'] as String? ?? '',
+        poiId: json['poi_id'] as String? ?? '',
+        timestamp: json['timestamp'] as String? ?? '',
+      );
+}
+

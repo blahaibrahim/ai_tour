@@ -4,6 +4,7 @@ import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
 import '../../../blocs/app/app_state.dart';
 import '../../../models/route.dart' show formatMinutes;
+import '../../../l10n/app_localizations.dart';
 import '../../../theme.dart';
 import '../../../widgets/glass_surface.dart';
 import '../../../widgets/location_search_bar.dart';
@@ -94,7 +95,7 @@ class _MapBottomPanelState extends State<MapBottomPanel> {
                 const SizedBox(height: 8),
                 _DetailsToggle(
                   expanded: _expanded,
-                  summary: _summarise(state),
+                  summary: _summarise(AppLocalizations.of(context), state),
                   onTap: () => setState(() => _expanded = !_expanded),
                 ),
 
@@ -104,7 +105,8 @@ class _MapBottomPanelState extends State<MapBottomPanel> {
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 48),
                   ),
-                  child: const Text('Generate my route', style: TextStyle(fontSize: 14.5)),
+                  child: Text(AppLocalizations.of(context).mapGenerateRoute,
+                      style: const TextStyle(fontSize: 14.5)),
                 ),
               ],
             ),
@@ -115,10 +117,10 @@ class _MapBottomPanelState extends State<MapBottomPanel> {
   }
 
   /// One line standing in for everything the collapsed panel hides.
-  static String _summarise(AppState state) {
+  static String _summarise(AppLocalizations l10n, AppState state) {
     final parts = <String>[
-      '${state.tripDays} ${state.tripDays == 1 ? 'day' : 'days'}',
-      formatMinutes(state.hoursPerDay * 60),
+      l10n.mapTripDays(state.tripDays),
+      formatMinutes(l10n, state.hoursPerDay * 60),
     ];
     final prompt = state.prompt.trim();
     if (prompt.isNotEmpty) parts.add(prompt);
@@ -135,7 +137,7 @@ class _GrabHandle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: 'Expand or collapse trip options',
+      label: AppLocalizations.of(context).mapExpandTripOptions,
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
@@ -177,16 +179,16 @@ class _SelectedWilayas extends StatelessWidget {
           final name = _selectedName(snapshot.data);
 
           if (name == null) {
-            return const Row(
+            return Row(
               children: [
-                Icon(Icons.touch_app_outlined, size: 15, color: AppTheme.textSecondary),
-                SizedBox(width: 6),
+                const Icon(Icons.touch_app_outlined, size: 15, color: AppTheme.textSecondary),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Tap the map to pick a wilaya',
+                    AppLocalizations.of(context).mapTapToPickWilaya,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+                    style: const TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
                   ),
                 ),
               ],
@@ -219,12 +221,12 @@ class _SelectedWilayas extends StatelessWidget {
               // Says how to change it, since tapping a second wilaya swapping
               // out the first is the one thing about single-select that isn't
               // guessable from looking at it.
-              const Flexible(
+              Flexible(
                 child: Text(
-                  'Tap another to switch',
+                  AppLocalizations.of(context).mapTapAnotherToSwitch,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary),
+                  style: const TextStyle(fontSize: 11.5, color: AppTheme.textSecondary),
                 ),
               ),
             ],
@@ -254,7 +256,7 @@ class _PromptField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          "TELL THE AI WHAT YOU'RE AFTER",
+          AppLocalizations.of(context).mapPromptHeading,
           style: TextStyle(
             fontSize: 10,
             letterSpacing: 0.8,
@@ -273,7 +275,7 @@ class _PromptField extends StatelessWidget {
             textInputAction: TextInputAction.search,
             onChanged: onChanged,
             decoration: InputDecoration(
-              hintText: 'quiet Roman ruins, coastal viewpoints...',
+              hintText: AppLocalizations.of(context).mapPromptHint,
               hintStyle: TextStyle(color: AppTheme.text.withValues(alpha: 0.4), fontSize: 13),
               filled: false,
               border: InputBorder.none,
@@ -314,7 +316,7 @@ class _DetailsToggle extends StatelessWidget {
                 // Collapsed, the row has to say what is behind it; expanded,
                 // the controls themselves say it and repeating the summary
                 // would just be a second, staler copy of them.
-                expanded ? 'Hide trip options' : summary,
+                expanded ? AppLocalizations.of(context).mapHideTripOptions : summary,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(

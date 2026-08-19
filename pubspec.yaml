@@ -32,6 +32,12 @@ dependencies:
   flutter_dotenv: ^5.2.0
   flutter_image_compress: ^2.3.0
   flutter_local_notifications: ^18.0.1
+  # Ships the Material/Cupertino/Widgets translations (date pickers, the
+  # "Back" tooltip, text-selection menus) and, for Arabic, the directionality
+  # that makes the whole tree lay itself out right-to-left. Without it the app
+  # would be translated but still mirrored the wrong way round.
+  flutter_localizations:
+    sdk: flutter
   flutter_map: ^8.3.1
   flutter_secure_storage: ^10.3.1
   geolocator: ^14.0.3
@@ -39,6 +45,10 @@ dependencies:
   google_mlkit_image_labeling: ^0.15.0
   http: ^1.2.0
   image_picker: ^1.2.3
+  # Already present transitively; named explicitly because the sources gen-l10n
+  # writes import it directly, and generated code should not rest on a pin that
+  # something else happens to be dragging in.
+  intl: ^0.20.2
   latlong2: ^0.10.1
   path_provider: ^2.1.6
   permission_handler: ^11.4.0
@@ -67,6 +77,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Runs gen-l10n on every build, turning lib/l10n/*.arb into the AppLocalizations
+  # the app imports. Configured by l10n.yaml.
+  generate: true
 
   assets:
     - assets/3d/fennec.glb

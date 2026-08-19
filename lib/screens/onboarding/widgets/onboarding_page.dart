@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../widgets/staggered_entrance.dart';
 import '../onboarding_content.dart';
 import 'onboarding_art.dart';
@@ -45,12 +46,12 @@ class OnboardingPage extends StatelessWidget {
         );
 
         final title = Text(
-          content.title,
+          content.title(AppLocalizations.of(context)),
           style: textTheme.headlineMedium?.copyWith(fontSize: 28, height: 1.15),
         );
 
         final body = Text(
-          content.body,
+          content.body(AppLocalizations.of(context)),
           style: textTheme.bodyLarge?.copyWith(
             fontSize: 15.5,
             height: 1.55,

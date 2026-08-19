@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_localizations.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../blocs/app/app_bloc.dart';
@@ -39,22 +40,22 @@ class StartRouteCard extends StatelessWidget {
                   color: AppTheme.onAccent, size: 22),
             ),
             const SizedBox(width: AppTheme.space4),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Plan a new route',
-                    style: TextStyle(
+                    AppLocalizations.of(context).homePlanNewRoute,
+                    style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.onAccent,
                     ),
                   ),
-                  SizedBox(height: 2),
+                  const SizedBox(height: 2),
                   Text(
-                    'Pick a city, a theme, and how long you have',
-                    style: TextStyle(fontSize: 13, color: Color(0xCCFFFFFF)),
+                    AppLocalizations.of(context).homePlanNewRouteSubtitle,
+                    style: const TextStyle(fontSize: 13, color: Color(0xCCFFFFFF)),
                   ),
                 ],
               ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../widgets/glass_surface.dart';
 
 /// The wallet, at the top of the rewards screen.
@@ -18,6 +19,9 @@ class BalanceHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Read into a local so it promotes past the null check below — a field
+    // cannot be promoted, and this is the one place the balance is printed.
+    final balance = this.balance;
     return GlassSurface(
       borderRadius: AppTheme.brLg,
       padding: const EdgeInsets.fromLTRB(
@@ -40,7 +44,7 @@ class BalanceHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'TO SPEND',
+                  AppLocalizations.of(context).balanceToSpend,
                   style: TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.bold,
@@ -50,7 +54,9 @@ class BalanceHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  balance == null ? 'Syncing…' : '$balance points',
+                  balance == null
+                      ? AppLocalizations.of(context).balanceSyncing
+                      : AppLocalizations.of(context).balancePoints(balance),
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,

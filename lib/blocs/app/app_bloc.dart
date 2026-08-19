@@ -15,13 +15,16 @@ import '../../repositories/artifact_repository.dart';
 import '../../repositories/capture_repository.dart';
 import '../../repositories/chat_repository.dart';
 import '../../repositories/model_repository.dart';
+import '../../repositories/notification_inbox_repository.dart';
 import '../../repositories/points_repository.dart';
 import '../../repositories/prompt_interpretation_repository.dart';
 import '../../repositories/route_repository.dart';
 import '../../repositories/saved_locations_repository.dart';
 import '../../repositories/session_repository.dart';
 import '../../services/api_client.dart';
+import '../../services/arrival_detector.dart';
 import '../../services/backend_monitor.dart';
+import '../../services/connectivity_service.dart';
 import '../../services/demo_data.dart';
 import '../../services/notification_service.dart';
 import '../../utils/uuid.dart';
@@ -98,18 +101,23 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     on<LoadSavedLocationsEvent>(_onLoadSavedLocations);
     on<LoadArtifactsEvent>(_onLoadArtifacts);
     on<LoadPointsEvent>(_onLoadPoints);
+    on<RefreshUnreadCountEvent>(_onRefreshUnreadCount);
     on<LoadRouteHistoryEvent>(_onLoadRouteHistory);
 
     on<InitTestMascotSpawnEvent>(_onInitTestMascotSpawn);
     on<ToggleArTestingModeEvent>(_onToggleArTestingMode);
     on<RestoreSessionEvent>(_onRestoreSession);
+    on<ConnectivityChangedEvent>(_onConnectivityChanged);
+    on<StopArrivalDetectedEvent>(_onStopArrivalDetected);
 
     _startRealtimeSubscription();
     _watchAuth();
+    _watchConnectivity();
     add(const LoadRouteOptionsEvent());
     add(const LoadSavedLocationsEvent());
     add(const LoadArtifactsEvent());
     add(const LoadPointsEvent());
+    add(const RefreshUnreadCountEvent());
     add(const RestoreSessionEvent());
     if (state.arTestingMode) add(const InitTestMascotSpawnEvent());
   }
@@ -117,6 +125,8 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   Timer? _thinkTimer;
   StreamSubscription<List<Map<String, dynamic>>>? _realtimeSub;
   StreamSubscription<AuthState>? _authSub;
+  StreamSubscription<bool>? _connectivitySub;
+  ArrivalDetector? _arrivalDetector;
 
   /// The bloc is built before the (anonymous) sign-in completes, so anything
   /// keyed on `currentUser` has to be redone once a session actually exists —
@@ -136,6 +146,9 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       // Also drains the offline outbox — this is the first moment in a launch
       // where there is both a session and, usually, a network.
       add(const LoadPointsEvent());
+      // The inbox is per-user and RLS-scoped, so it reads as empty until there
+      // is a session — the same reason everything else here is repeated.
+      add(const RefreshUnreadCountEvent());
     });
   }
 
@@ -185,11 +198,26 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     }
   }
 
+  /// Subscribes to connectivity transitions and dispatches
+  /// [ConnectivityChangedEvent] on each edge.
+  void _watchConnectivity() {
+    _connectivitySub = ConnectivityService.instance.onConnectivityChanged
+        .listen((isOnline) {
+      add(ConnectivityChangedEvent(isOnline));
+    });
+    // Seed the initial state so the banner shows on launch if already offline.
+    if (ConnectivityService.instance.isOffline) {
+      add(const ConnectivityChangedEvent(false));
+    }
+  }
+
   @override
   Future<void> close() {
     _thinkTimer?.cancel();
     _realtimeSub?.cancel();
     _authSub?.cancel();
+    _connectivitySub?.cancel();
+    _arrivalDetector?.stop();
     return super.close();
   }
 
@@ -349,12 +377,17 @@ class AppBloc extends Bloc<AppEvent, AppState> {
           InterpretPromptEvent event, Emitter<AppState> emit) =>
       _interpretInto(emit);
 
-  /// Turns the prompt into a theme and categories.
+  /// Turns the prompt into a theme plus preferred categories, via an LLM
+  /// (Groq) call grounded against the selected city's real vocabulary — see
+  /// `PromptInterpretationRepository`.
   ///
-  /// Anything the interpreter didn't match is left alone rather than cleared:
+  /// A theme the interpreter didn't match is left alone rather than cleared:
   /// a prompt that yields no theme should not wipe the theme already in the
   /// request, or typing an unrecognised sentence would silently narrow the
-  /// trip to nothing.
+  /// trip to nothing. `promptCategoryKeys`, unlike the theme, is fully
+  /// replaced by each interpretation (including back to empty) — it holds
+  /// nothing but the last prompt's own read, never a manual choice, so there
+  /// is nothing worth preserving across a prompt that no longer says it.
   ///
   /// Takes the emitter rather than an event so the generate handler can run it
   /// inline — pressing "Plan my route" has to read the description first, and
@@ -363,22 +396,25 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   Future<void> _interpretInto(Emitter<AppState> emit) async {
     final prompt = state.prompt.trim();
     if (prompt.isEmpty || state.isInterpretingPrompt) return;
+    final cityId = state.selectedCityId;
+    // Nothing to ground the interpretation against yet — the traveller
+    // hasn't dragged the region circle onto a routable city. `canGenerate`
+    // already blocks the button in this state, so this only ever fires while
+    // the field is being typed into ahead of that.
+    if (cityId == null) return;
 
     emit(state.copyWith(isInterpretingPrompt: true));
 
     final interpretation = await PromptInterpretationRepository.interpret(
       prompt: prompt,
-      availableThemes: state.themes,
-      availableCategories: state.categories,
+      cityId: cityId,
     );
 
     emit(state.copyWith(
       isInterpretingPrompt: false,
-      promptInterpreted: !interpretation.isEmpty,
+      promptInterpreted: interpretation.understood,
       selectedTheme: interpretation.themeKey ?? state.selectedTheme,
-      selectedCategoryKeys: interpretation.categoryKeys.isEmpty
-          ? state.selectedCategoryKeys
-          : interpretation.categoryKeys,
+      promptCategoryKeys: interpretation.categoryKeys,
       routeError: null,
       routeErrorCode: null,
     ));
@@ -433,22 +469,22 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     });
 
     try {
-      await Future.delayed(const Duration(seconds: 5)); // Added for testing loading screen
       final route = await RouteRepository.generateRoute(
         cityId: cityId,
         theme: theme,
         timeBudgetMinutes: state.timeBudgetMinutes,
         transportMode: state.transportMode,
         categoryKeys: state.selectedCategoryKeys.toList(),
+        preferredCategoryKeys: state.promptCategoryKeys.toList(),
       );
       _thinkTimer?.cancel();
       add(RouteGeneratedEvent(route));
     } on ApiException catch (e) {
       _thinkTimer?.cancel();
-      add(RouteGenerationFailedEvent(e.errorCode, e.message ?? _messageForCode(e.errorCode)));
+      add(RouteGenerationFailedEvent(e.errorCode, e.message));
     } catch (_) {
       _thinkTimer?.cancel();
-      add(const RouteGenerationFailedEvent('network_error', "Couldn't reach the route service."));
+      add(const RouteGenerationFailedEvent('network_error', null));
     }
   }
 
@@ -481,23 +517,11 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       final route = await RouteRepository.fetchRoute(event.routeId);
       add(RouteGeneratedEvent(route));
     } on ApiException catch (e) {
-      add(RouteGenerationFailedEvent(
-          e.errorCode, e.message ?? _messageForCode(e.errorCode)));
+      add(RouteGenerationFailedEvent(e.errorCode, e.message));
     } catch (_) {
-      add(const RouteGenerationFailedEvent(
-          'network_error', "Couldn't reach the route service."));
+      add(const RouteGenerationFailedEvent('network_error', null));
     }
   }
-
-  /// Copy for the failure modes the old repository collapsed into "no stops".
-  static String _messageForCode(String code) => switch (code) {
-        'city_not_available' => "This city isn't open for routes yet.",
-        'no_eligible_pois' => 'No published stops match that theme here yet.',
-        'time_budget_too_short' => 'That time budget is too short for any stop here.',
-        'routing_provider_unavailable' => 'The routing service is unavailable right now.',
-        'not_implemented' => 'Route generation is not built yet on this server.',
-        _ => 'Something went wrong generating your route.',
-      };
 
   /// Advances the thinking-screen step, stopping at the last one.
   ///
@@ -506,7 +530,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
   /// work having been thrown away and begun again. Holding on the final step
   /// says "still on the last thing", which is true.
   void _onThinkTick(ThinkTickEvent event, Emitter<AppState> emit) {
-    final last = AppState.thinkingMessages.length - 1;
+    final last = AppState.thinkingStepCount - 1;
     if (state.thinkIdx >= last) return;
     emit(state.copyWith(thinkIdx: state.thinkIdx + 1));
   }
@@ -702,6 +726,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
         timeBudgetMinutes: route.timeBudgetMinutes,
         transportMode: route.transportMode,
         categoryKeys: state.selectedCategoryKeys.toList(),
+        preferredCategoryKeys: state.promptCategoryKeys.toList(),
       );
       emit(state.copyWith(route: refined, screen: 'result', isGeneratingRoute: false));
     } catch (_) {
@@ -710,7 +735,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       emit(state.copyWith(
         screen: 'result',
         isGeneratingRoute: false,
-        routeError: "Couldn't drop those stops — showing the route as generated.",
+        routeErrorCode: 'drop_stops_failed',
       ));
     }
   }
@@ -766,8 +791,10 @@ class AppBloc extends Bloc<AppEvent, AppState> {
         isChatLoading: false,
         detailConversation: [
           ...state.detailConversation,
-          const ChatMessage('ai',
-              "Sorry, I couldn't reach the guide right now — try again."),
+          // Empty text under a distinct role: the wording is the app's, not
+          // the guide's, so the overlay translates it at render time rather
+          // than the bloc freezing one language into the transcript.
+          const ChatMessage('error', ''),
         ],
       ));
     }
@@ -817,7 +844,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     // too, and a rule enforced only where it is drawn is a rule that leaks.
     if (!state.canRemoveStop(dropped.dwellMinutes)) {
       emit(state.copyWith(
-        routeError: 'Removing that would leave less than the time you asked for.',
+        routeErrorCode: 'below_budget',
       ));
       return;
     }
@@ -833,12 +860,13 @@ class AppBloc extends Bloc<AppEvent, AppState> {
         timeBudgetMinutes: route.timeBudgetMinutes,
         transportMode: route.transportMode,
         categoryKeys: state.selectedCategoryKeys.toList(),
+        preferredCategoryKeys: state.promptCategoryKeys.toList(),
       );
       emit(state.copyWith(route: refined, isGeneratingRoute: false));
     } catch (_) {
       emit(state.copyWith(
         isGeneratingRoute: false,
-        routeError: "Couldn't remove that stop — try again.",
+        routeErrorCode: 'remove_stop_failed',
       ));
     }
   }
@@ -866,7 +894,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     final offered = <Set<String>>[];
     for (var i = 0; i < stopsAsLocations.length; i++) {
       final type = initialQuestType(random: random);
-      tasks.add(Task(type: type, label: questLabel(type, seed: i), points: 30));
+      tasks.add(Task(type: type, labelSeed: i, points: 30));
       offered.add({type});
     }
 
@@ -876,6 +904,18 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       offeredQuestTypes: offered,
       screen: 'overview',
       routeAccepted: true,
+      currentStopIdx: 0,
+    ));
+
+    // Start GPS-based arrival detection — works entirely offline.
+    _arrivalDetector?.stop();
+    _arrivalDetector = ArrivalDetector(
+      onArrival: (stopIndex, poiId) {
+        if (!isClosed) add(StopArrivalDetectedEvent(stopIndex, poiId));
+      },
+    );
+    unawaited(_arrivalDetector!.start(
+      stops: route.stops,
       currentStopIdx: 0,
     ));
 
@@ -897,10 +937,17 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       RecordCheckpointEvent event, Emitter<AppState> emit) async {
     final progress = state.progress;
     if (progress == null) return;
-    await RouteRepository.recordCheckpoint(
+    
+    final success = await RouteRepository.recordCheckpoint(
       progressId: progress.id,
       poiId: event.poiId,
     );
+    
+    // If the record was queued (success == false) and we are offline,
+    // update the pending count so the banner increments immediately.
+    if (!success && state.isOffline && !isClosed) {
+      emit(state.copyWith(pendingSyncCount: await _pendingSyncCount()));
+    }
   }
 
   Future<void> _onCompleteTask(
@@ -921,7 +968,15 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       add(RecordCheckpointEvent(stops[stopIdx].poiId));
     }
 
-    _emitTotals(await _recordCompletion(stopIdx: stopIdx, task: t), emit);
+    final totals = await _recordCompletion(stopIdx: stopIdx, task: t);
+    
+    // If the completion was queued (_recordCompletion returns null on network 
+    // failure) and we are offline, update the pending count live.
+    if (totals == null && state.isOffline && !isClosed) {
+      emit(state.copyWith(pendingSyncCount: await _pendingSyncCount()));
+    }
+    
+    _emitTotals(totals, emit);
   }
 
   /// Writes one finished task to the durable per-user ledger.
@@ -1007,6 +1062,25 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     ));
   }
 
+  /// Re-reads the unread notification count.
+  ///
+  /// Degrades to leaving the current number alone rather than to zero: a failed
+  /// read is not evidence that the traveller has nothing waiting, and clearing a
+  /// badge on a dropped connection would lose the only thing pointing at a
+  /// notification they have not seen.
+  Future<void> _onRefreshUnreadCount(
+    RefreshUnreadCountEvent event,
+    Emitter<AppState> emit,
+  ) async {
+    if (Supabase.instance.client.auth.currentUser == null) {
+      emit(state.copyWith(unreadNotifications: 0));
+      return;
+    }
+    final count = await NotificationInboxRepository.unreadCount();
+    if (isClosed) return;
+    emit(state.copyWith(unreadNotifications: count));
+  }
+
   /// Reads the traveller's saved score, and pushes up anything stranded offline.
   ///
   /// The cached value is emitted first so the number is on screen immediately;
@@ -1077,7 +1151,7 @@ class AppBloc extends Bloc<AppEvent, AppState> {
     final updatedTasks = List<Task>.from(state.tasks);
     updatedTasks[idx] = Task(
       type: next,
-      label: questLabel(next, seed: idx + offered.length),
+      labelSeed: idx + offered.length,
       state: 'pending',
       points: t.points,
     );
@@ -1120,6 +1194,8 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
   void _onAdvanceStop(AdvanceStopEvent event, Emitter<AppState> emit) {
     if (state.currentStopIdx < state.accepted.length - 1) {
+      // Update arrival detector to watch the next stop.
+      _arrivalDetector?.updateCurrentStop(state.currentStopIdx + 1);
       emit(state.copyWith(currentStopIdx: state.currentStopIdx + 1));
     }
   }
@@ -1526,7 +1602,24 @@ class AppBloc extends Bloc<AppEvent, AppState> {
                 .map((e) => {((e as Map<String, dynamic>)['type'] as String?) ?? 'photo'})
                 .toList(),
         isRestoringSession: false,
+        pendingSyncCount: (sessionData['pendingSyncCount'] as num?)?.toInt() ?? 0,
       ));
+
+      // If the restored session has an accepted route, restart arrival
+      // detection so GPS-based checkpoint recording keeps working.
+      final restoredRoute = state.route;
+      if (state.routeAccepted && restoredRoute != null) {
+        _arrivalDetector?.stop();
+        _arrivalDetector = ArrivalDetector(
+          onArrival: (stopIndex, poiId) {
+            if (!isClosed) add(StopArrivalDetectedEvent(stopIndex, poiId));
+          },
+        );
+        unawaited(_arrivalDetector!.start(
+          stops: restoredRoute.stops,
+          currentStopIdx: state.currentStopIdx,
+        ));
+      }
     } catch (e, st) {
       developer.log('Restore session error', name: 'AppBloc', error: e, stackTrace: st);
       // Malformed beyond parsing (e.g. a schema change since it was saved) —
@@ -1539,6 +1632,8 @@ class AppBloc extends Bloc<AppEvent, AppState> {
 
   void _onLeaveTour(LeaveTourEvent event, Emitter<AppState> emit) {
     _thinkTimer?.cancel();
+    _arrivalDetector?.stop();
+    _arrivalDetector = null;
     emit(state.copyWith(
       // Home, not the planning screen. Leaving a tour is not the same as
       // deciding to build another one straight away, and the route just
@@ -1566,7 +1661,66 @@ class AppBloc extends Bloc<AppEvent, AppState> {
       isChatLoading: false,
       routeError: null,
       routeErrorCode: null,
+      pendingSyncCount: 0,
     ));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Offline support
+  // ---------------------------------------------------------------------------
+
+  /// Handles connectivity transitions. On reconnect, flushes all outboxes and
+  /// refreshes the authoritative score from the server.
+  Future<void> _onConnectivityChanged(
+      ConnectivityChangedEvent event, Emitter<AppState> emit) async {
+    emit(state.copyWith(isOffline: !event.isOnline));
+
+    if (event.isOnline) {
+      // Flush both outboxes — checkpoints and task completions.
+      await RouteRepository.flushCheckpointOutbox();
+      await PointsRepository.flushOutbox();
+
+      // Refresh the score from the server now that we're back.
+      final totals = await PointsRepository.fetchTotals();
+      if (totals != null && !isClosed) {
+        emit(state.copyWith(
+          lifetimePoints: totals.total,
+          pointsBalance: totals.balance,
+        ));
+      }
+
+      // Update pending count (should be 0 or near-0 after flush).
+      if (!isClosed) {
+        emit(state.copyWith(pendingSyncCount: await _pendingSyncCount()));
+      }
+    } else {
+      // Going offline — compute how many items are queued.
+      emit(state.copyWith(pendingSyncCount: await _pendingSyncCount()));
+    }
+  }
+
+  /// GPS confirmed the traveller is inside a stop's checkpoint radius.
+  ///
+  /// Dispatches the existing [RecordCheckpointEvent] so the checkpoint is
+  /// logged (or queued if offline), but does *not* auto-complete the task —
+  /// arriving at a stop and finishing its quest are separate actions.
+  void _onStopArrivalDetected(
+      StopArrivalDetectedEvent event, Emitter<AppState> emit) {
+    // Only record if the detected stop matches the current one the traveller
+    // is on — a stale fix from a previous stop should not re-trigger.
+    if (event.stopIndex != state.currentStopIdx) return;
+
+    final progress = state.progress;
+    if (progress == null) return;
+
+    add(RecordCheckpointEvent(event.poiId));
+  }
+
+  /// Counts queued items across all outboxes for the UI banner.
+  Future<int> _pendingSyncCount() async {
+    final checkpoints = await RouteRepository.pendingCheckpointCount();
+    final tasks = await PointsRepository.pendingOutboxCount();
+    return checkpoints + tasks;
   }
 }
 

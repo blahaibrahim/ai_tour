@@ -33,7 +33,12 @@ import {
 } from "./routeGeneration/adapters/cacheAdapter";
 import { StraightLineRoutingProvider } from "./routeGeneration/adapters/routingProviderAdapter";
 import { cluster, distanceMeters } from "./routeGeneration/domain/clusteringEngine";
-import { fitToBudget, stopsToDrop, valuePerMinute } from "./routeGeneration/domain/budgetFitter";
+import { fitToBudget, rankValue, stopsToDrop, valuePerMinute } from "./routeGeneration/domain/budgetFitter";
+import { interpret as interpretPrompt } from "./routeGeneration/domain/promptInterpreter";
+import {
+  PromptInterpreterUnavailableError,
+  type RawInterpretation,
+} from "./routeGeneration/adapters/promptInterpreterAdapter";
 import { buildSegments } from "./routeGeneration/domain/responseAssembler";
 import {
   nearestNeighbourOrder,
@@ -52,12 +57,19 @@ function check(label: string, got: unknown, expected: unknown): void {
   if (a !== b) failures.push(`${label}\n      expected ${b}\n      got      ${a}`);
 }
 
-function poi(id: string, lat: number, lng: number, dwell = 20, score: number | null = 50): Poi {
+function poi(
+  id: string,
+  lat: number,
+  lng: number,
+  dwell = 20,
+  score: number | null = 50,
+  categoryKey = "museum",
+): Poi {
   return {
     id,
     cityId: "city",
     categoryId: "cat",
-    categoryKey: "museum",
+    categoryKey,
     nameEn: id,
     nameFr: null,
     nameAr: null,
@@ -399,6 +411,279 @@ async function main(): Promise<void> {
     stopsToDrop(ordered, 10_000, 2, 10).size,
     2,
   );
+}
+
+// --- preferred categories (ranking boost, not a filter) ---------------------
+{
+  // A beach and a museum, identically scored — without a preference the tie
+  // break is just id order.
+  const beach = poi("beach", 0, 0, 20, 50, "beach");
+  const museum = poi("museum", 0, 0, 20, 50, "museum");
+  check(
+    "equal-value stops are unaffected with no preference",
+    rankValue(beach) === rankValue(museum),
+    true,
+  );
+  check(
+    "a preferred category outranks an equally-scored one",
+    rankValue(beach, new Set(["beach"])) > rankValue(museum, new Set(["beach"])),
+    true,
+  );
+
+  // The preference must not invert real quality: a much better museum still
+  // beats a mediocre beach even when beach is preferred.
+  const greatMuseum = poi("great-museum", 0, 0, 20, 95, "museum");
+  const okBeach = poi("ok-beach", 0, 0, 20, 30, "beach");
+  check(
+    "a strong non-preferred stop still beats a weak preferred one",
+    rankValue(greatMuseum, new Set(["beach"])) > rankValue(okBeach, new Set(["beach"])),
+    true,
+  );
+
+  // fitToBudget: only enough room for one of two equally-priced, equally-
+  // scored stops — the preferred one must be the one kept.
+  const tightFit = fitToBudget({
+    pois: [poi("b1", 0, 0, 30, 50, "beach"), poi("m1", 0, 0.01, 30, 50, "museum")],
+    timeBudgetMinutes: 40,
+    travelAllowancePerStopMinutes: 10,
+    minimumStops: 1,
+    preferredCategoryKeys: new Set(["beach"]),
+  });
+  check("a preferred category is chosen over an equal-value alternative", tightFit[0]?.id, "b1");
+
+  // A prompt that prefers "beach" must not exclude every non-beach stop —
+  // it is a preference, not a filter. Budget for both, and both must survive.
+  const roomyFit = fitToBudget({
+    pois: [poi("b2", 0, 0, 30, 50, "beach"), poi("m2", 0, 0.01, 30, 50, "museum")],
+    timeBudgetMinutes: 200,
+    travelAllowancePerStopMinutes: 10,
+    minimumStops: 1,
+    preferredCategoryKeys: new Set(["beach"]),
+  });
+  check(
+    "non-preferred stops still make it in when the budget allows",
+    roomyFit.map((p) => p.id).sort(),
+    ["b2", "m2"],
+  );
+
+  // stopsToDrop: same value, but the preferred stop should survive a trim.
+  const dropCandidates = [
+    poi("keep-beach", 0, 0, 30, 50, "beach"),
+    poi("drop-museum", 0, 0.01, 30, 50, "museum"),
+  ];
+  const dropped = stopsToDrop(dropCandidates, 40, 1, 10, new Set(["beach"]));
+  check("the non-preferred stop is dropped first", [...dropped], ["drop-museum"]);
+
+  // The real Oran shape, and the reason the boost alone was not enough: the
+  // beaches are the longest stops in the city (100 and 120 minutes against a
+  // 45-minute park), so `valuePerMinute` buries them and 1.5x does not dig
+  // them out. Asking for a beach and getting a route with no beach in it is
+  // the one outcome the preference has to rule out.
+  const oranNature = [
+    poi("ain-el-turk", 35.74, -0.76, 100, 50, "beach"),
+    poi("les-andalouses", 35.75, -0.9, 120, 50, "beach"),
+    poi("promenade", 35.7, -0.63, 45, 50, "park_garden"),
+    poi("murdjadjo", 35.69, -0.68, 60, 50, "viewpoint"),
+    poi("djebel-santon", 35.7, -0.67, 45, 50, "viewpoint"),
+  ];
+  const withBeach = fitToBudget({
+    pois: oranNature,
+    timeBudgetMinutes: 480,
+    travelAllowancePerStopMinutes: 30,
+    minimumStops: 2,
+    preferredCategoryKeys: new Set(["beach"]),
+  });
+  check(
+    "a long-dwell preferred category still makes the route",
+    withBeach.some((p) => p.categoryKey === "beach"),
+    true,
+  );
+  check(
+    "the guarantee is one stop, not a takeover",
+    withBeach.filter((p) => p.categoryKey !== "beach").length > 0,
+    true,
+  );
+
+  // Two categories named, two guarantees — "beaches and gardens" returning
+  // only gardens is the same failure as returning neither.
+  const twoPreferred = fitToBudget({
+    pois: oranNature,
+    timeBudgetMinutes: 480,
+    travelAllowancePerStopMinutes: 30,
+    minimumStops: 2,
+    preferredCategoryKeys: new Set(["beach", "park_garden"]),
+  });
+  check(
+    "each preferred category gets a representative",
+    [...new Set(twoPreferred.map((p) => p.categoryKey))].sort().filter((k) =>
+      ["beach", "park_garden"].includes(k),
+    ),
+    ["beach", "park_garden"],
+  );
+
+  // Without a prompt nothing is guaranteed — the same set must rank purely on
+  // value, which is what puts the shorter stops in first.
+  const noPreference = fitToBudget({
+    pois: oranNature,
+    timeBudgetMinutes: 200,
+    travelAllowancePerStopMinutes: 30,
+    minimumStops: 2,
+  });
+  check(
+    "no preference means no guarantee",
+    noPreference.some((p) => p.categoryKey === "beach"),
+    false,
+  );
+
+  // The trim measures real travel, and an out-of-town beach is exactly the
+  // stop a travel-heavy overshoot wants to shed — so the selection guarantee
+  // has to survive it. The beach here is both the worst value *and* the
+  // largest saving, i.e. the trim's first choice on every count.
+  const trimCandidates = [
+    poi("far-beach", 35.75, -0.9, 120, 50, "beach"),
+    poi("park", 35.7, -0.63, 45, 50, "park_garden"),
+    poi("viewpoint", 35.69, -0.68, 45, 50, "viewpoint"),
+  ];
+  const trimmed = stopsToDrop(trimCandidates, 100, 1, 30, new Set(["beach"]));
+  check(
+    "the trim does not drop a preferred category's last stop",
+    trimmed.has("far-beach"),
+    false,
+  );
+  check("the trim still sheds what it can", trimmed.size > 0, true);
+}
+
+// --- prompt interpreter -----------------------------------------------------
+{
+  const THEMES = [
+    { key: "history", labelEn: "History" },
+    { key: "nature", labelEn: "Nature" },
+  ];
+  const CATEGORIES = [
+    { key: "museum", labelEn: "Museums", poiCount: 12 },
+    { key: "beach", labelEn: "Beaches", poiCount: 5 },
+    { key: "viewpoint", labelEn: "Viewpoints", poiCount: 3 },
+  ];
+  const THEME_CATEGORIES: Record<string, string[]> = {
+    history: ["museum"],
+    nature: ["beach", "viewpoint"],
+  };
+  const deps = { categoriesForTheme: async (key: string) => THEME_CATEGORIES[key] ?? [] };
+
+  const canned =
+    (response: Partial<RawInterpretation>) =>
+    async (): Promise<RawInterpretation> => ({ theme: null, category_keys: [], ...response });
+
+  {
+    const result = await interpretPrompt(
+      { prompt: "museums please", locale: "en", themes: THEMES, categories: CATEGORIES },
+      { ...deps, interpretRaw: canned({ theme: "history", category_keys: ["museum"] }) },
+    );
+    check("a real theme and category both survive", result, {
+      theme: "history",
+      categoryKeys: ["museum"],
+      understood: true,
+    });
+  }
+
+  {
+    // "castles" does not exist in either vocabulary — dropped, not kept.
+    const result = await interpretPrompt(
+      { prompt: "old castles", locale: "en", themes: THEMES, categories: CATEGORIES },
+      { ...deps, interpretRaw: canned({ theme: "history", category_keys: ["castles", "museum"] }) },
+    );
+    check("a hallucinated key is dropped, a real one kept", result.categoryKeys, ["museum"]);
+  }
+
+  {
+    // Every key hallucinated on the first pass, and the retry still fails —
+    // must fall back to EMPTY rather than a partial/garbage answer.
+    let calls = 0;
+    const alwaysGarbage = async (): Promise<RawInterpretation> => {
+      calls += 1;
+      return { theme: "atlantis", category_keys: ["castles"] };
+    };
+    const result = await interpretPrompt(
+      { prompt: "somewhere mythical", locale: "en", themes: THEMES, categories: CATEGORIES },
+      { ...deps, interpretRaw: alwaysGarbage },
+    );
+    check("total failure falls back to EMPTY", result, { theme: null, categoryKeys: [], understood: false });
+    check("total failure retries exactly once", calls, 2);
+  }
+
+  {
+    // Groq unreachable — same EMPTY fallback as a bad answer, no throw.
+    const result = await interpretPrompt(
+      { prompt: "anything", locale: "en", themes: THEMES, categories: CATEGORIES },
+      {
+        ...deps,
+        interpretRaw: async () => {
+          throw new PromptInterpreterUnavailableError("down");
+        },
+      },
+    );
+    check("a provider failure is not thrown, and falls back to EMPTY", result, {
+      theme: null,
+      categoryKeys: [],
+      understood: false,
+    });
+  }
+
+  {
+    // The model said "food" (not offered to it — dropped) but named beach and
+    // viewpoint categories, both of which belong to "nature". The theme
+    // should be re-derived from the categories rather than left as a
+    // conflicting/invalid guess.
+    const result = await interpretPrompt(
+      { prompt: "beaches and viewpoints", locale: "en", themes: THEMES, categories: CATEGORIES },
+      { ...deps, interpretRaw: canned({ theme: "food", category_keys: ["beach", "viewpoint"] }) },
+    );
+    check("the theme is re-derived to match the surviving categories", result.theme, "nature");
+    check("both categories survive", result.categoryKeys.sort(), ["beach", "viewpoint"]);
+  }
+
+  {
+    // No theme named at all, but real categories are — theme should still be
+    // derived rather than left null.
+    const result = await interpretPrompt(
+      { prompt: "somewhere with a beach", locale: "en", themes: THEMES, categories: CATEGORIES },
+      { ...deps, interpretRaw: canned({ theme: null, category_keys: ["beach"] }) },
+    );
+    check("a missing theme is derived from valid categories", result.theme, "nature");
+  }
+
+  {
+    // Case and whitespace variants must still match.
+    const result = await interpretPrompt(
+      { prompt: "MUSEUMS", locale: "en", themes: THEMES, categories: CATEGORIES },
+      { ...deps, interpretRaw: canned({ theme: " History ", category_keys: [" Museum "] }) },
+    );
+    check("case/whitespace variants normalise and match", result, {
+      theme: "history",
+      categoryKeys: ["museum"],
+      understood: true,
+    });
+  }
+
+  {
+    let calls = 0;
+    const result = await interpretPrompt(
+      { prompt: "   ", locale: "en", themes: THEMES, categories: CATEGORIES },
+      {
+        ...deps,
+        interpretRaw: async () => {
+          calls += 1;
+          return { theme: null, category_keys: [] };
+        },
+      },
+    );
+    check("a whitespace-only prompt returns EMPTY", result, {
+      theme: null,
+      categoryKeys: [],
+      understood: false,
+    });
+    check("a whitespace-only prompt never calls Groq", calls, 0);
+  }
 }
 
 // --- cache -----------------------------------------------------------------

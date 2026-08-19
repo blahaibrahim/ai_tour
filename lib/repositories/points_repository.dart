@@ -194,6 +194,13 @@ class PointsRepository {
     if (latest != null) await _cache(userId, latest);
   }
 
+  /// How many task completions are waiting to sync.
+  static Future<int> pendingOutboxCount() async {
+    final userId = _userId;
+    if (userId == null) return 0;
+    return (await _readOutbox(userId)).length;
+  }
+
   /// Drops this user's cached score and queue. Called on sign-out: the next
   /// traveller on this device must not inherit the last one's total.
   static Future<void> clearFor(String userId) async {

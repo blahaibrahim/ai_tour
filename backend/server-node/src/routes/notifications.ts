@@ -6,6 +6,7 @@
  *   GET    /api/notifications/prefs       what "Notify me" is currently set to
  *   PUT    /api/notifications/prefs       set it
  *   POST   /api/internal/model-job-notify the model_jobs trigger's webhook
+ *   POST   /api/internal/splat-notify      the studio dashboard's notify button
  *
  * `POST /api/devices/push-token` used to live in `routes/mascots.ts` and go
  * through `arCapture`'s fixture switch, which meant it wrote nothing whenever
@@ -48,6 +49,7 @@ function serializePrefs(prefs: notifications.NotificationPrefs, answered: boolea
     route_ready: prefs.routeReady,
     model_ready: prefs.modelReady,
     mascot_nearby: prefs.mascotNearby,
+    splat_ready: prefs.splatReady,
     // So the app can say "notifications aren't set up on this server" rather
     // than claiming a push that will never arrive.
     push_configured: notifications.isPushConfigured(),
@@ -162,6 +164,7 @@ notificationsRouter.put(
       ["route_ready", "routeReady"],
       ["model_ready", "modelReady"],
       ["mascot_nearby", "mascotNearby"],
+      ["splat_ready", "splatReady"],
     ];
     for (const [wire, field] of bools) {
       if (wire in body) {
@@ -266,3 +269,120 @@ notificationsRouter.post(
     return res.status(204).setHeader("X-Delivered", String(result.delivered)).send();
   }),
 );
+
+// --- the studio's notify button --------------------------------------------
+
+/**
+ * Tells a traveller that footage they recorded has been turned into a gaussian
+ * splat.
+ *
+ * Called by `website/gaussian_splatting` — a local-only operator dashboard, not
+ * a user-facing site — when whoever is running the pipeline decides a finished
+ * scene is worth showing off. Authenticated the same way the model-job hook is:
+ * by a shared secret, because the caller is an operator tool rather than a
+ * session. It deliberately does *not* accept `title`/`body`; the copy lives in
+ * `notifications.splatReadyPayload` so every splat notification reads the same
+ * however many dashboards learn to send one.
+ *
+ * The contributor is named by email rather than by id because that is what the
+ * dashboard's operator actually knows — the studio shows clips and scenes, and
+ * nothing in `videos/assignments.json` carries a `user_id`. Resolving it here
+ * keeps the service_role user lookup on this side of the wire.
+ */
+notificationsRouter.post(
+  "/api/internal/splat-notify",
+  asyncHandler(async (req, res) => {
+    const expected = Config.NOTIFY_HOOK_SECRET;
+    if (!expected) {
+      logger.warning("splat-notify called but NOTIFY_HOOK_SECRET is not set; ignoring.");
+      return res.status(503).json({ error: "not_configured" });
+    }
+    if (req.header("X-Notify-Secret") !== expected) {
+      logger.warning("splat-notify called with a bad secret.");
+      return res.status(401).json({ error: "unauthorized" });
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const str = (key: string) => (typeof body[key] === "string" ? (body[key] as string).trim() : "");
+
+    const email = str("email").toLowerCase();
+    const scene = str("scene");
+    const splatPath = str("splat_path");
+    const sceneTitle = str("scene_title") || scene;
+    if (!email || !scene || !splatPath) {
+      return res.status(400).json({
+        error: "bad_request",
+        message: "email, scene and splat_path are required",
+      });
+    }
+    // The bucket is fixed by the migration; accepting an arbitrary path would
+    // let a compromised secret point the app's viewer at any object the signer
+    // can reach.
+    if (!splatPath.startsWith("splats/")) {
+      return res.status(400).json({
+        error: "bad_request",
+        message: "splat_path must be a key in the splats bucket",
+      });
+    }
+
+    let userId: string;
+    try {
+      const found = await findUserIdByEmail(email);
+      if (!found) return res.status(404).json({ error: "no_such_user", email });
+      userId = found;
+    } catch (error) {
+      return serverError(res, error, "POST /api/internal/splat-notify");
+    }
+
+    const result = await notifications.sendToUser(
+      userId,
+      notifications.splatReadyPayload({
+        sceneTitle,
+        splatPath,
+        scene,
+        gaussians: Number(body.gaussians) || 0,
+        poiId: typeof body.poi_id === "string" ? body.poi_id : null,
+      }),
+      {
+        kind: "splat_ready",
+        // The scene, so re-pressing the button after a better-quality re-train
+        // does not file a second copy of the same news. Deleting the row in the
+        // app is how a traveller gets rid of it, not a second send.
+        dedupeKey: splatPath,
+        // A splat arrives days after the capture and there is exactly one of
+        // them per scene. "You have had six notifications today" is not a
+        // reason to drop the seventh when the seventh is this.
+        bypassRateLimits: true,
+      },
+    );
+
+    return res.json({
+      user_id: userId,
+      delivered: result.delivered,
+      suppressed_reason: result.suppressedReason ?? null,
+    });
+  }),
+);
+
+/**
+ * An email address -> the auth user id, or null.
+ *
+ * GoTrue's admin API has no "get user by email", and the `auth` schema is not
+ * exposed through PostgREST, so this pages through `listUsers` and matches
+ * locally. Bounded at ten pages: this is an operator tool naming a traveller it
+ * already knows, and an unbounded scan of a large project on every press would
+ * be a worse failure than "not found".
+ */
+async function findUserIdByEmail(email: string): Promise<string | null> {
+  const admin = getAdminClient();
+  const perPage = 200;
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const users = data?.users ?? [];
+    const match = users.find((user) => (user.email ?? "").toLowerCase() === email);
+    if (match) return match.id;
+    if (users.length < perPage) return null;
+  }
+  return null;
+}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/app_backdrop.dart';
 import '../../widgets/pressable_scale.dart';
 import 'onboarding_content.dart';
@@ -20,16 +21,18 @@ class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({
     super.key,
     required this.onFinish,
-    this.finishLabel = 'Get started',
+    this.finishLabel,
   });
 
   /// Called once, whether the traveller read every page or skipped from the
   /// first — both mean "I am done with this".
   final VoidCallback onFinish;
 
-  /// The last page's primary button. "Get started" on first launch; the
-  /// replay-from-Settings caller passes "Done".
-  final String finishLabel;
+  /// The last page's primary button. Null means "Get started", the first-run
+  /// wording; the replay-from-Settings caller passes its own "Done". Null
+  /// rather than a default argument because the default is now translated, and
+  /// a default has no `context` to translate against.
+  final String? finishLabel;
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -119,7 +122,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   index: _index,
                   count: onboardingPages.length,
                   tint: page.tint,
-                  label: _isLast ? widget.finishLabel : 'Next',
+                  label: _isLast
+                      ? (widget.finishLabel ??
+                          AppLocalizations.of(context).onboardingGetStarted)
+                      : AppLocalizations.of(context).actionNext,
                   isLast: _isLast,
                   onNext: _next,
                 ),
@@ -184,7 +190,7 @@ class _TopBar extends StatelessWidget {
                     vertical: AppTheme.space3,
                   ),
                 ),
-                child: const Text('Skip'),
+                child: Text(AppLocalizations.of(context).actionSkip),
               ),
             ),
           ],

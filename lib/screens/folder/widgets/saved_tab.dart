@@ -4,6 +4,7 @@ import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
 import '../../../models/location.dart';
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../widgets/glass_surface.dart';
 import '../../../widgets/net_image.dart';
 
@@ -22,7 +23,8 @@ class SavedTab extends StatelessWidget {
               children: [
                 Icon(Icons.bookmark_border, size: 48, color: AppTheme.text.withValues(alpha: 0.3)),
                 const SizedBox(height: 16),
-                Text('No saved locations', style: TextStyle(color: AppTheme.text.withValues(alpha: 0.6))),
+                Text(AppLocalizations.of(context).folderNoSavedLocations,
+                    style: TextStyle(color: AppTheme.text.withValues(alpha: 0.6))),
               ],
             ),
           )

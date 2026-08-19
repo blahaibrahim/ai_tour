@@ -1,0 +1,107 @@
+.picker {
+  display: flex;
+  flex-direction: column;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.total {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.track {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  /* 3.4 rows: tall enough to show a value either side of the selection, short
+     enough to leave the prompt and the button above the fold. */
+  height: 116px;
+}
+
+.band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 34px;
+  margin-top: -17px;
+  border-radius: var(--radius-md);
+  background: rgba(222, 230, 244, 0.55);
+}
+
+.wheel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.list {
+  height: 100%;
+  width: 46px;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  /* Centres the first and last value on the band instead of leaving them
+     trapped against the ends of the track. */
+  padding: 41px 0;
+  scrollbar-width: none;
+  outline-offset: -2px;
+}
+
+.list::-webkit-scrollbar {
+  display: none;
+}
+
+.row {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  scroll-snap-align: center;
+  cursor: pointer;
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  /* The drum's over-and-under fade, flattened into two states. */
+  opacity: 0.38;
+  transition:
+    opacity var(--motion-fast) var(--motion-curve),
+    color var(--motion-fast) var(--motion-curve);
+}
+
+.row[data-selected="true"] {
+  opacity: 1;
+  font-weight: 800;
+  color: var(--accent-dark);
+}
+
+.unit {
+  width: 46px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(20, 37, 74, 0.6);
+}
+
+.captions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: var(--space-1);
+}
+
+.captions span {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: rgba(20, 37, 74, 0.5);
+}

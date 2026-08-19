@@ -6,6 +6,7 @@ import '../../../blocs/app/app_event.dart';
 import '../../../blocs/app/app_state.dart';
 import '../../../models/location.dart';
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../ar_hunt/ar_hunt_screen.dart';
 import 'inline_mascot_hunt.dart';
 
@@ -91,6 +92,7 @@ class _CurrentTaskPanelState extends State<CurrentTaskPanel> {
         : null;
 
     if (currentTask == null) return const SizedBox.shrink();
+    final l10n = AppLocalizations.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -99,7 +101,7 @@ class _CurrentTaskPanelState extends State<CurrentTaskPanel> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              'CURRENT TASK',
+              l10n.taskCurrentTask,
               style: TextStyle(fontSize: 11, letterSpacing: 0.8, color: AppTheme.text.withValues(alpha: 0.55), fontWeight: FontWeight.bold),
             ),
             const Spacer(),
@@ -124,7 +126,7 @@ class _CurrentTaskPanelState extends State<CurrentTaskPanel> {
                       const Icon(Icons.auto_awesome, size: 14, color: AppTheme.textSecondary),
                       const SizedBox(width: 4),
                       Text(
-                        'Regenerate (${state.taskRegenerationsLeft})',
+                        l10n.taskRegenerate(state.taskRegenerationsLeft),
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
                       ),
                     ],
@@ -142,11 +144,12 @@ class _CurrentTaskPanelState extends State<CurrentTaskPanel> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '+${currentTask.points} pts',
+                    l10n.taskPoints(currentTask.points),
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.cocoa),
                   ),
                   const SizedBox(height: 2),
-                  Text(currentTask.label, style: const TextStyle(fontSize: 13.5)),
+                  Text(currentTask.text(l10n),
+                      style: const TextStyle(fontSize: 13.5)),
                 ],
               ),
             ),
@@ -168,10 +171,10 @@ class _CurrentTaskPanelState extends State<CurrentTaskPanel> {
                       // quest as a 3D scan — a different action entirely, and
                       // the one type no longer assigned at all.
                       child: Text(switch (currentTask.type) {
-                        'photo' => 'Shoot',
-                        'video' => 'Film',
-                        'mascot' => _hunting ? 'Stop' : 'Hunt',
-                        _ => 'Scan',
+                        'photo' => l10n.taskShoot,
+                        'video' => l10n.taskFilm,
+                        'mascot' => _hunting ? l10n.taskStopHunt : l10n.taskHunt,
+                        _ => l10n.taskScan,
                       }),
                     )
                   : Container(

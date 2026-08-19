@@ -65,10 +65,14 @@ class SegmentedControl<T> extends StatelessWidget {
           child: Stack(
             children: [
               if (selectedIndex >= 0)
-                AnimatedPositioned(
+                // Directional, not `left`: the Row of segments below already
+                // reverses under an RTL Directionality, so a thumb positioned
+                // from the physical left would slide to the opposite segment
+                // from the one that is selected.
+                AnimatedPositionedDirectional(
                   duration: AppTheme.motionBase,
                   curve: AppTheme.motionCurve,
-                  left: segmentWidth * selectedIndex,
+                  start: segmentWidth * selectedIndex,
                   width: segmentWidth,
                   top: 0,
                   bottom: 0,

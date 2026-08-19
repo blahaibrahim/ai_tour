@@ -24,6 +24,26 @@
  * Stops with no score are treated as mid-ranked rather than worthless. A null
  * score means "never scored" — true of every hand-authored row — and dropping
  * those first would quietly prefer machine-ingested POIs over curated ones.
+ *
+ * ## Preferred categories
+ *
+ * NOT IN SPEC. `RouteRequest.preferredCategoryKeys` — the categories an LLM
+ * read out of the traveller's free-text prompt (`domain/promptInterpreter.ts`)
+ * — are a ranking preference, not an eligibility filter: "show me beaches"
+ * should mean beaches sort to the top of a tight budget and survive a trim,
+ * not that every non-beach POI is invisible to selection. `rankValue` is
+ * `valuePerMinute` with a flat multiplier for a preferred category, and it is
+ * what actually orders stops in and drops stops out — `valuePerMinute` alone
+ * stays the number recorded/reasoned about elsewhere (it is also exported
+ * for that).
+ *
+ * The multiplier is not enough on its own, because `valuePerMinute` divides by
+ * dwell and preferred categories are often the long ones. So each preferred
+ * category also gets one guaranteed representative: seeded ahead of the value
+ * order in `fitToBudget` (still subject to the budget) and protected from
+ * `stopsToDrop` while it is the last of its category standing. Everything past
+ * that first stop per category is ordinary ranking again — the guarantee is
+ * "you asked for beaches, so there is a beach", not "beaches only".
  */
 import { Poi } from "../types";
 
@@ -44,16 +64,78 @@ export interface FitInput {
   /** Never return fewer than this, even if the budget cannot pay for them —
    * a route of nothing is not a useful answer to "I have twenty minutes". */
   minimumStops: number;
+  /** Category keys to rank up — see the module docstring. Not a filter: a
+   * POI outside this set is never excluded on that basis alone. */
+  preferredCategoryKeys?: ReadonlySet<string>;
 }
 
 /** Value per minute. Null scores sit mid-range so an unscored curated POI is
  * not silently ranked below every ingested one. */
 const UNSCORED_VALUE = 40;
 
+/**
+ * The best POI in each preferred category, best-first across categories.
+ *
+ * The boost alone cannot carry a category whose POIs are long: `valuePerMinute`
+ * divides by dwell, so Oran's two beaches (100 and 120 minutes) score 0.33–0.40
+ * against a 45-minute park's 0.89, and 1.5x does not close a 2.7x gap. Raising
+ * the multiplier until it did would be tuning one city's numbers into a
+ * constant — and would then over-promote short preferred POIs everywhere else.
+ *
+ * So the multiplier keeps doing what it is good at (ordering *within* a
+ * plausible set) and this handles the part it cannot: making sure the thing
+ * the traveller actually named appears at all. One per category, because
+ * "beaches and gardens" names two things and getting only gardens back is the
+ * same failure as getting neither.
+ */
+function bestPerPreferredCategory(
+  pois: Poi[],
+  preferredCategoryKeys: ReadonlySet<string> | undefined,
+): Poi[] {
+  if (!preferredCategoryKeys || preferredCategoryKeys.size === 0) return [];
+
+  const best = new Map<string, Poi>();
+  for (const poi of pois) {
+    if (!preferredCategoryKeys.has(poi.categoryKey)) continue;
+    const incumbent = best.get(poi.categoryKey);
+    if (
+      !incumbent ||
+      valuePerMinute(poi) > valuePerMinute(incumbent) ||
+      (valuePerMinute(poi) === valuePerMinute(incumbent) && poi.id < incumbent.id)
+    ) {
+      best.set(poi.categoryKey, poi);
+    }
+  }
+
+  return [...best.values()].sort((a, b) => {
+    const byValue = valuePerMinute(b) - valuePerMinute(a);
+    return byValue !== 0 ? byValue : a.id.localeCompare(b.id);
+  });
+}
+
 export function valuePerMinute(poi: Poi): number {
   const value = poi.interestScore ?? UNSCORED_VALUE;
   const cost = Math.max(1, poi.avgVisitDurationMinutes);
   return value / cost;
+}
+
+/**
+ * How much a preferred-category match is worth over an equally-scored POI
+ * outside it. Large enough that "beaches" reliably outranks a same-scored
+ * museum on a tight budget, not so large that a genuinely poor beach (a low
+ * `interestScore`) beats a genuinely excellent stop in another category —
+ * a flat multiplier on `valuePerMinute` preserves that ordering rather than
+ * a flat bonus, which would let a preferred category's worst POI outrank a
+ * non-preferred category's best.
+ */
+const PREFERRED_CATEGORY_BOOST = 1.5;
+
+/** `valuePerMinute`, boosted for a category the traveller's prompt called
+ * out. This — not `valuePerMinute` — is what selection, trimming and
+ * alternate ordering actually sort by. */
+export function rankValue(poi: Poi, preferredCategoryKeys?: ReadonlySet<string>): number {
+  const base = valuePerMinute(poi);
+  return preferredCategoryKeys?.has(poi.categoryKey) ? base * PREFERRED_CATEGORY_BOOST : base;
 }
 
 /**
@@ -64,21 +146,31 @@ export function valuePerMinute(poi: Poi): number {
  * after this on a smaller set. This only answers *which* stops.
  */
 export function fitToBudget(input: FitInput): Poi[] {
-  const { pois, timeBudgetMinutes, travelAllowancePerStopMinutes, minimumStops } = input;
+  const { pois, timeBudgetMinutes, travelAllowancePerStopMinutes, minimumStops, preferredCategoryKeys } =
+    input;
   if (pois.length === 0) return [];
 
   const ranked = [...pois].sort((a, b) => {
-    const byValue = valuePerMinute(b) - valuePerMinute(a);
+    const byValue = rankValue(b, preferredCategoryKeys) - rankValue(a, preferredCategoryKeys);
     if (byValue !== 0) return byValue;
     // Stable and deterministic: two POIs of identical value density must not
     // swap between two generations of the same request.
     return a.id.localeCompare(b.id);
   });
 
+  // The prompt's own categories go first, one each — see
+  // `bestPerPreferredCategory`. They are seeded rather than appended so the
+  // budget check below still applies to them: a guarantee that a beach is
+  // *considered* first, not that an eight-hour beach fits a one-hour trip.
+  // Everything else keeps its value order behind them.
+  const guaranteed = bestPerPreferredCategory(pois, preferredCategoryKeys);
+  const guaranteedIds = new Set(guaranteed.map((p) => p.id));
+  const order = [...guaranteed, ...ranked.filter((p) => !guaranteedIds.has(p.id))];
+
   const kept: Poi[] = [];
   let spent = 0;
 
-  for (const poi of ranked) {
+  for (const poi of order) {
     const cost = poi.avgVisitDurationMinutes + travelAllowancePerStopMinutes;
     if (kept.length >= minimumStops && spent + cost > timeBudgetMinutes) continue;
     kept.push(poi);
@@ -106,20 +198,39 @@ export function stopsToDrop(
   overshootMinutes: number,
   minimumStops: number,
   travelAllowancePerStopMinutes: number,
+  preferredCategoryKeys?: ReadonlySet<string>,
 ): Set<string> {
   const drop = new Set<string>();
   if (overshootMinutes <= 0 || orderedStops.length <= minimumStops) return drop;
 
   const worstFirst = [...orderedStops].sort((a, b) => {
-    const byValue = valuePerMinute(a) - valuePerMinute(b);
+    const byValue = rankValue(a, preferredCategoryKeys) - rankValue(b, preferredCategoryKeys);
     if (byValue !== 0) return byValue;
     return a.id.localeCompare(b.id);
   });
+
+  // How many stops each preferred category still has. The trim measures real
+  // travel, and a preferred POI is often the far-flung one (a beach outside
+  // town is exactly the stop a travel-heavy overshoot wants to shed), so
+  // without this the selection guarantee above survives fitToBudget and then
+  // quietly dies here — the traveller asked for a beach, saw one selected, and
+  // got a route without one.
+  const remainingPerPreferred = new Map<string, number>();
+  for (const poi of orderedStops) {
+    if (preferredCategoryKeys?.has(poi.categoryKey)) {
+      remainingPerPreferred.set(poi.categoryKey, (remainingPerPreferred.get(poi.categoryKey) ?? 0) + 1);
+    }
+  }
 
   let shed = 0;
   for (const poi of worstFirst) {
     if (orderedStops.length - drop.size <= minimumStops) break;
     if (shed >= overshootMinutes) break;
+    const remaining = remainingPerPreferred.get(poi.categoryKey);
+    // Its category's last representative — skip it and keep shedding
+    // elsewhere. Skip, not break: the stops after it are still droppable.
+    if (remaining !== undefined && remaining <= 1) continue;
+    if (remaining !== undefined) remainingPerPreferred.set(poi.categoryKey, remaining - 1);
     drop.add(poi.id);
     // Dwell *plus* the travel a stop carries. Counting dwell alone looked
     // conservative and was the opposite: on a travel-heavy route — parks and

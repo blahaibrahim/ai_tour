@@ -38,24 +38,41 @@ const SIZES: Record<string, number> = {
   double: 8, float64: 8,
 };
 
-interface Property {
+export interface Property {
   name: string;
   type: string;
   offset: number;
+}
+
+/** A parsed `.ply` header: where the payload starts and how to read a row. */
+export interface PlyHeader {
+  properties: Property[];
+  /** Bytes per vertex. */
+  stride: number;
+  /** Vertices the header claims. */
+  total: number;
+  /** Byte offset of the first vertex. */
+  dataStart: number;
 }
 
 /** Gaussians kept. A draft run lands well under this; a 30k run can exceed it. */
 const MAX_POINTS = 1_500_000;
 
 /** Below this, a gaussian contributes nothing a viewer can see. */
-const MIN_ALPHA = 0.02;
+export const MIN_ALPHA = 0.02;
 
-export function parsePly(buffer: ArrayBuffer): SplatCloud {
-  const bytes = new Uint8Array(buffer);
-
-  // The header is ASCII and short; find its end without decoding the payload.
+/**
+ * Reads the ASCII header only.
+ *
+ * Split out of [parsePly] so a reader that cannot hold the file in memory can
+ * still learn its layout: `lib/mobileSplat.ts` streams a 468 MB point cloud
+ * past a small buffer, and it needs exactly this — the stride and the property
+ * offsets — before the first byte of payload goes by. [bytes] only has to be
+ * long enough to contain `end_header`; the first few kilobytes always are.
+ */
+export function parsePlyHeader(bytes: Uint8Array): PlyHeader {
   const marker = "end_header\n";
-  const head = new TextDecoder("ascii").decode(bytes.subarray(0, 4096));
+  const head = new TextDecoder("ascii").decode(bytes.subarray(0, 8192));
   const headerEnd = head.indexOf(marker);
   if (!head.startsWith("ply") || headerEnd < 0) {
     throw new Error("not a .ply file");
@@ -91,22 +108,32 @@ export function parsePly(buffer: ArrayBuffer): SplatCloud {
     }
   }
 
-  const find = (name: string) => properties.find((p) => p.name === name);
   const required = ["x", "y", "z", "f_dc_0", "f_dc_1", "f_dc_2", "opacity"];
   for (const name of required) {
-    if (!find(name)) throw new Error(`missing property '${name}'`);
+    if (!properties.some((property) => property.name === name)) {
+      throw new Error(`missing property '${name}'`);
+    }
   }
 
-  const view = new DataView(buffer, dataStart);
-  const available = Math.floor((buffer.byteLength - dataStart) / stride);
-  if (available < total) total = available;
+  return { properties, stride, total, dataStart };
+}
 
-  // Reading through a per-property accessor rather than assuming float32
-  // everywhere: the pipeline writes floats, but the format allows otherwise
-  // and a viewer that silently misreads is worse than one that refuses.
+/**
+ * A per-property accessor over a buffer of whole rows.
+ *
+ * Reading through this rather than assuming float32 everywhere: the pipeline
+ * writes floats, but the format allows otherwise and a reader that silently
+ * misreads is worse than one that refuses. [view] must start at a row boundary,
+ * so `row` counts from wherever it begins rather than from the file's first
+ * vertex — which is what lets the streaming decimator reuse this per block.
+ */
+export function rowReaders(
+  view: DataView,
+  header: PlyHeader,
+): Map<string, (row: number) => number> {
   const readers = new Map<string, (row: number) => number>();
-  for (const property of properties) {
-    const at = (row: number) => row * stride + property.offset;
+  for (const property of header.properties) {
+    const at = (row: number) => row * header.stride + property.offset;
     readers.set(
       property.name,
       {
@@ -129,6 +156,21 @@ export function parsePly(buffer: ArrayBuffer): SplatCloud {
       }[property.type]!,
     );
   }
+  return readers;
+}
+
+export function parsePly(buffer: ArrayBuffer): SplatCloud {
+  const bytes = new Uint8Array(buffer);
+  const header = parsePlyHeader(bytes);
+  const { properties, stride, dataStart } = header;
+  let total = header.total;
+  const find = (name: string) => properties.find((p) => p.name === name);
+
+  const view = new DataView(buffer, dataStart);
+  const available = Math.floor((buffer.byteLength - dataStart) / stride);
+  if (available < total) total = available;
+
+  const readers = rowReaders(view, header);
 
   const read = (name: string, row: number) => readers.get(name)!(row);
   const hasScale = Boolean(find("scale_0"));
@@ -214,7 +256,8 @@ export function parsePly(buffer: ArrayBuffer): SplatCloud {
   };
 }
 
-function channel(dc: number): number {
+/** The spherical-harmonic DC term -> an 8-bit colour channel. */
+export function channel(dc: number): number {
   return Math.max(0, Math.min(255, Math.round((0.5 + SH_C0 * dc) * 255)));
 }
 

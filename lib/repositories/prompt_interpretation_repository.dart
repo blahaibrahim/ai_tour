@@ -1,10 +1,12 @@
-import '../models/route.dart';
+import '../services/api_client.dart';
+import '../services/backend_monitor.dart';
 
 /// What a free-text prompt was understood to mean.
 class PromptInterpretation {
   const PromptInterpretation({
     this.themeKey,
     this.categoryKeys = const {},
+    this.understood = false,
   });
 
   /// The theme the prompt maps to, or null if nothing matched — in which case
@@ -12,133 +14,73 @@ class PromptInterpretation {
   /// clearing the request.
   final String? themeKey;
 
-  /// Categories to narrow the theme with. May be empty: "somewhere historic"
-  /// is a theme with no further narrowing, and inventing one would filter the
-  /// catalogue harder than the traveller asked for.
+  /// Categories the prompt called out — a ranking preference the server
+  /// biases stop selection with, never a hard filter. "Show me beaches" means
+  /// beach-like stops sort to the top and survive a tight budget first, not
+  /// that every non-beach stop in the theme becomes invisible; the server's
+  /// `poiSelector` only ever narrows on `RouteRequest.categoryKeys`, the
+  /// separate hard filter the (currently unused) category chips would send.
+  /// See `preferredCategoryKeys` on `RouteRepository.generateRoute`.
   final Set<String> categoryKeys;
 
-  bool get isEmpty => themeKey == null && categoryKeys.isEmpty;
+  /// True once at least one real theme or category was found in the prompt.
+  /// False covers both "nothing recognisable was said" and "the interpreter
+  /// couldn't be reached" — from the traveller's side these are the same
+  /// outcome: nothing was narrowed, and the route still generates from
+  /// whatever theme is already selected.
+  final bool understood;
 }
 
-/// Turns what the traveller typed into a theme plus categories.
+/// Turns what the traveller typed into a theme plus preferred categories, via
+/// `POST /api/routes/interpret` — an LLM (Groq) call grounded against the
+/// requested city's real theme and category vocabulary
+/// (`backend/server-node/src/routeGeneration/domain/promptInterpreter.ts`).
 ///
-/// **This is a local placeholder, not the real interpreter.** The intended
-/// implementation is a server round trip — an LLM given the prompt and the
-/// city's actual theme/category vocabulary, returning a structured selection.
-/// That endpoint does not exist yet, so this matches keywords instead.
+/// Two guarantees the server enforces, not this file:
 ///
-/// The seam is deliberate: [interpret] already takes the server-supplied
-/// vocabulary rather than a hardcoded list, and is already async, so replacing
-/// the body with an `ApiClient.post('/api/interpret', …)` changes nothing above
-/// it. Two things the real version must keep:
-///
-///   * **It may only return keys that exist in the passed vocabulary.** The
-///     module selects POIs by category key; a hallucinated key silently
-///     matches nothing and produces an empty route, which the traveller reads
-///     as "there is nothing here" rather than "the model made that up".
-///   * **No match is a valid answer.** Returning an arbitrary theme for an
-///     unparseable prompt is worse than returning nothing, because the
-///     traveller cannot tell it was a guess.
+///   * **Every category key returned is real and answerable in this city.**
+///     The server only offers the model categories with at least one
+///     published POI behind them (`categories_available`), and drops
+///     anything hallucinated before it ever reaches this response.
+///   * **No match is a valid answer.** An unparseable prompt or a Groq outage
+///     both come back as `understood: false` with the theme left untouched —
+///     never a guess dressed up as a real read.
 class PromptInterpretationRepository {
   const PromptInterpretationRepository._();
 
-  /// Keyword → theme. Ordered by specificity: the first theme with a hit wins,
-  /// so "ottoman palace food market" reads as history rather than food.
-  static const Map<String, List<String>> _themeKeywords = {
-    'history': [
-      'history', 'historic', 'historical', 'ancient', 'ruin', 'ruins', 'roman',
-      'ottoman', 'colonial', 'heritage', 'old town', 'casbah', 'kasbah',
-      'medina', 'fort', 'fortress', 'palace', 'war', 'independence', 'archaeo',
-    ],
-    'culture': [
-      'culture', 'cultural', 'art', 'arts', 'museum', 'museums', 'gallery',
-      'music', 'craft', 'crafts', 'architecture', 'mosque', 'church',
-      'cathedral', 'religious', 'traditional', 'local life',
-    ],
-    'nature': [
-      'nature', 'natural', 'park', 'parks', 'garden', 'gardens', 'green',
-      'coast', 'coastal', 'sea', 'beach', 'mountain', 'hike', 'hiking',
-      'walk in', 'outdoor', 'view', 'views', 'viewpoint', 'scenic', 'sunset',
-    ],
-    'food': [
-      'food', 'eat', 'eating', 'cuisine', 'restaurant', 'restaurants', 'cafe',
-      'coffee', 'street food', 'market', 'markets', 'souk', 'tasting',
-      'culinary', 'bakery', 'sweets', 'dinner', 'lunch',
-    ],
-  };
-
-  /// Keyword → category. Independent of the theme match, because narrowing and
-  /// theme are different questions — "museums and viewpoints" is one theme and
-  /// two categories.
-  static const Map<String, List<String>> _categoryKeywords = {
-    'heritage': ['heritage', 'historic', 'ancient', 'ruin', 'ruins', 'palace',
-        'fort', 'fortress', 'ottoman', 'roman', 'colonial', 'casbah', 'medina'],
-    'religious': ['mosque', 'church', 'cathedral', 'religious', 'shrine',
-        'basilica', 'sacred', 'worship'],
-    'museum': ['museum', 'museums', 'gallery', 'galleries', 'exhibition',
-        'collection', 'art'],
-    'viewpoint': ['view', 'views', 'viewpoint', 'viewpoints', 'panorama',
-        'scenic', 'overlook', 'sunset', 'skyline', 'rooftop', 'terrace'],
-    'market': ['market', 'markets', 'souk', 'bazaar', 'street food', 'shopping',
-        'stalls', 'spices'],
-  };
-
-  /// Interprets [prompt] against the vocabulary the server actually offers.
-  ///
-  /// [availableThemes] and [availableCategories] are the live lists from
-  /// `/api/categories`, so a theme this file knows about but the server has
-  /// retired is never returned.
+  /// Interprets [prompt] for [cityId] — the city decides which theme and
+  /// category vocabulary the server grounds the model against, so this must
+  /// not be called before a city is resolved.
   static Future<PromptInterpretation> interpret({
     required String prompt,
-    required List<RouteTheme> availableThemes,
-    required List<RouteCategory> availableCategories,
+    required String cityId,
+    String locale = 'en',
   }) async {
-    final text = prompt.toLowerCase().trim();
+    final text = prompt.trim();
     if (text.isEmpty) return const PromptInterpretation();
 
-    // Stands in for the round trip, so the UI's pending state is exercised
-    // rather than completing in the same frame and never being seen.
-    await Future<void>.delayed(const Duration(milliseconds: 650));
-
-    final themeKeys = {for (final t in availableThemes) t.key};
-    final categoryKeys = {for (final c in availableCategories) c.key};
-
-    String? matchedTheme;
-    var bestThemeScore = 0;
-    for (final entry in _themeKeywords.entries) {
-      if (!themeKeys.contains(entry.key)) continue;
-      final score = _score(text, entry.value);
-      if (score > bestThemeScore) {
-        bestThemeScore = score;
-        matchedTheme = entry.key;
+    try {
+      final data = await ApiClient.post('/api/routes/interpret', body: {
+        'prompt': text,
+        'city_id': cityId,
+        'locale': locale,
+      });
+      return PromptInterpretation(
+        themeKey: data['theme'] as String?,
+        categoryKeys: (data['category_keys'] as List<dynamic>? ?? [])
+            .whereType<String>()
+            .toSet(),
+        understood: data['understood'] as bool? ?? false,
+      );
+    } catch (e) {
+      // The backend being unreachable is not a failure to explain — it is
+      // the same "nothing narrowed" outcome as a prompt with nothing
+      // recognisable in it. Anything else (a real 4xx/5xx from a reachable
+      // server) is a bug worth surfacing rather than swallowing.
+      if ((e is ApiException && e.isTransport) || isConnectivityError(e)) {
+        return const PromptInterpretation();
       }
+      rethrow;
     }
-
-    final matchedCategories = <String>{};
-    for (final entry in _categoryKeywords.entries) {
-      if (!categoryKeys.contains(entry.key)) continue;
-      if (_score(text, entry.value) > 0) matchedCategories.add(entry.key);
-    }
-
-    // Every category matching means the prompt narrowed nothing — "show me
-    // everything" phrased at length. Sending them all is the same request as
-    // sending none, and the shorter one is easier to read back to the user.
-    if (matchedCategories.length == categoryKeys.length) matchedCategories.clear();
-
-    return PromptInterpretation(
-      themeKey: matchedTheme,
-      categoryKeys: matchedCategories,
-    );
-  }
-
-  /// Number of distinct keywords present. Counting rather than short-circuiting
-  /// on the first hit is what lets a prompt mentioning several history words
-  /// outrank one that mentions "market" once.
-  static int _score(String text, List<String> keywords) {
-    var hits = 0;
-    for (final keyword in keywords) {
-      if (text.contains(keyword)) hits++;
-    }
-    return hits;
   }
 }

@@ -151,9 +151,36 @@ class AppTheme {
         BoxShadow(color: ink.withValues(alpha: 0.16), blurRadius: 32, offset: const Offset(0, 12)),
       ];
 
-  static ThemeData get theme {
-    final displayFont = GoogleFonts.plusJakartaSansTextTheme();
-    final bodyFont = GoogleFonts.interTextTheme();
+  /// The Latin-script theme, for the handful of call sites that have no locale
+  /// to hand. Anything built under a MaterialApp should prefer [themeFor].
+  static ThemeData get theme => themeFor(const Locale('en'));
+
+  /// [locale] picks the typefaces and nothing else — the palette, radii and
+  /// shadows are the same in every language.
+  ///
+  /// Neither Inter nor Plus Jakarta Sans has a single Arabic glyph, so in
+  /// Arabic they fall through to whatever the platform substitutes: Noto Naskh
+  /// on one phone, Droid Arabic on another, nothing at all on a stripped ROM.
+  /// Naming Arabic faces outright is what makes the app look the same on every
+  /// device. IBM Plex Sans Arabic is Inter's sibling by construction, and Cairo
+  /// carries the same geometric warmth as Plus Jakarta Sans.
+  static ThemeData themeFor(Locale locale) {
+    final arabic = locale.languageCode == 'ar';
+    final displayFont =
+        arabic ? GoogleFonts.cairoTextTheme() : GoogleFonts.plusJakartaSansTextTheme();
+    final bodyFont =
+        arabic ? GoogleFonts.ibmPlexSansArabicTextTheme() : GoogleFonts.interTextTheme();
+
+    TextStyle bodyStyle({Color? color, FontWeight? fontWeight, double? letterSpacing}) =>
+        arabic
+            ? GoogleFonts.ibmPlexSansArabic(
+                color: color, fontWeight: fontWeight, letterSpacing: letterSpacing)
+            : GoogleFonts.inter(
+                color: color, fontWeight: fontWeight, letterSpacing: letterSpacing);
+
+    TextStyle displayStyle({FontWeight? fontWeight}) => arabic
+        ? GoogleFonts.cairo(fontWeight: fontWeight)
+        : GoogleFonts.plusJakartaSans(fontWeight: fontWeight);
 
     final textTheme = bodyFont.copyWith(
       headlineLarge: displayFont.headlineLarge?.copyWith(
@@ -171,9 +198,9 @@ class AppTheme {
         fontWeight: FontWeight.w700,
         letterSpacing: -0.3,
       ),
-      bodyLarge: GoogleFonts.inter(color: text, fontWeight: FontWeight.w400),
-      bodyMedium: GoogleFonts.inter(color: text, fontWeight: FontWeight.w400),
-      bodySmall: GoogleFonts.inter(color: textSecondary, fontWeight: FontWeight.w500, letterSpacing: 0.1),
+      bodyLarge: bodyStyle(color: text, fontWeight: FontWeight.w400),
+      bodyMedium: bodyStyle(color: text, fontWeight: FontWeight.w400),
+      bodySmall: bodyStyle(color: textSecondary, fontWeight: FontWeight.w500, letterSpacing: 0.1),
     );
 
     return ThemeData(
@@ -197,7 +224,7 @@ class AppTheme {
           foregroundColor: onAccent,
           disabledBackgroundColor: divider,
           elevation: 0,
-          textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+          textStyle: displayStyle(fontWeight: FontWeight.w600),
           shape: RoundedRectangleBorder(borderRadius: brLg),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         ),
@@ -209,7 +236,7 @@ class AppTheme {
           side: const BorderSide(color: divider, width: 1.4),
           shape: RoundedRectangleBorder(borderRadius: brLg),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+          textStyle: displayStyle(fontWeight: FontWeight.w600),
         ),
       ),
 
@@ -217,7 +244,7 @@ class AppTheme {
         style: TextButton.styleFrom(
           foregroundColor: accent,
           shape: RoundedRectangleBorder(borderRadius: brMd),
-          textStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+          textStyle: displayStyle(fontWeight: FontWeight.w600),
         ),
       ),
 
@@ -257,7 +284,7 @@ class AppTheme {
       // part of this palette.
       snackBarTheme: SnackBarThemeData(
         backgroundColor: ink,
-        contentTextStyle: GoogleFonts.inter(color: onNavy, fontWeight: FontWeight.w500),
+        contentTextStyle: bodyStyle(color: onNavy, fontWeight: FontWeight.w500),
         actionTextColor: sand,
         behavior: SnackBarBehavior.floating,
         insetPadding: const EdgeInsets.all(space4),

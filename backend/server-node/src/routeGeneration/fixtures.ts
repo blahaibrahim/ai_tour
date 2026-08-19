@@ -26,6 +26,7 @@
 import {
   Category,
   CityConfig,
+  PromptInterpretation,
   RouteRequest,
   RouteResponse,
   RouteStop,
@@ -215,6 +216,34 @@ const FIXTURE_SEGMENTS: Segment[] = [
   walkLeg(FIXTURE_STOPS[3], FIXTURE_STOPS[4], 3, 120),
   walkLeg(FIXTURE_STOPS[4], FIXTURE_STOPS[5], 3, 140),
 ];
+
+/**
+ * Stands in for `domain/promptInterpreter.ts` in fixture mode — no Groq call,
+ * no network, matching the rest of this file's "buildable with nothing
+ * configured" purpose. A tiny substring match against the fixture themes
+ * rather than always returning `understood: false`: the prompt field and its
+ * "what we understood" chips are worth being able to develop against without
+ * a GROQ_API_KEY, and this is not standing in for the enforcement logic
+ * (`categories_available` grounding, the retry, the theme/category
+ * reconciliation) — only for having something to show on screen.
+ */
+export function fixturePromptInterpretation(prompt: string): PromptInterpretation {
+  const text = prompt.trim().toLowerCase();
+  if (!text) return { theme: null, categoryKeys: [], understood: false };
+
+  const theme = FIXTURE_THEMES.find(
+    (t) => text.includes(t.key) || text.includes(t.labelEn.toLowerCase()),
+  );
+  const categoryKeys = FIXTURE_CATEGORIES.filter(
+    (c) => text.includes(c.key) || text.includes(c.labelEn.toLowerCase()),
+  ).map((c) => c.key);
+
+  return {
+    theme: theme?.key ?? null,
+    categoryKeys,
+    understood: Boolean(theme) || categoryKeys.length > 0,
+  };
+}
 
 /**
  * A complete fixture route for `request`.

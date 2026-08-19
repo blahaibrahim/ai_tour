@@ -197,7 +197,11 @@ class OpenRouteByIdEvent extends AppEvent {
 class RouteGenerationFailedEvent extends AppEvent {
   const RouteGenerationFailedEvent(this.code, this.message);
   final String code;
-  final String message;
+
+  /// The server's own prose, when it sent any. Null for the codes the app
+  /// recognises and words itself — see [routeErrorText], which prefers its own
+  /// translation over an untranslated server string.
+  final String? message;
 
   @override
   List<Object?> get props => [code, message];
@@ -416,6 +420,21 @@ class LoadPointsEvent extends AppEvent {
   List<Object?> get props => [];
 }
 
+/// Re-reads how many notifications are unread, for the badge on the home
+/// header.
+///
+/// Explicit rather than a realtime subscription on `user_notifications`. The
+/// three moments the count can change are all moments the app already knows
+/// about — a session appearing, the notifications screen being opened, and a row
+/// being deleted — and a second Supabase realtime channel open for the whole
+/// session is a websocket held to learn a number the app could ask for.
+class RefreshUnreadCountEvent extends AppEvent {
+  const RefreshUnreadCountEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
 class ToggleSavedLocationEvent extends AppEvent {
   const ToggleSavedLocationEvent(this.id);
   final String id;
@@ -511,5 +530,33 @@ class OptimisticArtifactEvent extends AppEvent {
 /// Restores the route generation session from SharedPreferences on startup.
 class RestoreSessionEvent extends AppEvent {
   const RestoreSessionEvent();
+}
+
+// ---------------------------------------------------------------------------
+// Offline support
+// ---------------------------------------------------------------------------
+
+/// Fired when [BackendMonitor] transitions between connected and offline.
+///
+/// On the `false → true` (offline → online) transition, the bloc flushes all
+/// outboxes (checkpoints and task completions) and refreshes the authoritative
+/// points total from the server.
+class ConnectivityChangedEvent extends AppEvent {
+  const ConnectivityChangedEvent(this.isOnline);
+  final bool isOnline;
+
+  @override
+  List<Object?> get props => [isOnline];
+}
+
+/// Fired by [ArrivalDetector] when GPS confirms the traveller has entered a
+/// stop's checkpoint radius. Works entirely offline.
+class StopArrivalDetectedEvent extends AppEvent {
+  const StopArrivalDetectedEvent(this.stopIndex, this.poiId);
+  final int stopIndex;
+  final String poiId;
+
+  @override
+  List<Object?> get props => [stopIndex, poiId];
 }
 

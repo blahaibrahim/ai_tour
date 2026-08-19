@@ -1,0 +1,126 @@
+.page {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) 64px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Ink, not white. This page has no dark header — the route screens do, which is
+   where the white back arrow came from, and on cream it was invisible. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--ink);
+}
+
+.back:hover {
+  background: var(--surface-alt);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* `sectionLabel` is a global class, so it has to be escaped out of the module's
+   name mangling to match — a bare `.sectionLabel` here would be hashed and hit
+   nothing. */
+.section > :global(.sectionLabel) {
+  padding-left: var(--space-1);
+}
+
+.group {
+  border-radius: var(--radius-lg);
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-4);
+  text-align: left;
+}
+
+/* A hairline between rows, indented past the icon column, and never after the
+   last one. */
+.group > *:not(:last-child) .row,
+.group > .row:not(:last-child) {
+  box-shadow: inset 0 -1px 0 rgba(20, 37, 74, 0.1);
+}
+
+.rowButton {
+  transition: background var(--motion-fast) var(--motion-curve);
+}
+
+.rowButton:hover {
+  background: rgba(20, 37, 74, 0.04);
+}
+
+.rowIcon {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.rowCopy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rowSubtitle {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(20, 37, 74, 0.6);
+}
+
+.rowValue {
+  flex: none;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.danger .rowTitle,
+.danger .rowIcon {
+  color: var(--error);
+}
+
+.version {
+  margin: var(--space-4) 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(20, 37, 74, 0.5);
+}

@@ -47,7 +47,7 @@ class NavButton extends StatelessWidget {
               curve: Curves.easeOut,
               child: isActive
                   ? Padding(
-                      padding: const EdgeInsets.only(left: 7),
+                      padding: const EdgeInsetsDirectional.only(start: 7),
                       child: Text(
                         label,
                         style: TextStyle(

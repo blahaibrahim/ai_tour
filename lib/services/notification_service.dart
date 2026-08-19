@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../repositories/notification_repository.dart';
 import 'api_client.dart';
 import 'notification_policy.dart';
+import '../l10n/app_localizations.dart';
+import 'locale_controller.dart';
 
 /// Handles a push that arrives while the app is terminated or backgrounded.
 ///
@@ -168,16 +170,25 @@ class NotificationService with WidgetsBindingObserver {
       // nearby" without also silencing "your model is ready" — the hunt is the
       // only one of the three that speaks unprompted, and it is the one a
       // traveller is most likely to want to turn down.
-      await android?.createNotificationChannel(const AndroidNotificationChannel(
+      // Channel names are what the OS settings screen shows, and Android
+      // keeps the wording from whenever the channel was first created — it
+      // ignores later edits under the same id. So these follow the language
+      // the app was first launched in, and a traveller who switches later will
+      // still see the old wording in the *system* settings, though every
+      // notification itself is translated. Re-creating them under new ids on a
+      // language change would reset the traveller's own per-channel choices,
+      // which is the worse trade.
+      final l10n = await LocaleController.localizations();
+      await android?.createNotificationChannel(AndroidNotificationChannel(
         _defaultChannelId,
-        'Routes and models',
-        description: 'When a route is ready, or a 3D capture has finished.',
+        l10n.notifChannelRoutesName,
+        description: l10n.notifChannelRoutesDescription,
         importance: Importance.high,
       ));
-      await android?.createNotificationChannel(const AndroidNotificationChannel(
+      await android?.createNotificationChannel(AndroidNotificationChannel(
         _huntChannelId,
-        'Fennec hunt',
-        description: 'When you are getting close to a hidden fennec.',
+        l10n.notifChannelHuntName,
+        description: l10n.notifChannelHuntDescription,
         importance: Importance.high,
       ));
     } catch (error, stack) {
@@ -310,6 +321,7 @@ class NotificationService with WidgetsBindingObserver {
     bool? routeReady,
     bool? modelReady,
     bool? mascotNearby,
+    bool? splatReady,
   }) async {
     // Optimistic, so the switch moves under the finger; the server's answer
     // replaces it a moment later either way.
@@ -317,12 +329,14 @@ class NotificationService with WidgetsBindingObserver {
       routeReady: routeReady,
       modelReady: modelReady,
       mascotNearby: mascotNearby,
+      splatReady: splatReady,
     );
     try {
       prefs.value = await NotificationRepository.updatePrefs(
         routeReady: routeReady,
         modelReady: modelReady,
         mascotNearby: mascotNearby,
+        splatReady: splatReady,
       );
     } catch (error) {
       developer.log('Could not store notification category',
@@ -455,9 +469,14 @@ class NotificationService with WidgetsBindingObserver {
     if (type == null) return;
     pendingDeepLink.value = NotificationTap(
       type,
-      // Whichever key this kind of message carries; both are set by
+      // Whichever key this kind of message carries; all of them are set by
       // `notifications/index.ts`.
       id: (data['route_id'] ?? data['artifact_id'] ?? data['job_id']) as String?,
+      // The whole block, not just an id. `splat_ready` needs two values — the
+      // storage key and the scene's name — and inventing a second scalar field
+      // for every kind that needs more than one would be a worse shape than
+      // passing what FCM already delivered.
+      data: data,
     );
   }
 
@@ -504,13 +523,14 @@ class NotificationService with WidgetsBindingObserver {
     );
     if (!allowed) return;
 
+    final l10n = await LocaleController.localizations();
     await _show(
       id: 1001,
       channelId: _defaultChannelId,
-      title: 'Your route is ready',
+      title: l10n.notifRouteReadyTitle,
       body: routeTitle == null
-          ? 'Tap to see where you are going.'
-          : '$routeTitle is planned and waiting for you.',
+          ? l10n.notifRouteReadyBody
+          : l10n.notifRouteReadyBodyNamed(routeTitle),
       payload: 'route_ready|${routeId ?? ''}',
     );
   }
@@ -551,13 +571,14 @@ class NotificationService with WidgetsBindingObserver {
     );
     if (!allowed) return;
 
+    final l10n = await LocaleController.localizations();
     await _show(
       id: jobId.hashCode & 0x7fffffff,
       channelId: _defaultChannelId,
-      title: succeeded ? 'Your 3D model is ready' : "That capture didn't work out",
+      title: succeeded ? l10n.notifModelReadyTitle : l10n.notifModelFailedTitle,
       body: succeeded
-          ? 'Tap to see it in your folder.'
-          : _modelFailureBody(errorCode),
+          ? l10n.notifModelReadyBody
+          : _modelFailureBody(l10n, errorCode),
       payload: 'model_ready|$jobId',
     );
   }
@@ -588,15 +609,16 @@ class NotificationService with WidgetsBindingObserver {
     );
     if (!allowed) return;
 
+    final l10n = await LocaleController.localizations();
     await _show(
       id: spawnId.hashCode & 0x7ffffffe | (canCapture ? 1 : 0),
       channelId: _huntChannelId,
-      title: canCapture ? 'A fennec is right here!' : "You're getting warm",
+      title: canCapture ? l10n.notifMascotHereTitle : l10n.notifMascotWarmTitle,
       body: canCapture
-          ? 'Tap to open the camera and catch it.'
+          ? l10n.notifMascotHereBody
           : stopName == null
-              ? 'A fennec is hiding somewhere close by.'
-              : 'A fennec is hiding near $stopName.',
+              ? l10n.notifMascotNearbyBody
+              : l10n.notifMascotNearbyBodyNamed(stopName),
       payload: 'mascot_nearby|$spawnId',
     );
   }
@@ -609,6 +631,7 @@ class NotificationService with WidgetsBindingObserver {
     required String payload,
   }) async {
     try {
+      final l10n = await LocaleController.localizations();
       await _local.show(
         id,
         title,
@@ -616,7 +639,9 @@ class NotificationService with WidgetsBindingObserver {
         NotificationDetails(
           android: AndroidNotificationDetails(
             channelId,
-            channelId == _huntChannelId ? 'Fennec hunt' : 'Routes and models',
+            channelId == _huntChannelId
+                ? l10n.notifChannelHuntName
+                : l10n.notifChannelRoutesName,
             importance: Importance.high,
             priority: Priority.high,
           ),
@@ -630,12 +655,12 @@ class NotificationService with WidgetsBindingObserver {
     }
   }
 
-  static String _modelFailureBody(String? errorCode) => switch (errorCode) {
-        'no_subject' =>
-          "We couldn't find a clear object — try filling more of the frame with it.",
-        'timeout' => 'It took too long to build. Tap to try that photo again.',
-        'quota_exceeded' => "You've used all your model credits for today.",
-        _ => 'Something went wrong building it. Tap to try again.',
+  static String _modelFailureBody(AppLocalizations l10n, String? errorCode) =>
+      switch (errorCode) {
+        'no_subject' => l10n.notifModelFailNoSubject,
+        'timeout' => l10n.notifModelFailTimeout,
+        'quota_exceeded' => l10n.notifModelFailQuota,
+        _ => l10n.notifModelFailGeneric,
       };
 }
 
@@ -646,10 +671,16 @@ class NotificationService with WidgetsBindingObserver {
 /// killed while generating, nothing about that route survives in memory, and
 /// this id is the only way back to it.
 class NotificationTap {
-  const NotificationTap(this.type, {this.id});
+  const NotificationTap(this.type, {this.id, this.data = const {}});
 
   final String type;
   final String? id;
+
+  /// The notification's full data block, when it came from a push. Empty for a
+  /// tap on a *local* notification: the plugin's payload is one string, so those
+  /// carry only `"<type>|<id>"` — which is all the two locally-fired kinds have
+  /// ever needed.
+  final Map<String, dynamic> data;
 }
 
 /// What [NotificationService.enable] managed to do.

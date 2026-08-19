@@ -72,3 +72,6 @@ skills-lock.json
 docs/
 .vscode/
 
+
+# gen-l10n writes the list of keys fr/ar are still missing here on every build.
+l10n_missing.txt

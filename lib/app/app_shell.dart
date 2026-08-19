@@ -5,6 +5,7 @@ import '../blocs/app/app_event.dart';
 import '../blocs/app/app_state.dart';
 import '../blocs/auth/auth_bloc.dart';
 import '../blocs/auth/auth_state.dart';
+import '../l10n/app_localizations.dart';
 import '../services/notification_service.dart';
 import '../theme.dart';
 import '../widgets/glass_surface.dart';
@@ -19,6 +20,7 @@ import '../screens/home/home_screen.dart';
 import '../screens/overview/overview_screen.dart';
 import '../screens/folder/folder_screen.dart';
 import '../screens/areas_map/areas_map_screen.dart';
+import '../screens/splat_viewer/splat_viewer_screen.dart';
 import 'screen_switcher.dart';
 import 'nav_bar.dart';
 
@@ -103,6 +105,22 @@ class _NotificationTapListenerState extends State<_NotificationTapListener> {
         }
       case 'model_ready':
         context.read<AppBloc>().add(const SetScreenEvent('folder'));
+      case 'splat_ready':
+        // Straight to the scene, not to a list. This notification exists to say
+        // "go and look at this one thing", and the storage key it carries is
+        // enough to open it without any state this process might have lost —
+        // which is what makes it safe to honour after a cold start.
+        final path = tap.data['splat_path'];
+        if (path is String && path.isNotEmpty) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SplatViewerScreen(
+                storagePath: path,
+                title: tap.data['scene_title'] as String? ?? path,
+              ),
+            ),
+          );
+        }
       case 'mascot_nearby':
         // The hunt lives inside the current-task card on the overview screen,
         // which is where the traveller was when this fired.
@@ -190,14 +208,14 @@ class _AppShellBody extends StatelessWidget {
                         children: [
                           NavButton(
                             icon: Icons.map_outlined,
-                            label: 'Map',
+                            label: AppLocalizations.of(context).navMap,
                             isActive: state.screen == 'areasMap',
                             onTap: () => context.read<AppBloc>().add(const SetScreenEvent('areasMap')),
                           ),
                           const SizedBox(width: 4),
                           NavButton(
                             icon: Icons.home_outlined,
-                            label: 'Home',
+                            label: AppLocalizations.of(context).navHome,
                             isActive: state.screen == 'home' ||
                                 state.screen == 'overview',
                             onTap: () => context.read<AppBloc>().add(const NavHomeEvent()),
@@ -205,7 +223,7 @@ class _AppShellBody extends StatelessWidget {
                           const SizedBox(width: 4),
                           NavButton(
                             icon: Icons.folder_outlined,
-                            label: 'Folder',
+                            label: AppLocalizations.of(context).navFolder,
                             isActive: state.screen == 'folder',
                             onTap: () => context.read<AppBloc>().add(const SetScreenEvent('folder')),
                           ),

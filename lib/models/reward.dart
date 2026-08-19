@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../l10n/app_localizations.dart';
 
 /// What a reward costs *Massar*, which is what decides how it is gated.
 ///
@@ -19,18 +20,18 @@ enum RewardKind {
       };
 
   /// The heading this kind sits under in the catalogue.
-  String get sectionTitle => switch (this) {
-        RewardKind.digital => 'For the app',
-        RewardKind.partner => 'Along the way',
-        RewardKind.physical => 'Things to keep',
+  String sectionTitle(AppLocalizations l10n) => switch (this) {
+        RewardKind.digital => l10n.rewardKindDigital,
+        RewardKind.partner => l10n.rewardKindPartner,
+        RewardKind.physical => l10n.rewardKindPhysical,
       };
 
   /// One line under the heading, explaining what the group *is* rather than
   /// repeating the items in it.
-  String get sectionBlurb => switch (this) {
-        RewardKind.digital => 'Spend points on what Massar itself can do.',
-        RewardKind.partner => 'Redeemed at a place on one of your routes.',
-        RewardKind.physical => 'Collected in person. Needs an account.',
+  String sectionBlurb(AppLocalizations l10n) => switch (this) {
+        RewardKind.digital => l10n.rewardKindDigitalBlurb,
+        RewardKind.partner => l10n.rewardKindPartnerBlurb,
+        RewardKind.physical => l10n.rewardKindPhysicalBlurb,
       };
 }
 
@@ -190,25 +191,16 @@ enum RedeemFailure {
 
   /// What the traveller is told. Says what happened and what to do about it —
   /// never an apology, and never "an error occurred".
-  String get message => switch (this) {
-        RedeemFailure.notSignedIn =>
-          'Sign in first so this stays with you.',
-        RedeemFailure.offline =>
-          "You're offline. Redeeming needs a connection so your balance stays right.",
-        RedeemFailure.insufficientPoints =>
-          'Not enough points yet — finish another task or two.',
-        RedeemFailure.unavailable =>
-          'This one is no longer available.',
-        RedeemFailure.outOfStock =>
-          'The last one just went. More are on the way.',
-        RedeemFailure.alreadyOwned =>
-          'You already have this one.',
-        RedeemFailure.accountRequired =>
-          'Create an account to claim something we have to hand you in person.',
-        RedeemFailure.tooMany =>
-          'That is a lot of redeeming at once. Try again in a few minutes.',
-        RedeemFailure.unknown =>
-          "That didn't go through. Your points are untouched — try again.",
+  String message(AppLocalizations l10n) => switch (this) {
+        RedeemFailure.notSignedIn => l10n.redeemFailSignIn,
+        RedeemFailure.offline => l10n.redeemFailOffline,
+        RedeemFailure.insufficientPoints => l10n.redeemFailNotEnough,
+        RedeemFailure.unavailable => l10n.redeemFailUnavailable,
+        RedeemFailure.outOfStock => l10n.redeemFailOutOfStock,
+        RedeemFailure.alreadyOwned => l10n.redeemFailAlreadyOwned,
+        RedeemFailure.accountRequired => l10n.redeemFailNeedsAccount,
+        RedeemFailure.tooMany => l10n.redeemFailRateLimited,
+        RedeemFailure.unknown => l10n.redeemFailGeneric,
       };
 }
 

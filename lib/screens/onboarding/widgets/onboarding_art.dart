@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_localizations.dart';
 
 import '../../../theme.dart';
 
@@ -26,7 +27,7 @@ class OnboardingArt extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       image: true,
-      label: 'Illustration',
+      label: AppLocalizations.of(context).onboardingIllustration,
       child: Image.asset(
         assetPath,
         fit: BoxFit.contain,

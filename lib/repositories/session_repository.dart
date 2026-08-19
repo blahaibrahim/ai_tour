@@ -26,6 +26,8 @@ class SessionRepository {
       // session forgets, and a traveller who already refused the fennec hunt
       // at a stop can be handed it again.
       'offeredQuestTypes': state.offeredQuestTypes.map((s) => s.toList()).toList(),
+      // Offline support: how many outbox entries await sync.
+      'pendingSyncCount': state.pendingSyncCount,
     };
     
     await prefs.setString(_kSessionKey, jsonEncode(data));

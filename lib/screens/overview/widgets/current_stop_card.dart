@@ -4,6 +4,7 @@ import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
 import '../../../models/location.dart';
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/pressable_scale.dart';
 
@@ -68,14 +69,15 @@ class CurrentStopCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         minimumSize: Size.zero,
                       ),
-                      child: const Text('End visit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      child: Text(AppLocalizations.of(context).overviewEndVisit,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                     )
                   else
                     Row(
                       children: [
                         Icon(Icons.flag_outlined, size: 16, color: AppTheme.onNavy.withValues(alpha: 0.8)),
                         const SizedBox(width: 4),
-                        Text('End of route',
+                        Text(AppLocalizations.of(context).overviewEndOfRoute,
                             style: TextStyle(fontSize: 12, color: AppTheme.onNavy.withValues(alpha: 0.8), fontWeight: FontWeight.bold)),
                       ],
                     ),

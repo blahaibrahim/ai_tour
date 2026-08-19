@@ -1,0 +1,199 @@
+.page {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-5) 64px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.brand {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.greeting {
+  font-size: 23px;
+  color: #ffffff;
+}
+
+/* The round glass button from the app's dark headers. */
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--min-tap);
+  height: var(--min-tap);
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: rgba(20, 37, 74, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: background var(--motion-fast) var(--motion-curve);
+}
+
+.iconButton:hover {
+  background: rgba(20, 37, 74, 0.75);
+}
+
+/* --- the one primary action ---------------------------------------------
+   A filled card rather than a row in a list, because it is the reason most
+   visits happen and everything else on this page is a way of not doing it. */
+
+.startCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-lg);
+  transition: transform var(--motion-fast) var(--motion-curve);
+}
+
+.startCard:hover {
+  background: var(--accent-dark);
+}
+
+.startCard:active {
+  transform: scale(0.99);
+}
+
+.startIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.startCopy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.startTitle {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.startSubtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.startArrow {
+  flex: none;
+}
+
+/* --- history ------------------------------------------------------------- */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.routeCard {
+  border-radius: var(--radius-md);
+}
+
+.routeLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+}
+
+.routeIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.routeCopy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.routeTitleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.routeTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routeWhen {
+  flex: none;
+  font-size: 11.5px;
+  color: rgba(20, 37, 74, 0.45);
+}
+
+.routeSubtitle {
+  font-size: 12.5px;
+  color: rgba(20, 37, 74, 0.6);
+}
+
+.routeChevron {
+  flex: none;
+  color: rgba(20, 37, 74, 0.3);
+}
+
+.emptyCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-4);
+  border-radius: var(--radius-md);
+}
+
+.emptyIcon {
+  flex: none;
+  color: rgba(20, 37, 74, 0.35);
+}
+
+.emptyCopy {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: rgba(20, 37, 74, 0.6);
+}

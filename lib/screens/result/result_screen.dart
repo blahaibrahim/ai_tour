@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/route.dart';
 import '../../theme.dart';
 import '../../widgets/app_backdrop.dart';
@@ -75,6 +76,7 @@ class _RouteMapHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SliverAppBar(
       pinned: true,
       expandedHeight: 280,
@@ -86,7 +88,7 @@ class _RouteMapHeader extends StatelessWidget {
         padding: const EdgeInsets.all(AppTheme.space2),
         child: _CircleButton(
           icon: Icons.arrow_back,
-          semanticLabel: 'Back to planning',
+          semanticLabel: l10n.resultBackToPlanning,
           onTap: () => context.read<AppBloc>().add(const SetScreenEvent('map')),
         ),
       ),
@@ -100,7 +102,7 @@ class _RouteMapHeader extends StatelessWidget {
               ),
             ),
             icon: const Icon(Icons.map_rounded, size: 20, color: Colors.white),
-            label: const Text('Open map', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13.5)),
+            label: Text(l10n.resultOpenMap, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13.5)),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.accent,
               elevation: 2,
@@ -110,9 +112,9 @@ class _RouteMapHeader extends StatelessWidget {
           ),
         ),
       ],
-      title: const Text(
-        'Your route',
-        style: TextStyle(
+      title: Text(
+        l10n.resultYourRoute,
+        style: const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w700,
           color: AppTheme.text,
@@ -169,7 +171,7 @@ class _ItineraryHeaderRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          'ITINERARY',
+          AppLocalizations.of(context).resultItinerary,
           style: TextStyle(
             fontSize: 11,
             letterSpacing: 0.8,
@@ -191,7 +193,9 @@ class _ItineraryHeaderRow extends StatelessWidget {
           // matrix and cannot be hand-dragged without invalidating every
           // duration on the page. Removing stops is what the mode actually
           // does, so that is what it now says.
-          label: Text(modifyMode ? 'Done' : 'Remove stops'),
+          label: Text(modifyMode
+              ? AppLocalizations.of(context).actionDone
+              : AppLocalizations.of(context).resultRemoveStops),
           style: TextButton.styleFrom(
             foregroundColor: modifyMode ? AppTheme.accent : AppTheme.text,
           ),
@@ -210,6 +214,7 @@ class _AcceptBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surface,
@@ -233,7 +238,7 @@ class _AcceptBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '${route.stops.length} stops',
+                      l10n.resultStopCount(route.stops.length),
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
@@ -241,7 +246,7 @@ class _AcceptBar extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      formatMinutes(route.estimatedTotalDurationMinutes),
+                      formatMinutes(l10n, route.estimatedTotalDurationMinutes),
                       style: TextStyle(
                         fontSize: 12.5,
                         color: AppTheme.text.withValues(alpha: 0.65),
@@ -271,7 +276,7 @@ class _AcceptBar extends StatelessWidget {
                           color: AppTheme.onAccent,
                         ),
                       )
-                    : const Text('Start this route'),
+                    : Text(l10n.resultStartRoute),
               ),
             ],
           ),
@@ -290,6 +295,7 @@ class _EmptyRoute extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       body: AppBackdrop(
         child: Center(
@@ -313,7 +319,7 @@ class _EmptyRoute extends StatelessWidget {
                 ),
                 const SizedBox(height: AppTheme.space4),
                 Text(
-                  hadRoute ? 'No stops left' : 'No route yet',
+                  hadRoute ? l10n.resultNoStopsLeft : l10n.resultNoRouteYet,
                   style: Theme.of(context)
                       .textTheme
                       .headlineSmall
@@ -322,9 +328,8 @@ class _EmptyRoute extends StatelessWidget {
                 const SizedBox(height: AppTheme.space2),
                 Text(
                   hadRoute
-                      ? 'You dropped every stop on this route. Try another theme, '
-                          'a longer time budget, or a different city.'
-                      : 'Pick a city and a theme to plan your first route.',
+                      ? l10n.resultDroppedEveryStop
+                      : l10n.resultPickCityAndTheme,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13.5,
@@ -337,7 +342,7 @@ class _EmptyRoute extends StatelessWidget {
                   onPressed: () =>
                       context.read<AppBloc>().add(const SetScreenEvent('map')),
                   icon: const Icon(Icons.tune_rounded, size: 18),
-                  label: const Text('Change the plan'),
+                  label: Text(l10n.resultChangeThePlan),
                 ),
               ],
             ),

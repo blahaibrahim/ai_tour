@@ -1,4 +1,5 @@
 import 'dart:math';
+import '../l10n/app_localizations.dart';
 
 /// The three things a stop can ask a traveller to do.
 ///
@@ -18,27 +19,22 @@ const List<String> kQuestTypes = ['photo', 'video', 'mascot'];
 /// Several per type so the same wording does not appear at every stop of a
 /// route — the variety is cosmetic, but a list of eleven identical instructions
 /// reads as a bug in the generator.
-const Map<String, List<String>> _questLabels = {
-  'photo': [
-    'Take a photo that shows why this place is worth stopping at.',
-    'Frame one detail here that a passing tourist would miss.',
-    'Photograph this stop the way you would describe it to someone.',
-  ],
-  'video': [
-    'Hold the shutter and film a slow pan across this place.',
-    'Film a short clip walking up to it — hold the shutter to record.',
-    'Hold the shutter for a few seconds of this place with its sound.',
-  ],
-  'mascot': [
-    'A fennec is hiding somewhere here — find it and photograph it.',
-    'There is a fennec nearby. Follow the signal and catch it.',
-    'Hunt down the fennec hiding at this stop.',
-  ],
-};
+///
+/// Resolved from the ARBs at read time rather than stored on the task: a route
+/// planned in French and walked after switching to Arabic should read in
+/// Arabic, which a string baked in at generation time could not do.
+List<String> _questLabels(AppLocalizations l10n, String type) => switch (type) {
+      'video' => [l10n.questVideo1, l10n.questVideo2, l10n.questVideo3],
+      'mascot' => [l10n.questMascot1, l10n.questMascot2, l10n.questMascot3],
+      // Photo is also the fallback for any type the server invents that this
+      // build does not know about — a generic "take a picture" is a better
+      // thing to show than an empty row.
+      _ => [l10n.questPhoto1, l10n.questPhoto2, l10n.questPhoto3],
+    };
 
 /// A label for [type], varied by [seed] so neighbouring stops read differently.
-String questLabel(String type, {int seed = 0}) {
-  final options = _questLabels[type] ?? _questLabels['photo']!;
+String questLabel(AppLocalizations l10n, String type, {int seed = 0}) {
+  final options = _questLabels(l10n, type);
   return options[seed.abs() % options.length];
 }
 

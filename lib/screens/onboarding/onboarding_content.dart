@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 
 /// How a slide stacks its art and its words.
 ///
@@ -29,8 +30,6 @@ enum OnboardingLayout {
 class OnboardingPageContent {
   const OnboardingPageContent({
     required this.id,
-    required this.title,
-    required this.body,
     required this.artAsset,
     required this.icon,
     required this.tint,
@@ -39,13 +38,32 @@ class OnboardingPageContent {
 
   /// Stable key for the page — used for widget keys and analytics, and never
   /// derived from the index, which shifts whenever a page is inserted.
+  ///
+  /// It is also what the copy hangs off: the words are translated and so
+  /// cannot live in a const list, but everything else about a slide can, so
+  /// the id is the join between the two.
   final String id;
 
-  final String title;
+  /// Looked up rather than stored. An unknown id would be a page added here
+  /// without a matching ARB entry, which should be caught in review rather
+  /// than shipped as a blank slide — hence the throw rather than a fallback.
+  String title(AppLocalizations l10n) => switch (id) {
+        'welcome' => l10n.onboardingWelcomeTitle,
+        'routes' => l10n.onboardingRoutesTitle,
+        'capture' => l10n.onboardingCaptureTitle,
+        'rewards' => l10n.onboardingRewardsTitle,
+        _ => throw StateError('no title for onboarding page "$id"'),
+      };
 
   /// One sentence, two at the most. This is a poster, not documentation: the
   /// app itself explains the detail at the moment it matters.
-  final String body;
+  String body(AppLocalizations l10n) => switch (id) {
+        'welcome' => l10n.onboardingWelcomeBody,
+        'routes' => l10n.onboardingRoutesBody,
+        'capture' => l10n.onboardingCaptureBody,
+        'rewards' => l10n.onboardingRewardsBody,
+        _ => throw StateError('no body for onboarding page "$id"'),
+      };
 
   /// Where the artwork for this page will live. Nothing is there yet — see
   /// `assets/onboarding/README.md`; until a file exists at this path the art
@@ -67,10 +85,6 @@ class OnboardingPageContent {
 const List<OnboardingPageContent> onboardingPages = [
   OnboardingPageContent(
     id: 'welcome',
-    title: 'This is Massar',
-    body:
-        'Plan where you go, find something to do when you get there, and take a '
-        'piece of it home.',
     artAsset: 'assets/onboarding/01_welcome.png',
     icon: Icons.explore_outlined,
     tint: AppTheme.compassBlue,
@@ -82,10 +96,6 @@ const List<OnboardingPageContent> onboardingPages = [
   // had bolted on.
   OnboardingPageContent(
     id: 'routes',
-    title: 'A route built around you',
-    body:
-        'Pick a city, say what you are in the mood for, and get a plan that '
-        'fits your day — with a small task waiting at every stop.',
     artAsset: 'assets/onboarding/02_routes_tasks.png',
     icon: Icons.route_outlined,
     tint: AppTheme.compassBlue,
@@ -96,10 +106,6 @@ const List<OnboardingPageContent> onboardingPages = [
   // same button.
   OnboardingPageContent(
     id: 'capture',
-    title: 'Catch fennecs, keep souvenirs',
-    body:
-        'Raise your camera to find the fennecs hiding at your stops — and to '
-        'scan real objects into 3D souvenirs for your folder.',
     artAsset: 'assets/onboarding/03_camera.png',
     icon: Icons.view_in_ar_outlined,
     tint: AppTheme.amber,
@@ -107,8 +113,6 @@ const List<OnboardingPageContent> onboardingPages = [
   ),
   OnboardingPageContent(
     id: 'rewards',
-    title: 'Turn your points into something real',
-    body: 'Spend what you earn on rewards from the places along the way.',
     artAsset: 'assets/onboarding/04_rewards.png',
     icon: Icons.card_giftcard_outlined,
     tint: AppTheme.amber,

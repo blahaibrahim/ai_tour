@@ -6,7 +6,9 @@ import 'blocs/app/app_bloc.dart';
 import 'blocs/auth/auth_bloc.dart';
 import 'blocs/auth/auth_event.dart';
 import 'config/app_config.dart';
+import 'l10n/app_localizations.dart';
 import 'services/backend_monitor.dart';
+import 'services/locale_controller.dart';
 import 'services/notification_service.dart';
 import 'services/supabase_service.dart';
 import 'theme.dart';
@@ -16,6 +18,10 @@ import 'widgets/backend_startup_toast.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppConfig.load();
+  // Before runApp so the first frame is already in the right language. Reading
+  // it afterwards would paint one frame of English and then swap — most
+  // jarring in Arabic, where the whole layout mirrors when it lands.
+  await LocaleController.instance.load();
   await SupabaseService.initialize();
 
   // Fire-and-forget: the first health check races the rest of startup rather
@@ -74,7 +80,13 @@ class _AITourAppState extends State<AITourApp> {
     if (status == BackendStatus.checking) return;
     _announcedStartupStatus = true;
     BackendMonitor.instance.status.removeListener(_onBackendStatusChanged);
-    _scaffoldMessengerKey.currentState?.showSnackBar(buildBackendStartupToast(status));
+    // The messenger's own context sits under MaterialApp, so it is the one
+    // place up here that can see the app's localizations.
+    final messengerContext = _scaffoldMessengerKey.currentContext;
+    if (messengerContext == null) return;
+    _scaffoldMessengerKey.currentState?.showSnackBar(
+      buildBackendStartupToast(status, AppLocalizations.of(messengerContext)),
+    );
   }
 
   @override
@@ -85,14 +97,28 @@ class _AITourAppState extends State<AITourApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'AI Tour',
-      theme: AppTheme.theme,
-      scaffoldMessengerKey: _scaffoldMessengerKey,
-      // Not AppShell directly: on a first install the intro and the sign-in
-      // screen come first, and the gate is what decides that.
-      home: const OnboardingGate(),
-      debugShowCheckedModeBanner: false,
+    // Rebuilds the whole app when the language changes: the theme has to be
+    // rebuilt too, because Arabic swaps the typefaces, and Directionality is
+    // derived from the locale below MaterialApp.
+    return ValueListenableBuilder<Locale?>(
+      valueListenable: LocaleController.instance.locale,
+      builder: (context, locale, _) {
+        return MaterialApp(
+          onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+          // Resolved rather than taken straight from the notifier: a null there
+          // means "follow the device", and the device may be set to a language
+          // with no translations, in which case this is English.
+          theme: AppTheme.themeFor(LocaleController.resolve(locale)),
+          locale: locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          scaffoldMessengerKey: _scaffoldMessengerKey,
+          // Not AppShell directly: on a first install the intro and the sign-in
+          // screen come first, and the gate is what decides that.
+          home: const OnboardingGate(),
+          debugShowCheckedModeBanner: false,
+        );
+      },
     );
   }
 }

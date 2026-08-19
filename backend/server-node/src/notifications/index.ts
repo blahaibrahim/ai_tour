@@ -33,6 +33,7 @@ import { getLogger } from "../logger";
 import { MAX_NOTIFICATIONS_PER_DAY, NOTIFICATION_COOLDOWN_MS } from "../arCapture/domain/notificationPolicy";
 import { getPushTokenRepository } from "../arCapture/data/pushTokenRepository";
 import { isPushConfigured, sendPush } from "./adapters/fcmAdapter";
+import * as inbox from "./data/inboxRepository";
 import { claim, recentForUser } from "./data/notificationLogRepository";
 import { getPrefs } from "./data/notificationPrefsRepository";
 import { NotificationKind, NotificationPrefs, PushPayload, SendResult } from "./types";
@@ -41,6 +42,7 @@ const logger = getLogger("notifications");
 
 export * from "./types";
 export { getPrefs, hasAnswered, upsertPrefs } from "./data/notificationPrefsRepository";
+export { file as fileInbox } from "./data/inboxRepository";
 export { isPushConfigured, sendPush } from "./adapters/fcmAdapter";
 
 /**
@@ -73,6 +75,8 @@ function kindEnabled(prefs: NotificationPrefs, kind: NotificationKind): boolean 
       return prefs.modelReady;
     case "mascot_nearby":
       return prefs.mascotNearby;
+    case "splat_ready":
+      return prefs.splatReady;
   }
 }
 
@@ -97,13 +101,33 @@ export async function sendToUser(
   options: SendOptions,
 ): Promise<SendResult> {
   try {
-    if (!isPushConfigured()) return { delivered: 0, suppressedReason: "no_tokens" };
-
     const prefs = await getPrefs(userId);
-    if (!prefs.enabled) return { delivered: 0, suppressedReason: "opted_out" };
+
+    // The inbox is filed before any of the push gates below, and the split
+    // between what suppresses which is the whole design:
+    //
+    //   * **Quiet hours, the cooldown, the daily cap and a missing token**
+    //     suppress the *push* only. Every one of them answers "should this
+    //     interrupt them right now"; a row in a list they chose to open
+    //     interrupts nobody, and a 3 a.m. model that vanished because it was
+    //     3 a.m. is exactly the notification worth keeping.
+    //   * **The per-kind opt-out** suppresses both. That switch is the
+    //     traveller saying they do not care about this class of event, which is
+    //     as true of the list as of the tray.
+    //   * **`enabled: false` suppresses the push only**, because it is also
+    //     what "never asked" looks like (see `defaultPrefs`). Reading it as
+    //     "keep no history" would leave the notifications screen permanently
+    //     empty for everyone who has not yet pressed "Notify me" — including
+    //     the traveller who is about to be told their footage became a splat.
     if (!kindEnabled(prefs, options.kind)) {
       return { delivered: 0, suppressedReason: "kind_disabled" };
     }
+
+    const dedupeKey = options.dedupeKey ?? null;
+    await inbox.file(userId, options.kind, payload, dedupeKey);
+
+    if (!isPushConfigured()) return { delivered: 0, suppressedReason: "no_tokens" };
+    if (!prefs.enabled) return { delivered: 0, suppressedReason: "opted_out" };
     if (isQuietHours(new Date(), prefs)) {
       return { delivered: 0, suppressedReason: "quiet_hours" };
     }
@@ -125,7 +149,6 @@ export async function sendToUser(
     // Claim before sending, not after. FCM has no rollback, so the only way a
     // duplicate can be prevented rather than merely noticed is to lose the
     // race before the message goes out.
-    const dedupeKey = options.dedupeKey ?? null;
     if (!(await claim(userId, options.kind, dedupeKey))) {
       logger.info(`Already notified ${userId} about ${options.kind}:${dedupeKey}; skipping.`);
       return { delivered: 0, suppressedReason: "duplicate" };
@@ -206,6 +229,44 @@ export function modelJobPayload(input: {
   return {
     title: "That capture didn't work out",
     body: modelFailureBody(input.errorCode),
+    data,
+  };
+}
+
+/**
+ * The "your footage became a 3D scene" notification.
+ *
+ * Sent from the studio dashboard, by hand, when a gaussian splat trained from a
+ * traveller's clip is worth showing them — see
+ * `website/gaussian_splatting/components/Studio.tsx`. Unlike the other three
+ * this is not a status update on something they are waiting for; it lands days
+ * later, unprompted, about footage they have probably forgotten recording. So
+ * the copy leads with the place, which is the part they will recognise.
+ *
+ * `splat_path` is what makes the tap worth making. The app's splat viewer takes
+ * a `splats/<scene>/<file>` storage key, signs it and streams the decimated
+ * point cloud — without it the notification would be a compliment with nowhere
+ * to go.
+ */
+export function splatReadyPayload(input: {
+  sceneTitle: string;
+  splatPath: string;
+  scene: string;
+  gaussians: number;
+  poiId: string | null;
+}): PushPayload {
+  const data: Record<string, string> = {
+    type: "splat_ready",
+    splat_path: input.splatPath,
+    scene: input.scene,
+    scene_title: input.sceneTitle,
+    gaussians: String(input.gaussians),
+  };
+  if (input.poiId) data.poi_id = input.poiId;
+
+  return {
+    title: `${input.sceneTitle} is now in 3D`,
+    body: "Your footage helped build it. Tap to walk around the scene.",
     data,
   };
 }

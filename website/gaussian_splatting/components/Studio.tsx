@@ -458,6 +458,11 @@ export function Studio({
           <SplatCard
             scene={scene}
             sceneName={clip.scene}
+            // The stop's own name, not the scene slug: it is what the traveller
+            // sees in the notification and in the app's viewer, and "Bardo
+            // Museum" is recognisable where `bardo_museum` is not.
+            sceneTitle={poi?.name ?? clip.scene}
+            poiId={poiId}
             viewingPly={plyName}
             busy={busy}
             onView={(name) => go([wilayaCode, poiId, clipFile, name])}
@@ -516,6 +521,8 @@ function PoiRow({
 function SplatCard({
   scene,
   sceneName,
+  sceneTitle,
+  poiId,
   viewingPly,
   busy,
   onView,
@@ -523,12 +530,15 @@ function SplatCard({
 }: {
   scene: SceneStatus | undefined;
   sceneName: string;
+  sceneTitle: string;
+  poiId: string | null;
   viewingPly: string | null;
   busy: string | null;
   onView: (name: string | null) => void;
   onFetch: (name: string) => void;
 }) {
   const plys = scene?.plys ?? [];
+  const cached = plys.filter((ply) => ply.cached);
 
   return (
     <section className={styles.card}>
@@ -593,7 +603,142 @@ function SplatCard({
         </a>
         .
       </p>
+
+      {cached.length > 0 ? (
+        <PublishPanel
+          scene={sceneName}
+          sceneTitle={sceneTitle}
+          poiId={poiId}
+          // The one being looked at, when there is one — the operator has just
+          // decided it is worth sending by looking at it. Otherwise the newest
+          // cached export, which is the one the last run produced.
+          ply={viewingPly ?? cached[cached.length - 1].name}
+        />
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * The contributor who recorded the footage this dashboard is currently
+ * splatting.
+ *
+ * Hardcoded, and honestly so. The clip-to-stop link lives in
+ * `videos/assignments.json` and carries no `user_id` — the footnote a few
+ * hundred lines up explains why — so there is nothing in this dashboard that
+ * knows who shot `Bardo Museum.mp4`. Until an `artifacts.poi_id` column exists
+ * and the app writes the uploader alongside it, whoever runs the pipeline is the
+ * one who knows, and the field is editable for exactly that reason.
+ */
+const DEFAULT_CONTRIBUTOR =
+  process.env.NEXT_PUBLIC_CONTRIBUTOR_EMAIL ?? "blib645@gmail.com";
+
+/**
+ * Sends a finished splat to the phone.
+ *
+ * Two things happen behind the one button, and the copy says so, because the
+ * second is irreversible in a way the first is not: the point cloud is
+ * decimated and uploaded to the shared `splats` bucket, and then the
+ * contributor is notified. An upload can be redone by pressing this again — the
+ * object is replaced in place. A notification cannot be unsent, which is why
+ * the email is shown rather than assumed, and why the button names the person
+ * it is about to write to.
+ */
+function PublishPanel({
+  scene,
+  sceneTitle,
+  poiId,
+  ply,
+}: {
+  scene: string;
+  sceneTitle: string;
+  poiId: string | null;
+  ply: string;
+}) {
+  const [email, setEmail] = useState(DEFAULT_CONTRIBUTOR);
+  const [state, setState] = useState<"idle" | "working">("idle");
+  const [result, setResult] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  const publish = async () => {
+    setState("working");
+    setResult(null);
+    setFailed(null);
+    try {
+      const response = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scene, ply, email, sceneTitle, poiId }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        gaussians?: number;
+        source?: number;
+        bytes?: number;
+        delivered?: number;
+        suppressedReason?: string | null;
+      };
+      if (!response.ok) throw new Error(payload.error ?? "could not publish it");
+
+      const megabytes = ((payload.bytes ?? 0) / (1 << 20)).toFixed(1);
+      // Whether the *push* landed is worth reporting, and so is the fact that
+      // it not landing changes nothing about the notification being waiting in
+      // the app. An operator who reads "0 devices" as failure would press this
+      // again, which is the one thing that is pointless.
+      const push =
+        payload.delivered && payload.delivered > 0
+          ? `pushed to ${payload.delivered} device${payload.delivered === 1 ? "" : "s"}`
+          : `no push (${payload.suppressedReason ?? "no registered device"}) — it is in their notifications either way`;
+
+      setResult(
+        `Sent ${(payload.gaussians ?? 0).toLocaleString()} of ${(payload.source ?? 0).toLocaleString()} gaussians · ${megabytes} MB · ${push}.`,
+      );
+    } catch (err) {
+      setFailed((err as Error).message);
+    } finally {
+      setState("idle");
+    }
+  };
+
+  return (
+    <>
+      <h3 className={styles.subTitle}>
+        Send to the app
+        <span className={styles.cardNote}>{ply}</span>
+      </h3>
+
+      <div className={styles.publish}>
+        <label className={styles.publishLabel}>
+          Contributor
+          <input
+            className={styles.publishInput}
+            type="email"
+            value={email}
+            spellCheck={false}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="who recorded this"
+          />
+        </label>
+        <button
+          type="button"
+          className={styles.button}
+          disabled={state === "working" || !email.includes("@")}
+          onClick={() => void publish()}
+        >
+          {state === "working" ? "publishing…" : "Publish and notify"}
+        </button>
+      </div>
+
+      {result ? <p className={styles.publishResult}>{result}</p> : null}
+      {failed ? <p className={styles.error}>{failed}</p> : null}
+
+      <p className={styles.footnote}>
+        Decimates the point cloud to 200k gaussians (~4 MB), uploads it to the
+        shared <code>splats</code> bucket, and asks the app backend to notify
+        that traveller. Publishing the same export twice replaces the object and
+        does <em>not</em> notify twice — the backend dedupes on the storage path.
+      </p>
+    </>
   );
 }
 

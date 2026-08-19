@@ -9,6 +9,7 @@ import '../../blocs/auth/auth_bloc.dart';
 import '../../blocs/auth/auth_event.dart';
 import '../../blocs/auth/auth_state.dart';
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/app_backdrop.dart';
 
 /// What the verification page popped back with.
@@ -152,6 +153,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
 
     return BlocConsumer<AuthBloc, AuthState>(
       listenWhen: (previous, current) =>
@@ -165,7 +167,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
             ..hideCurrentSnackBar()
             ..showSnackBar(
               SnackBar(
-                content: Text(feedback.message),
+                content: Text(feedback.text(l10n)),
                 backgroundColor: feedback.isError
                     ? AppTheme.error
                     : AppTheme.ink,
@@ -202,7 +204,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 child: Column(
                   children: [
                     Align(
-                      alignment: Alignment.centerLeft,
+                      alignment: AlignmentDirectional.centerStart,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: AppTheme.space3,
@@ -211,7 +213,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           onPressed: auth.isBusy ? null : _cancel,
                           icon: const Icon(Icons.arrow_back_rounded),
                           color: AppTheme.ink.withValues(alpha: 0.72),
-                          tooltip: 'Use a different email',
+                          tooltip: l10n.authUseDifferentEmail,
                         ),
                       ),
                     ),
@@ -226,8 +228,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           children: [
                             Text(
                               _isRecovery
-                                  ? 'Reset your password'
-                                  : 'Check your email',
+                                  ? l10n.authResetYourPassword
+                                  : l10n.authCheckYourEmail,
                               textAlign: TextAlign.center,
                               style: textTheme.headlineMedium?.copyWith(
                                 fontSize: 26,
@@ -240,7 +242,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                   // Reads the length off the same constant the
                                   // field enforces, so the two cannot disagree.
                                   TextSpan(
-                                    text: 'We sent a $_codeLength-digit code to\n',
+                                    text: l10n.authCodeSentTo(_codeLength),
                                   ),
                                   TextSpan(
                                     text: widget.email,
@@ -286,7 +288,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                           color: AppTheme.onAccent,
                                         ),
                                       )
-                                    : const Text('Confirm'),
+                                    : Text(l10n.authConfirm),
                               ),
                             ),
                             AppTheme.gap4,
@@ -299,15 +301,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                     : _resend,
                                 child: Text(
                                   _secondsUntilResend > 0
-                                      ? 'Resend code in ${_secondsUntilResend}s'
-                                      : 'Send a new code',
+                                      ? l10n.authResendIn(_secondsUntilResend)
+                                      : l10n.authSendNewCode,
                                 ),
                               ),
                             ),
                             AppTheme.gap2,
                             Text(
-                              'The code expires after an hour. Check your spam folder '
-                              'if it has not arrived.',
+                              l10n.authCodeExpiryNote,
                               textAlign: TextAlign.center,
                               style: textTheme.bodySmall?.copyWith(
                                 fontSize: 11.5,
@@ -380,7 +381,7 @@ class _CodeField extends StatelessWidget {
               children: [
                 for (var i = 0; i < length; i++)
                   Padding(
-                    padding: EdgeInsets.only(right: i == length - 1 ? 0 : gap),
+                    padding: EdgeInsetsDirectional.only(end: i == length - 1 ? 0 : gap),
                     child: _CodeBox(
                       character: i < code.length ? code[i] : null,
                       // The "current" box is the next empty one, and stays on

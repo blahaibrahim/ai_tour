@@ -10,6 +10,7 @@ class NotificationPrefs {
     required this.routeReady,
     required this.modelReady,
     required this.mascotNearby,
+    required this.splatReady,
     required this.pushConfigured,
   });
 
@@ -27,6 +28,11 @@ class NotificationPrefs {
   final bool modelReady;
   final bool mascotNearby;
 
+  /// Whether to be told when footage this traveller recorded is turned into a
+  /// gaussian splat. Unlike the other three this one arrives days later and
+  /// unprompted, so it is the one most worth being able to switch off alone.
+  final bool splatReady;
+
   /// Whether the *server* can actually send a push — false when the backend
   /// has no Firebase service account. Local notifications still work; only
   /// the ones that have to arrive with the app closed don't.
@@ -42,6 +48,7 @@ class NotificationPrefs {
     routeReady: true,
     modelReady: true,
     mascotNearby: true,
+    splatReady: true,
     pushConfigured: false,
   );
 
@@ -51,6 +58,7 @@ class NotificationPrefs {
     bool? routeReady,
     bool? modelReady,
     bool? mascotNearby,
+    bool? splatReady,
   }) =>
       NotificationPrefs(
         enabled: enabled ?? this.enabled,
@@ -60,6 +68,7 @@ class NotificationPrefs {
         routeReady: routeReady ?? this.routeReady,
         modelReady: modelReady ?? this.modelReady,
         mascotNearby: mascotNearby ?? this.mascotNearby,
+        splatReady: splatReady ?? this.splatReady,
         pushConfigured: pushConfigured,
       );
 
@@ -71,6 +80,7 @@ class NotificationPrefs {
         routeReady: j['route_ready'] as bool? ?? true,
         modelReady: j['model_ready'] as bool? ?? true,
         mascotNearby: j['mascot_nearby'] as bool? ?? true,
+        splatReady: j['splat_ready'] as bool? ?? true,
         pushConfigured: j['push_configured'] as bool? ?? false,
       );
 }
@@ -97,6 +107,7 @@ class NotificationRepository {
     bool? routeReady,
     bool? modelReady,
     bool? mascotNearby,
+    bool? splatReady,
     int? quietHoursStart,
     int? quietHoursEnd,
   }) async {
@@ -105,6 +116,7 @@ class NotificationRepository {
       'route_ready': ?routeReady,
       'model_ready': ?modelReady,
       'mascot_nearby': ?mascotNearby,
+      'splat_ready': ?splatReady,
       'quiet_hours_start': ?quietHoursStart,
       'quiet_hours_end': ?quietHoursEnd,
       'utc_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,

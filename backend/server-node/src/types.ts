@@ -119,6 +119,12 @@ export interface WikidataItem {
 }
 
 export interface WikipediaSummary {
+  /** The article's own canonical title, which is not necessarily the title
+   * that was requested — the REST endpoint resolves redirects, so asking for
+   * "Casbah" can come back as "Casbah of Algiers". Callers that go on to hit
+   * the pageviews API must use this one: that endpoint does not follow
+   * redirects and 404s on the alias. */
+  title: string;
   extract: string;
   thumbnail_url: string | null;
   original_url: string | null;

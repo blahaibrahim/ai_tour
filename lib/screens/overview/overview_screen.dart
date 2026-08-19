@@ -4,8 +4,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_state.dart';
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/app_backdrop.dart';
 import '../../widgets/glass_surface.dart';
+import '../../widgets/offline_banner.dart';
 import '../../widgets/points_pill.dart';
 import '../../widgets/pressable_scale.dart';
 import '../settings/settings_screen.dart';
@@ -45,6 +47,12 @@ class OverviewScreen extends StatelessWidget {
               120,
             ),
             children: [
+              // Offline banner — visible only when backend is unreachable.
+              if (state.isOffline || state.pendingSyncCount > 0)
+                OfflineBanner(
+                  isOffline: state.isOffline,
+                  pendingSyncCount: state.pendingSyncCount,
+                ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 24),
                 child: Row(
@@ -54,8 +62,8 @@ class OverviewScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('YOUR ROUTE', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white70, fontWeight: FontWeight.bold)),
-                          Text('Overview', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 23, color: Colors.white)),
+                          Text(AppLocalizations.of(context).overviewYourRoute, style: const TextStyle(fontSize: 11, letterSpacing: 1.2, color: Colors.white70, fontWeight: FontWeight.bold)),
+                          Text(AppLocalizations.of(context).overviewTitle, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 23, color: Colors.white)),
                         ],
                       ),
                     ),
@@ -67,7 +75,8 @@ class OverviewScreen extends StatelessWidget {
                     // the two to be read as the same figure.
                     PointsPill(
                       value: state.points,
-                      semanticLabel: '${state.points} points earned on this route',
+                      semanticLabel: AppLocalizations.of(context)
+                          .overviewPointsEarned(state.points),
                     ),
                     const SizedBox(width: AppTheme.space2),
                     const ShopButton(),
@@ -81,14 +90,14 @@ class OverviewScreen extends StatelessWidget {
                         tint: GlassTint.dark,
                         borderRadius: AppTheme.brPill,
                         alignment: Alignment.center,
-                        child: const SizedBox(
+                        child: SizedBox(
                           width: AppTheme.minTapTarget,
                           height: AppTheme.minTapTarget,
                           child: Icon(
                             Icons.settings_outlined,
                             color: Colors.white,
                             size: 20,
-                            semanticLabel: 'Settings',
+                            semanticLabel: AppLocalizations.of(context).actionSettings,
                           ),
                         ),
                       ),
@@ -131,8 +140,9 @@ class _CurrentStopHeader extends StatelessWidget {
       children: [
         Text(
           currentStopName == null
-              ? 'ROUTE COMPLETE'
-              : 'STOP ${state.currentStopIdx + 1} OF ${state.accepted.length}',
+              ? AppLocalizations.of(context).overviewRouteCompleteBanner
+              : AppLocalizations.of(context).overviewStopOfBanner(
+                  state.currentStopIdx + 1, state.accepted.length),
           style: const TextStyle(
             fontSize: 11,
             letterSpacing: 1.2,
@@ -142,7 +152,7 @@ class _CurrentStopHeader extends StatelessWidget {
         ),
         const SizedBox(height: AppTheme.space1),
         Text(
-          currentStopName ?? 'All done!',
+          currentStopName ?? AppLocalizations.of(context).overviewAllDone,
           style: Theme.of(context)
               .textTheme
               .headlineSmall
@@ -163,7 +173,8 @@ class _ProgressTrack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Stop ${state.currentStopIdx + 1} of ${state.accepted.length}',
+      label: AppLocalizations.of(context)
+          .overviewStopOf(state.currentStopIdx + 1, state.accepted.length),
       excludeSemantics: true,
       child: Row(
         children: [
@@ -240,7 +251,7 @@ class _RouteComplete extends StatelessWidget {
           ),
           const SizedBox(height: AppTheme.space3),
           Text(
-            'Route complete!',
+            AppLocalizations.of(context).overviewRouteCompleteTitle,
             style: Theme.of(context)
                 .textTheme
                 .headlineSmall
@@ -248,7 +259,7 @@ class _RouteComplete extends StatelessWidget {
           ),
           const SizedBox(height: AppTheme.space2),
           Text(
-            'You visited every stop. Your captures are waiting in the folder.',
+            AppLocalizations.of(context).overviewRouteCompleteBody,
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,

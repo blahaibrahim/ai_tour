@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
 import '../../models/route.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme.dart';
 import '../../widgets/location_detail_overlay.dart';
 import '../../widgets/route_map.dart';
@@ -35,7 +36,10 @@ class RouteMapScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(40, 110, 40, 140),
               onStopTap: (stop) {
                 final regionLabel =
-                    context.read<AppBloc>().state.selectedCity?.name ?? '';
+                    context.read<AppBloc>().state.selectedCity?.localizedName(
+                          Localizations.localeOf(context),
+                        ) ??
+                        '';
                 context
                     .read<AppBloc>()
                     .add(OpenDetailEvent(stop.toLocation(regionLabel: regionLabel)));
@@ -56,7 +60,7 @@ class RouteMapScreen extends StatelessWidget {
                   children: [
                     _MapChromeButton(
                       icon: Icons.arrow_back,
-                      semanticLabel: 'Back',
+                      semanticLabel: AppLocalizations.of(context).actionBack,
                       onTap: () => Navigator.of(context).pop(),
                     ),
                     const SizedBox(width: AppTheme.space3),
@@ -72,8 +76,12 @@ class RouteMapScreen extends StatelessWidget {
                           boxShadow: AppTheme.shadowSm,
                         ),
                         child: Text(
-                          '${route.stops.length} stops · '
-                          '${formatMinutes(route.estimatedTotalDurationMinutes)}',
+                          AppLocalizations.of(context).routeMapSummary(
+                            AppLocalizations.of(context)
+                                .resultStopCount(route.stops.length),
+                            formatMinutes(AppLocalizations.of(context),
+                                route.estimatedTotalDurationMinutes),
+                          ),
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -108,7 +116,7 @@ class RouteMapScreen extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    'Tap a pin to see more details',
+                    AppLocalizations.of(context).mapTapPinForDetails,
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,

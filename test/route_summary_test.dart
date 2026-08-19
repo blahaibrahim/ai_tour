@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 import 'package:massar/models/route.dart';
+import 'package:massar/l10n/app_localizations.dart';
 
 /// The home screen's history crosses a language boundary: the row is built in
 /// `routeRepository.ts`, serialized by `serializeRouteSummary` in `routes.ts`,
@@ -7,6 +9,14 @@ import 'package:massar/models/route.dart';
 /// silent drift to camelCase would show up as a list of blank cards rather than
 /// as an error — which is exactly the kind of failure worth a test.
 void main() {
+  // The English strings, loaded once. These tests assert on wording, so they
+  // need the same lookup the app uses rather than the literals that used to be
+  // baked into the models.
+  late AppLocalizations l10n;
+  setUpAll(() async {
+    l10n = await AppLocalizations.delegate.load(const Locale('en'));
+  });
+
   group('reading a summary off the wire', () {
     test('parses the shape serializeRouteSummary actually sends', () {
       final summary = RouteSummary.fromJson(const {
@@ -44,8 +54,8 @@ void main() {
         'estimated_total_duration_minutes': 90,
       });
 
-      expect(summary.title, 'History');
-      expect(summary.title, isNot(contains('0000')));
+      expect(summary.title(l10n), 'History');
+      expect(summary.title(l10n), isNot(contains('0000')));
     });
 
     test('with neither a city nor a theme it still says something', () {
@@ -58,7 +68,7 @@ void main() {
         'estimated_total_duration_minutes': 0,
       });
 
-      expect(summary.title, 'Route');
+      expect(summary.title(l10n), 'Route');
     });
 
     test('an unknown transport mode reads as hybrid', () {
@@ -88,15 +98,15 @@ void main() {
         );
 
     test('counts stops, time and mode', () {
-      expect(make(stops: 6, minutes: 240).subtitle, '6 stops · 4h · Walking');
+      expect(make(stops: 6, minutes: 240).subtitle(l10n), '6 stops · 4h · Walking');
     });
 
     test('one stop is singular', () {
-      expect(make(stops: 1, minutes: 45).subtitle, '1 stop · 45 min · Walking');
+      expect(make(stops: 1, minutes: 45).subtitle(l10n), '1 stop · 45 min · Walking');
     });
 
     test('an odd duration keeps its minutes', () {
-      expect(make(stops: 2, minutes: 95).subtitle, contains('1h 35m'));
+      expect(make(stops: 2, minutes: 95).subtitle(l10n), contains('1h 35m'));
     });
   });
 }

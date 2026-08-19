@@ -1,0 +1,355 @@
+.page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  /* Clears the pinned accept bar so the last stop is never trapped under it. */
+  padding-bottom: 96px;
+}
+
+/* --- the map header -------------------------------------------------------
+   The map earns the top of the page, and gives the space back as soon as the
+   traveller starts reading the stops. */
+
+.mapHeader {
+  position: relative;
+  width: 100%;
+  height: 280px;
+  background: var(--surface-alt);
+}
+
+@media (min-width: 900px) {
+  .mapHeader {
+    height: 380px;
+  }
+}
+
+.mapFrame {
+  position: absolute;
+  inset: 0;
+}
+
+.floatingBack {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
+}
+
+.floatingBack:hover {
+  background: var(--surface-alt);
+}
+
+/* --- body ----------------------------------------------------------------- */
+
+.body {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.title {
+  font-size: 24px;
+  text-transform: capitalize;
+}
+
+.summary {
+  padding: var(--space-4);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.statIcon {
+  display: flex;
+  color: rgba(20, 37, 74, 0.5);
+}
+
+.stat[data-emphasised="true"] .statIcon {
+  color: var(--accent);
+}
+
+.statValue {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.stat[data-emphasised="true"] .statValue {
+  font-size: 17px;
+  color: var(--accent-dark);
+}
+
+.statLabel {
+  font-size: 11.5px;
+  color: rgba(20, 37, 74, 0.55);
+}
+
+.rule {
+  height: 1px;
+  border: none;
+  background: var(--divider);
+  margin: var(--space-3) 0;
+}
+
+/* --- itinerary ------------------------------------------------------------ */
+
+.itineraryHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.modifyToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modifyToggle:hover {
+  background: var(--surface-alt);
+}
+
+.modifyToggle[data-on="true"] {
+  color: var(--accent);
+}
+
+.itinerary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.stopItem {
+  animation: rise var(--motion-base) var(--motion-curve) backwards;
+  /* A short stagger down the list, capped so a fifteen-stop route does not
+     spend a second and a half assembling itself. */
+  animation-delay: calc(min(var(--i), 8) * 45ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.leg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 12px 44px;
+  font-size: 12px;
+  color: rgba(20, 37, 74, 0.6);
+}
+
+.leg[data-mode="drive"] {
+  color: var(--accent-dark);
+}
+
+.legLine {
+  width: 2px;
+  height: 18px;
+  margin-right: 6px;
+  background: rgba(20, 37, 74, 0.15);
+  flex: none;
+}
+
+.legMode {
+  font-weight: 700;
+}
+
+.legDetail {
+  color: rgba(20, 37, 74, 0.55);
+}
+
+.stopRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: var(--space-4);
+}
+
+.stopIndex {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stopPhoto {
+  width: 76px;
+  height: 60px;
+  flex: none;
+  border-radius: var(--radius-md);
+}
+
+.stopCopy {
+  flex: 1;
+  min-width: 0;
+}
+
+.stopName {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stopMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: rgba(20, 37, 74, 0.65);
+}
+
+.stopDescription {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(20, 37, 74, 0.7);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.removeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(200, 69, 47, 0.12);
+  color: var(--error);
+}
+
+.removeButton:hover:not(:disabled) {
+  background: rgba(200, 69, 47, 0.2);
+}
+
+.removeButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- the accept bar ------------------------------------------------------- */
+
+.acceptBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 600;
+  background: var(--surface);
+  border-top: 1px solid var(--divider);
+  box-shadow: var(--shadow-md);
+}
+
+.acceptInner {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+}
+
+.acceptCopy {
+  flex: 1;
+  min-width: 0;
+}
+
+.acceptStops {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.acceptTime {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(20, 37, 74, 0.65);
+}
+
+/* --- empty states --------------------------------------------------------- */
+
+.emptyPage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+}
+
+.emptyMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--deep-navy);
+  color: var(--on-navy);
+  margin-bottom: var(--space-1);
+}
+
+.emptyTitle {
+  font-size: 24px;
+}
+
+.emptyBody {
+  margin: 0 0 var(--space-3);
+  max-width: 42ch;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: rgba(20, 37, 74, 0.75);
+}

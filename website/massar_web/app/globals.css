@@ -1,0 +1,401 @@
+/*
+ * "Fennec Compass" — the palette lifted straight off the app icon, and the
+ * same one `lib/theme.dart` builds the Flutter theme from. Values are copied,
+ * not re-picked: the phone and the browser are one product, and they should
+ * agree on what "accent" means.
+ *
+ * Flat fills only in the chrome. The only gradients here are the page
+ * backdrops at the bottom of this file and the scrim over photos.
+ */
+
+:root {
+  /* --- raw colours sampled from the icon ------------------------------- */
+  --compass-blue: #2f549a; /* compass face — the primary brand colour */
+  --deep-navy: #14254a; /* the navy field it sits on — dark surfaces */
+  --sand: #f8d59b; /* fennec fur — the secondary brand colour */
+  --amber: #eba664; /* compass rim and needle — the warm accent */
+  --cream: #fbe7c4; /* fur highlight */
+  --cocoa: #783b1e; /* the icon's outline stroke */
+
+  /* --- semantic tokens -------------------------------------------------- */
+  --bg: #fcf6ec; /* cream paper background */
+  --surface: #ffffff; /* card surface */
+  --surface-alt: #f3ecde; /* sunken fill (inputs, chips) */
+  --ink: var(--deep-navy);
+  --text: var(--ink);
+  --text-secondary: #6e7a93; /* navy-grey */
+  --divider: #e6dcc9; /* hairline border */
+
+  --accent: var(--compass-blue);
+  --accent-dark: #22406f; /* pressed state */
+  --accent-soft: #dee6f4; /* tint bg for chips/selection */
+  --on-accent: #ffffff;
+
+  --secondary-accent: var(--amber);
+  --secondary-soft: #faebd5;
+  --on-navy: var(--cream); /* text/icon on top of deep navy */
+
+  --success: #2f7d5b;
+  --success-soft: #dff0e7;
+  /* Amber rather than red, as in the app: a route needing a second day is
+     information to act on, not a failure. */
+  --warning: #9a6212;
+  --warning-soft: #fbeeda;
+  --error: #c8452f;
+  --error-soft: #fae4e0;
+
+  /* --- route semantics --------------------------------------------------
+     A route is drive legs between walkable clusters and walk legs inside
+     them. The two modes get fixed colours so the map polyline, the leg row in
+     the itinerary and the legend all agree. */
+  --drive-color: var(--compass-blue);
+  --walk-color: #b5651d;
+
+  /* Scrim over photos, so overlaid white text stays legible. Transparent navy
+     rather than transparent black, so the midtones of the fade don't go grey. */
+  --photo-scrim: rgba(20, 37, 74, 0.78);
+  --photo-scrim-fade: rgba(20, 37, 74, 0);
+
+  /* --- shape ------------------------------------------------------------ */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  /* --- 4pt spacing scale ------------------------------------------------ */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Soft, navy-tinted elevation — no hard black shadows. */
+  --shadow-sm: 0 3px 10px rgba(20, 37, 74, 0.07);
+  --shadow-md: 0 8px 20px rgba(20, 37, 74, 0.09);
+  --shadow-lg: 0 12px 32px rgba(20, 37, 74, 0.16);
+
+  /* --- motion ----------------------------------------------------------- */
+  --motion-fast: 120ms; /* press feedback — must feel attached to the cursor */
+  --motion-base: 240ms; /* state changes: chips selecting, panels resizing */
+  --motion-slow: 420ms; /* anything crossing a large distance */
+  --motion-curve: cubic-bezier(0.215, 0.61, 0.355, 1); /* easeOutCubic */
+
+  /* The smallest square a pointer or finger can reliably hit. */
+  --min-tap: 48px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  color: var(--text);
+  background: var(--bg);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: inherit;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* The focus ring, once, in the accent — every interactive element inherits it. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* On the dark backdrop the navy ring disappears into the ground. */
+.onDark :focus-visible {
+  outline-color: #ffffff;
+}
+
+/* --- base components ------------------------------------------------------
+   The web twins of the app's `ThemeData` button, input and chip themes: same
+   radii, same weights, same pressed colours. Written as `.btn` plus a variant
+   because this is a plain stylesheet — `composes` is a CSS-modules feature and
+   would silently do nothing here. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--min-tap);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background var(--motion-fast) var(--motion-curve),
+    color var(--motion-fast) var(--motion-curve),
+    transform var(--motion-fast) var(--motion-curve);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-dark);
+}
+
+.btn-primary:disabled {
+  background: var(--divider);
+  color: rgba(20, 37, 74, 0.45);
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  color: var(--text);
+  border: 1.4px solid var(--divider);
+  background: transparent;
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: var(--surface-alt);
+}
+
+/* The white-on-navy button the dark screens use, matching the "Cancel" and
+   "Notify me" buttons on the app's thinking screen. */
+.btn-onDark {
+  background: #ffffff;
+  color: var(--deep-navy);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-onDark:hover:not(:disabled) {
+  background: var(--cream);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-compact {
+  min-height: 38px;
+  padding: 0 var(--space-4);
+  font-size: 13px;
+  border-radius: var(--radius-pill);
+}
+
+.input-field {
+  width: 100%;
+  background: var(--surface-alt);
+  border: 1.6px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 13px var(--space-4);
+  color: var(--text);
+  outline: none;
+  transition: border-color var(--motion-fast) var(--motion-curve);
+}
+
+.input-field::placeholder {
+  color: rgba(20, 37, 74, 0.4);
+}
+
+.input-field:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1.4px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all var(--motion-fast) var(--motion-curve);
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+/* The all-caps section label the app sets above every group. Two colourways:
+   ink on a light page, white on the deep backdrop. */
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: rgba(20, 37, 74, 0.5);
+  margin: 0;
+}
+
+.sectionLabel-onDark {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- backdrop variants ----------------------------------------------------
+   The four gradients of `lib/widgets/app_backdrop.dart`, stop for stop. */
+
+/* The default page ground: three stops within a few percent of each other, so
+   the page reads as warm paper rather than as a coloured wash. */
+.backdrop-sky {
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    #fcf6ec 55%,
+    rgba(250, 235, 213, 0.55) 100%
+  );
+}
+
+/* The exception to "faint". The headers, points pill and progress track on the
+   route screens are white, and they are legible because this is dark —
+   softening it to match the others would silently break their contrast. */
+.backdrop-deep {
+  background: linear-gradient(180deg, #14254a 0%, #2f549a 34%, #fcf6ec 100%);
+}
+
+.backdrop-warm {
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    rgba(250, 235, 213, 0.8) 45%,
+    #f8d59b 100%
+  );
+}
+
+/*
+ * Both brand colours at once: fennec sand at the top, compass blue at the
+ * bottom, cream paper holding the middle.
+ *
+ * The axis is near-vertical rather than corner-to-corner. On a wide viewport a
+ * true diagonal leaves the bottom edge running from pale to blue, so the page
+ * appears to fade back to white at the bottom; 168deg is tilted just enough
+ * not to look mechanical while keeping the top and bottom edges within a few
+ * percent of a single colour.
+ *
+ * The waypoints are hand-picked, not left to the interpolator. Sand and
+ * compass blue sit on opposite sides of the wheel, so a straight sRGB lerp
+ * drops through near-zero chroma — a wide grey middle with a visible seam
+ * where warm flips to cool. Chroma is given up gradually on the warm side and
+ * picked up again on the cool side, and the lightest point of the ramp is a
+ * tinted greige (#ded6c8) rather than paper.
+ */
+.backdrop-duotone {
+  background: linear-gradient(
+    168deg,
+    #f8d59b 0%,
+    #f5d6a6 20%,
+    #edd7b8 38%,
+    #ded6c8 50%,
+    #cbd2e0 60%,
+    #b5c3e0 74%,
+    #a5b7da 88%,
+    #9cb0d6 100%
+  );
+}
+
+/* --- leaflet ---------------------------------------------------------------
+   The map ships its own chrome; these are the three places it disagrees with
+   the app's shape language. */
+
+.leaflet-container {
+  font: inherit;
+  background: var(--surface-alt);
+}
+
+.leaflet-control-attribution {
+  font-size: 10px !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: var(--text-secondary) !important;
+  border-radius: var(--radius-sm) 0 0 0;
+}
+
+.leaflet-control-attribution a {
+  color: var(--accent) !important;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

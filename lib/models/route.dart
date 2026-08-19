@@ -17,9 +17,11 @@
 library;
 
 import 'package:equatable/equatable.dart';
+import 'package:flutter/widgets.dart' show Locale;
 import 'package:latlong2/latlong.dart';
 
 import 'location.dart';
+import '../l10n/app_localizations.dart';
 
 /// What the traveller asked for. Distinct from [SegmentMode], which is what
 /// one leg actually is.
@@ -36,10 +38,10 @@ enum TransportMode {
         _ => TransportMode.hybrid,
       };
 
-  String get label => switch (this) {
-        TransportMode.walking => 'Walking',
-        TransportMode.driving => 'Driving',
-        TransportMode.hybrid => 'Drive + walk',
+  String label(AppLocalizations l10n) => switch (this) {
+        TransportMode.walking => l10n.transportWalking,
+        TransportMode.driving => l10n.transportDriving,
+        TransportMode.hybrid => l10n.transportHybrid,
       };
 }
 
@@ -81,11 +83,25 @@ class City extends Equatable {
   });
 
   final String id;
+
+  /// The English name, and the join key: [DemoData] matches curated locations
+  /// to a city by this string, so it is data as well as text. Anything shown
+  /// to a traveller should go through [localizedName] instead.
   final String name;
+
   final String? nameFr;
   final String? nameAr;
   final LatLng? centre;
   final RolloutStatus rolloutStatus;
+
+  /// The city's name in [locale], falling back to English where the catalogue
+  /// has no translation for it yet — a place with only an English row should
+  /// still be nameable rather than blank.
+  String localizedName(Locale locale) => switch (locale.languageCode) {
+        'fr' => nameFr ?? name,
+        'ar' => nameAr ?? name,
+        _ => name,
+      };
 
   factory City.fromJson(Map<String, dynamic> json) {
     final centre = json['centre'] as Map<String, dynamic>?;
@@ -123,6 +139,13 @@ class RouteCategory extends Equatable {
   final String? iconRef;
   final String? colorHex;
 
+  /// The chip's text in [locale]. See [City.localizedName] for the fallback.
+  String label(Locale locale) => switch (locale.languageCode) {
+        'fr' => labelFr ?? labelEn,
+        'ar' => labelAr ?? labelEn,
+        _ => labelEn,
+      };
+
   factory RouteCategory.fromJson(Map<String, dynamic> json) => RouteCategory(
         key: json['key'] as String,
         labelEn: json['label_en'] as String? ?? json['key'] as String,
@@ -144,6 +167,13 @@ class RouteTheme extends Equatable {
   final String labelEn;
   final String? labelFr;
   final String? labelAr;
+
+  /// The theme's name in [locale]. See [City.localizedName] for the fallback.
+  String label(Locale locale) => switch (locale.languageCode) {
+        'fr' => labelFr ?? labelEn,
+        'ar' => labelAr ?? labelEn,
+        _ => labelEn,
+      };
 
   factory RouteTheme.fromJson(Map<String, dynamic> json) => RouteTheme(
         key: json['key'] as String,
@@ -566,16 +596,21 @@ class RouteSummary extends Equatable {
 
   /// What the card leads with. The city is the thing a traveller recognises;
   /// the theme is the fallback, and only then the id.
-  String get title => cityName ?? _themeLabel;
+  ///
+  /// The city name arrives already localised from the backend, which stores a
+  /// name per language; the theme fallback is a bare key, so it is only
+  /// prettified rather than translated.
+  String title(AppLocalizations l10n) => cityName ?? _themeLabel(l10n);
 
-  String get _themeLabel =>
-      theme.isEmpty ? 'Route' : theme[0].toUpperCase() + theme.substring(1);
+  String _themeLabel(AppLocalizations l10n) => theme.isEmpty
+      ? l10n.routeFallbackTitle
+      : theme[0].toUpperCase() + theme.substring(1);
 
   /// "6 stops · 4h · Drive + walk" — the line under the title.
-  String get subtitle => [
-        '$stopCount ${stopCount == 1 ? 'stop' : 'stops'}',
-        formatMinutes(estimatedTotalDurationMinutes),
-        transportMode.label,
+  String subtitle(AppLocalizations l10n) => [
+        l10n.resultStopCount(stopCount),
+        formatMinutes(l10n, estimatedTotalDurationMinutes),
+        transportMode.label(l10n),
       ].join(' · ');
 
   factory RouteSummary.fromJson(Map<String, dynamic> json) => RouteSummary(
@@ -609,9 +644,13 @@ class RouteSummary extends Equatable {
 }
 
 /// Formats a duration in minutes the way the route surfaces show it.
-String formatMinutes(int minutes) {
-  if (minutes < 60) return '$minutes min';
+///
+/// Takes the localizations rather than reading a global, so it stays a pure
+/// function: the same minutes and the same locale always give the same string,
+/// which is what lets the route tests assert on it without a widget tree.
+String formatMinutes(AppLocalizations l10n, int minutes) {
+  if (minutes < 60) return l10n.durationMinutes(minutes);
   final hours = minutes ~/ 60;
   final rest = minutes % 60;
-  return rest == 0 ? '${hours}h' : '${hours}h ${rest}m';
+  return rest == 0 ? l10n.durationHours(hours) : l10n.durationHoursMinutes(hours, rest);
 }

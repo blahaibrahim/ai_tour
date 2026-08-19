@@ -16,6 +16,12 @@ function rowToPrefs(row: Record<string, unknown>): NotificationPrefs {
     routeReady: row.route_ready as boolean,
     modelReady: row.model_ready as boolean,
     mascotNearby: row.mascot_nearby as boolean,
+    // `?? true` rather than a bare cast: a deployment whose migrations stop
+    // before 20260819120000 has no such column, and PostgREST answers
+    // `undefined` for it. Defaulting to the column's own default keeps a
+    // pre-migration server sending splat notifications rather than reading the
+    // missing column as an opt-out.
+    splatReady: (row.splat_ready as boolean | undefined) ?? true,
   };
 }
 
@@ -46,6 +52,7 @@ export interface PrefsPatch {
   routeReady?: boolean;
   modelReady?: boolean;
   mascotNearby?: boolean;
+  splatReady?: boolean;
 }
 
 /** Upsert. Absent fields keep whatever is already stored — the Settings screen
@@ -64,6 +71,7 @@ export async function upsertPrefs(
     route_ready: patch.routeReady ?? current.routeReady,
     model_ready: patch.modelReady ?? current.modelReady,
     mascot_nearby: patch.mascotNearby ?? current.mascotNearby,
+    splat_ready: patch.splatReady ?? current.splatReady,
     updated_at: new Date().toISOString(),
   };
 

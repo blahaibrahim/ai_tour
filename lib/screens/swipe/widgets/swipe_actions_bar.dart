@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../widgets/glass_surface.dart';
 import '../../../widgets/pressable_scale.dart';
 
@@ -29,6 +30,7 @@ class SwipeActionsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return SafeArea(
       top: false,
       child: Padding(
@@ -41,7 +43,7 @@ class SwipeActionsBar extends StatelessWidget {
           children: [
             _SecondaryAction(
               icon: Icons.undo_rounded,
-              label: 'Undo the last swipe',
+              label: l10n.swipeUndo,
               size: 44,
               iconSize: 21,
               enabled: canUndo,
@@ -50,7 +52,7 @@ class SwipeActionsBar extends StatelessWidget {
             const SizedBox(width: AppTheme.space4),
             _SecondaryAction(
               icon: Icons.close_rounded,
-              label: 'Drop this stop',
+              label: l10n.swipeDrop,
               size: 58,
               iconSize: 28,
               onTap: onReject,
@@ -58,7 +60,7 @@ class SwipeActionsBar extends StatelessWidget {
             const SizedBox(width: AppTheme.space5),
             _SecondaryAction(
               icon: Icons.info_outline_rounded,
-              label: 'About this stop',
+              label: l10n.swipeAbout,
               size: 44,
               iconSize: 21,
               onTap: onInfo,
@@ -66,7 +68,7 @@ class SwipeActionsBar extends StatelessWidget {
             const SizedBox(width: AppTheme.space5),
             Semantics(
               button: true,
-              label: 'Keep this stop',
+              label: l10n.swipeKeep,
               excludeSemantics: true,
               child: PressableScale(
                 onTap: onAccept,

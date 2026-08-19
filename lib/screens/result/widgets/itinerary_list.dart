@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../models/route.dart';
 import '../../../theme.dart';
 import '../../../widgets/net_image.dart';
@@ -29,7 +30,9 @@ class ItineraryList extends StatelessWidget {
     final route = state.route;
     if (route == null) return const SizedBox.shrink();
 
-    final regionLabel = state.selectedCity?.name ?? '';
+    final regionLabel = state.selectedCity
+            ?.localizedName(Localizations.localeOf(context)) ??
+        '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -69,11 +72,12 @@ class _LegRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final isDrive = segment.mode == SegmentMode.drive;
     final color = isDrive ? AppTheme.accentDark : AppTheme.text.withValues(alpha: 0.6);
 
     return Padding(
-      padding: const EdgeInsets.only(left: 44, bottom: 12),
+      padding: const EdgeInsetsDirectional.only(start: 44, bottom: 12),
       child: Row(
         children: [
           // A dashed connector would be nicer; a short rule reads clearly
@@ -87,12 +91,13 @@ class _LegRow extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Text(
-            isDrive ? 'Drive' : 'Walk',
+            isDrive ? l10n.itineraryDrive : l10n.itineraryWalk,
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
           ),
           const SizedBox(width: 8),
           Text(
-            '${formatMinutes(segment.durationMinutes)} · ${segment.distanceLabel}',
+            l10n.itineraryLeg(
+                formatMinutes(l10n, segment.durationMinutes), segment.distanceLabel),
             style: TextStyle(fontSize: 12, color: AppTheme.text.withValues(alpha: 0.55)),
           ),
         ],
@@ -118,6 +123,7 @@ class _StopRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return PressableScale(
       onTap: onTap,
       child: Padding(
@@ -166,7 +172,8 @@ class _StopRow extends StatelessWidget {
                       Icon(Icons.schedule, size: 11, color: AppTheme.text.withValues(alpha: 0.5)),
                       const SizedBox(width: 4),
                       Text(
-                        '${formatMinutes(stop.dwellMinutes)} here',
+                        l10n.itineraryDwell(
+                            formatMinutes(l10n, stop.dwellMinutes)),
                         style: TextStyle(fontSize: 12, color: AppTheme.text.withValues(alpha: 0.65)),
                       ),
                       if (stop.categoryKey.isNotEmpty) ...[
@@ -194,11 +201,11 @@ class _StopRow extends StatelessWidget {
             AnimatedSize(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOut,
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerEnd,
               child: !modifyMode
                   ? const SizedBox(height: 60)
                   : Padding(
-                      padding: const EdgeInsets.only(left: 12),
+                      padding: const EdgeInsetsDirectional.only(start: 12),
                       child: PressableScale(
                         onTap: onRemove,
                         child: Container(

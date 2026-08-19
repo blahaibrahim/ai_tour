@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../../l10n/app_localizations.dart';
 
 enum AuthStatus { unknown, anonymous, authenticated, signedOut }
 
@@ -9,19 +10,78 @@ enum AuthStatus { unknown, anonymous, authenticated, signedOut }
 /// failures in a row ("wrong password", twice) would otherwise be the same
 /// state, and the listener would never fire the second time. The id makes
 /// every occurrence distinct, so the screen can key on it changing.
+/// Everything the auth flow can say, as a code rather than a sentence.
+///
+/// The bloc has no `BuildContext`, so it cannot translate; and even if it
+/// could, a sentence stored in state would be stale the moment the traveller
+/// changed language. The screens resolve these through [AuthFeedback.text].
+enum AuthMessage {
+  accountCreatedWithProgress,
+  accountCreated,
+  codeAcceptedChoosePassword,
+  emailConfirmed,
+  newCodeSent,
+  welcomeBack,
+  passwordUpdated,
+  errorNetwork,
+  errorEmailNotSending,
+  errorBadCredentials,
+  errorAlreadyRegistered,
+  errorInvalidEmail,
+  errorPasswordTooShort,
+  errorTooManyAttempts,
+  errorCodeExpired,
+  errorCodeInvalid,
+  errorGeneric,
+}
+
 class AuthFeedback extends Equatable {
   const AuthFeedback({
     required this.id,
     required this.message,
     required this.isError,
+    this.argument,
+    this.serverMessage,
   });
 
   final int id;
-  final String message;
+  final AuthMessage message;
   final bool isError;
 
+  /// Filled in for the one message that names something — the address a new
+  /// code was just sent to.
+  final String? argument;
+
+  /// Supabase's own wording, kept for [AuthMessage.errorGeneric]: a failure
+  /// this build does not recognise is better reported in the server's words,
+  /// untranslated, than as "something went wrong".
+  final String? serverMessage;
+
+  /// What the traveller reads.
+  String text(AppLocalizations l10n) => switch (message) {
+        AuthMessage.accountCreatedWithProgress =>
+          l10n.authAccountCreatedWithProgress,
+        AuthMessage.accountCreated => l10n.authAccountCreated,
+        AuthMessage.codeAcceptedChoosePassword =>
+          l10n.authCodeAcceptedChoosePassword,
+        AuthMessage.emailConfirmed => l10n.authEmailConfirmed,
+        AuthMessage.newCodeSent => l10n.authNewCodeSent(argument ?? ''),
+        AuthMessage.welcomeBack => l10n.authWelcomeBackNotice,
+        AuthMessage.passwordUpdated => l10n.authPasswordUpdated,
+        AuthMessage.errorNetwork => l10n.authErrorNetwork,
+        AuthMessage.errorEmailNotSending => l10n.authErrorEmailNotSending,
+        AuthMessage.errorBadCredentials => l10n.authErrorBadCredentials,
+        AuthMessage.errorAlreadyRegistered => l10n.authErrorAlreadyRegistered,
+        AuthMessage.errorInvalidEmail => l10n.authInvalidEmail,
+        AuthMessage.errorPasswordTooShort => l10n.authErrorPasswordTooShort,
+        AuthMessage.errorTooManyAttempts => l10n.authErrorTooManyAttempts,
+        AuthMessage.errorCodeExpired => l10n.authErrorCodeExpired,
+        AuthMessage.errorCodeInvalid => l10n.authErrorCodeInvalid,
+        AuthMessage.errorGeneric => serverMessage ?? l10n.authErrorGeneric,
+      };
+
   @override
-  List<Object?> get props => [id, message, isError];
+  List<Object?> get props => [id, message, isError, argument, serverMessage];
 }
 
 /// Why a code was sent — which decides the `OtpType` it must be verified

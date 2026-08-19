@@ -23,7 +23,7 @@ import {
 } from "./adapters/routingProviderAdapter";
 import { getCityConfigRepository } from "./data/cityConfigRepository";
 import { getRouteRepository } from "./data/routeRepository";
-import { fitToBudget, stopsToDrop, valuePerMinute } from "./domain/budgetFitter";
+import { fitToBudget, rankValue, stopsToDrop } from "./domain/budgetFitter";
 import { cluster, distanceMeters } from "./domain/clusteringEngine";
 import { selectPois } from "./domain/poiSelector";
 import { LegGeometry, assemble, buildSegments } from "./domain/responseAssembler";
@@ -376,6 +376,13 @@ async function generateExcluding(
   const pois = selected.filter((p) => !excludePoiIds.has(p.id));
   if (pois.length === 0) throw new NoEligiblePoisError(request.theme);
 
+  // Ranking-only, never eligibility — see budgetFitter.ts's module docstring.
+  // Comes from the prompt interpreter (domain/promptInterpreter.ts), not the
+  // request builder's category chips: `request.categoryKeys` already
+  // narrowed `pois` above via selectPois, so a key present in both places
+  // has already done its filtering work and only adds a ranking nudge here.
+  const preferredCategoryKeys = new Set(request.preferredCategoryKeys ?? []);
+
   // Even the shortest single visit has to fit. Raised here rather than letting
   // the estimator return a day count for a route with nothing in it: the
   // honest answer to "I have 20 minutes" is that no stop in this city works,
@@ -400,6 +407,7 @@ async function generateExcluding(
     timeBudgetMinutes: request.timeBudgetMinutes,
     travelAllowancePerStopMinutes: TRAVEL_ALLOWANCE_PER_STOP_MINUTES,
     minimumStops: MINIMUM_STOPS,
+    preferredCategoryKeys,
   });
 
   if (selectedForBudget.length < pois.length) {
@@ -459,6 +467,7 @@ async function generateExcluding(
       overshoot,
       MINIMUM_STOPS,
       TRAVEL_ALLOWANCE_PER_STOP_MINUTES,
+      preferredCategoryKeys,
     );
     if (drop.size === 0) break;
 
@@ -496,7 +505,7 @@ async function generateExcluding(
   if (droppedIds.size > 0) {
     const candidates = selectedForBudget
       .filter((p) => droppedIds.has(p.id))
-      .sort((a, b) => valuePerMinute(b) - valuePerMinute(a));
+      .sort((a, b) => rankValue(b, preferredCategoryKeys) - rankValue(a, preferredCategoryKeys));
 
     for (const candidate of candidates) {
       const trial = [...working, candidate];
@@ -551,7 +560,7 @@ async function generateExcluding(
   const chosenIds = new Set(orderedStops.map((p) => p.id));
   const alternates = pois
     .filter((p) => !chosenIds.has(p.id))
-    .sort((a, b) => valuePerMinute(b) - valuePerMinute(a))
+    .sort((a, b) => rankValue(b, preferredCategoryKeys) - rankValue(a, preferredCategoryKeys))
     .slice(0, MAX_ALTERNATES);
 
   const route = assemble({

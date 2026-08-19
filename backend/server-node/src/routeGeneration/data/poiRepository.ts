@@ -45,6 +45,17 @@ export interface SelectPoisQuery {
   limit?: number;
 }
 
+export interface AvailableCategory {
+  key: string;
+  labelEn: string;
+  labelFr: string;
+  labelAr: string;
+  /** How many published POIs in this city (and theme, when narrowed) carry
+   * this category — the LLM prompt interpreter's tie-breaker between two
+   * otherwise-plausible readings of the same sentence. */
+  poiCount: number;
+}
+
 export interface PoiRepository {
   findEligible(query: SelectPoisQuery): Promise<Poi[]>;
   findByIds(ids: string[]): Promise<Poi[]>;
@@ -54,6 +65,13 @@ export interface PoiRepository {
    * and the map screen both want it, and the GIST index is already there. */
   findWithinRadius(centre: Coordinate, radiusMeters: number, cityId: string): Promise<Poi[]>;
   listCategories(): Promise<Category[]>;
+  /** Categories with at least one published POI in `cityId`, optionally
+   * narrowed to one theme's own set (see `categories_available`, migration
+   * 20260818130000). This is the vocabulary the LLM prompt interpreter is
+   * constrained to — mirrors why `themes_available` exists for themes: a
+   * category with nothing behind it here is a category worth never
+   * returning, LLM or chip picker alike. */
+  listAvailableCategories(cityId: string, themeKey?: string): Promise<AvailableCategory[]>;
 }
 
 /** One row as `public.pois_eligible` returns it. */
@@ -222,6 +240,33 @@ class SupabasePoiRepository implements PoiRepository {
       labelAr: r.label_ar,
       iconRef: r.icon_ref,
       colorHex: r.color_hex,
+    }));
+  }
+
+  async listAvailableCategories(cityId: string, themeKey?: string): Promise<AvailableCategory[]> {
+    const rows =
+      (await unwrap<
+        Array<{
+          key: string;
+          label_en: string;
+          label_fr: string;
+          label_ar: string;
+          poi_count: number | string;
+        }>
+      >(
+        this.db.rpc("categories_available", {
+          p_city_id: cityId,
+          p_theme_key: themeKey ?? null,
+        }),
+      )) ?? [];
+
+    return rows.map((r) => ({
+      key: r.key,
+      labelEn: r.label_en,
+      labelFr: r.label_fr,
+      labelAr: r.label_ar,
+      // bigint comes back as a string over PostgREST.
+      poiCount: Number(r.poi_count),
     }));
   }
 }

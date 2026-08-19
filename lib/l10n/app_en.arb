@@ -1,0 +1,714 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "Massar",
+
+  "actionCancel": "Cancel",
+  "actionDone": "Done",
+  "actionSkip": "Skip",
+  "actionNext": "Next",
+  "actionClose": "Close",
+  "actionDismiss": "Dismiss",
+  "actionTryAgain": "Try again",
+  "actionAllow": "Allow",
+  "actionSettings": "Settings",
+  "actionRetake": "Retake",
+  "actionDiscard": "Discard",
+  "actionBack": "Back",
+
+  "navMap": "Map",
+  "navHome": "Home",
+  "navFolder": "Folder",
+
+  "durationMinutes": "{minutes} min",
+  "@durationMinutes": {
+    "description": "A duration under an hour, as shown on route legs and time budgets.",
+    "placeholders": { "minutes": { "type": "int" } }
+  },
+  "durationHours": "{hours}h",
+  "@durationHours": {
+    "description": "A whole number of hours, with no leftover minutes.",
+    "placeholders": { "hours": { "type": "int" } }
+  },
+  "durationHoursMinutes": "{hours}h {minutes}m",
+  "@durationHoursMinutes": {
+    "placeholders": { "hours": { "type": "int" }, "minutes": { "type": "int" } }
+  },
+
+  "homePointsSyncing": "Points balance syncing",
+  "homePointsToSpend": "{count} points to spend",
+  "@homePointsToSpend": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "homeGreeting": "Where to next?",
+  "homeYourRoutes": "YOUR ROUTES",
+  "homeRoutesEmpty": "Routes you generate will collect here, ready to pick up again.",
+  "homePlanNewRoute": "Plan a new route",
+  "homePlanNewRouteSubtitle": "Pick a city, a theme, and how long you have",
+
+  "relativeToday": "today",
+  "relativeYesterday": "yesterday",
+  "relativeDays": "{days}d",
+  "@relativeDays": {
+    "description": "Compact age of a saved route, in days. Kept short: it sits in a tight row.",
+    "placeholders": { "days": { "type": "int" } }
+  },
+  "relativeWeeks": "{weeks}w",
+  "@relativeWeeks": {
+    "placeholders": { "weeks": { "type": "int" } }
+  },
+  "relativeYears": "{years}y",
+  "@relativeYears": {
+    "placeholders": { "years": { "type": "int" } }
+  },
+
+  "mapGenerateRoute": "Generate my route",
+  "mapTripDays": "{count, plural, one{{count} day} other{{count} days}}",
+  "@mapTripDays": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "mapExpandTripOptions": "Expand or collapse trip options",
+  "mapHideTripOptions": "Hide trip options",
+  "mapTapToPickWilaya": "Tap the map to pick a wilaya",
+  "mapTapAnotherToSwitch": "Tap another to switch",
+  "mapPromptHeading": "TELL THE AI WHAT YOU'RE AFTER",
+  "mapPromptHint": "quiet Roman ruins, coastal viewpoints...",
+  "mapTapPinForDetails": "Tap a pin to see more details",
+  "mapNoRouteYet": "No route generated yet.",
+
+  "timeBudgetHeading": "HOW MUCH TIME DO YOU HAVE?",
+  "timeBudgetDays": "{count, plural, one{day} other{days}}",
+  "@timeBudgetDays": {
+    "description": "Unit shown beside the day wheel. The number is rendered separately.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "timeBudgetHours": "{count, plural, one{hour} other{hours}}",
+  "@timeBudgetHours": {
+    "description": "Unit shown beside the hours wheel. The number is rendered separately.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "timeBudgetTripLength": "Trip length in days",
+  "timeBudgetHoursPerDay": "Touring hours per day",
+  "timeBudgetWholeTrip": "for the whole trip",
+  "timeBudgetEachDay": "on each of those days",
+
+  "searchWilayaHint": "Search for a wilaya...",
+  "searchMyLocation": "My location",
+  "searchNoWilayas": "No wilayas found.",
+  "locationServicesDisabled": "Location services disabled.",
+  "locationPermissionDenied": "Location permissions denied.",
+  "locationPermissionPermanentlyDenied": "Location permissions permanently denied.",
+  "locationLocating": "Locating...",
+  "locationRestartRequired": "Please completely STOP and restart the app.",
+  "genericError": "Error: {message}",
+  "@genericError": {
+    "placeholders": { "message": { "type": "String" } }
+  },
+
+  "thinkingAlmostThere": "Almost there...",
+  "thinkingStepBudget": "Reading your time budget…",
+  "thinkingStepStops": "Picking published stops for your theme…",
+  "thinkingStepClusters": "Grouping them into walkable clusters…",
+  "thinkingStepDrive": "Ordering the drive between clusters…",
+  "thinkingStepWalk": "Ordering the walk inside each one…",
+  "thinkingStepFit": "Checking it all fits your day…",
+  "thinkingNotifyMe": "Notify me",
+  "thinkingWillLetYouKnow": "We'll let you know when it's ready",
+  "thinkingTurnOnNotifications": "Turn on Notifications to find out\nwhen it's ready",
+
+  "notifyEnabled": "We'll let you know the moment it's ready.",
+  "notifyLocalOnly": "Notifications are on while the app is open in the background.",
+  "notifyLocalOnlySettings": "On, but only while the app is running — push is not set up on this build.",
+  "notifyDenied": "Notifications are turned off for this app — enable them in Settings.",
+  "notifyDeniedSettings": "Notifications are turned off for this app in your system settings.",
+  "notifyOffline": "Couldn't save that right now. Try again once you're back online.",
+
+  "swipeKeepTheRest": "Keep the rest ({reviewed}/{total})",
+  "@swipeKeepTheRest": {
+    "placeholders": { "reviewed": { "type": "int" }, "total": { "type": "int" } }
+  },
+  "swipeShortBy": "{duration} short",
+  "@swipeShortBy": {
+    "description": "How far under the requested time budget the kept stops fall. The duration is already formatted, e.g. 1h 20m.",
+    "placeholders": { "duration": { "type": "String" } }
+  },
+  "swipeAllSeen": "That's everything here",
+  "swipeEmptyAllRejected": "You turned every stop down, and this city has no others to suggest. Go back to change the theme or give yourself less time.",
+  "swipeEmptyNoMore": "This city has no more stops to fill the rest of your time. Carry on with what you kept, or go back and try a different theme.",
+  "swipeUndo": "Undo the last swipe",
+  "swipeDrop": "Drop this stop",
+  "swipeAbout": "About this stop",
+  "swipeKeep": "Keep this stop",
+  "swipeBadgeLike": "LIKE",
+  "swipeBadgeNope": "NOPE",
+  "swipeBadgeMoreInfo": "MORE INFO ↓",
+
+  "resultBackToPlanning": "Back to planning",
+  "resultOpenMap": "Open map",
+  "resultYourRoute": "Your route",
+  "resultItinerary": "ITINERARY",
+  "resultRemoveStops": "Remove stops",
+  "resultStopCount": "{count, plural, one{{count} stop} other{{count} stops}}",
+  "@resultStopCount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "resultStartRoute": "Start this route",
+  "resultNoStopsLeft": "No stops left",
+  "resultNoRouteYet": "No route yet",
+  "resultDroppedEveryStop": "You dropped every stop on this route. Try another theme, a longer time budget, or a different city.",
+  "resultPickCityAndTheme": "Pick a city and a theme to plan your first route.",
+  "resultChangeThePlan": "Change the plan",
+
+  "transportWalking": "Walking",
+  "transportDriving": "Driving",
+  "transportHybrid": "Drive + walk",
+  "routeFallbackTitle": "Route",
+
+  "itineraryDrive": "Drive",
+  "itineraryWalk": "Walk",
+  "itineraryLeg": "{duration} · {distance}",
+  "@itineraryLeg": {
+    "placeholders": { "duration": { "type": "String" }, "distance": { "type": "String" } }
+  },
+  "itineraryDwell": "{duration} here",
+  "@itineraryDwell": {
+    "description": "How long the route expects the traveller to linger at a stop.",
+    "placeholders": { "duration": { "type": "String" } }
+  },
+
+  "routeHeaderTotal": "total",
+  "routeHeaderStops": "{count, plural, one{stop} other{stops}}",
+  "@routeHeaderStops": {
+    "description": "Unit under the stop count in the route header; the number is rendered separately.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "routeHeaderOverBudgetTitle": "Longer than your {budget}",
+  "@routeHeaderOverBudgetTitle": {
+    "placeholders": { "budget": { "type": "String" } }
+  },
+  "routeHeaderOverBudgetBody": "This route needs about {duration}. Plan on {days} days, or remove a few stops below.",
+  "@routeHeaderOverBudgetBody": {
+    "placeholders": { "duration": { "type": "String" }, "days": { "type": "int" } }
+  },
+  "routeHeaderSomethingWrong": "Something went wrong",
+  "routeSummaryStopSemantic": "Stop {index}, {name}",
+  "@routeSummaryStopSemantic": {
+    "placeholders": { "index": { "type": "int" }, "name": { "type": "String" } }
+  },
+  "routeSummaryCurrentStop": ", current stop",
+  "routeSummaryVisited": ", visited",
+  "routeLegendDrive": "Drive · {duration}",
+  "@routeLegendDrive": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
+  "routeLegendWalk": "Walk · {duration}",
+  "@routeLegendWalk": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
+  "routeMapSummary": "{stops} · {duration}",
+  "@routeMapSummary": {
+    "placeholders": { "stops": { "type": "String" }, "duration": { "type": "String" } }
+  },
+
+  "overviewYourRoute": "YOUR ROUTE",
+  "overviewTitle": "Overview",
+  "overviewPointsEarned": "{count} points earned on this route",
+  "@overviewPointsEarned": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "overviewRouteCompleteBanner": "ROUTE COMPLETE",
+  "overviewStopOfBanner": "STOP {index} OF {total}",
+  "@overviewStopOfBanner": {
+    "placeholders": { "index": { "type": "int" }, "total": { "type": "int" } }
+  },
+  "overviewStopOf": "Stop {index} of {total}",
+  "@overviewStopOf": {
+    "placeholders": { "index": { "type": "int" }, "total": { "type": "int" } }
+  },
+  "overviewAllDone": "All done!",
+  "overviewRouteCompleteTitle": "Route complete!",
+  "overviewRouteCompleteBody": "You visited every stop. Your captures are waiting in the folder.",
+  "overviewEndVisit": "End visit",
+  "overviewEndOfRoute": "End of route",
+  "overviewUpcoming": "UPCOMING",
+
+  "taskCurrentTask": "CURRENT TASK",
+  "taskRegenerate": "Regenerate ({count})",
+  "@taskRegenerate": {
+    "description": "The count is how many task swaps the traveller has left on this tour.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "taskPoints": "+{points} pts",
+  "@taskPoints": {
+    "placeholders": { "points": { "type": "int" } }
+  },
+  "taskHunt": "Hunt",
+  "taskStopHunt": "Stop",
+  "taskShoot": "Shoot",
+  "taskFilm": "Film",
+  "taskScan": "Scan",
+
+  "questPhoto1": "Take a photo that shows why this place is worth stopping at.",
+  "questPhoto2": "Frame one detail here that a passing tourist would miss.",
+  "questPhoto3": "Photograph this stop the way you would describe it to someone.",
+  "questVideo1": "Hold the shutter and film a slow pan across this place.",
+  "questVideo2": "Film a short clip walking up to it — hold the shutter to record.",
+  "questVideo3": "Hold the shutter for a few seconds of this place with its sound.",
+  "questMascot1": "A fennec is hiding somewhere here — find it and photograph it.",
+  "questMascot2": "There is a fennec nearby. Follow the signal and catch it.",
+  "questMascot3": "Hunt down the fennec hiding at this stop.",
+
+  "huntLoadingArData": "Loading AR data…",
+  "huntFindingPosition": "Finding your position…",
+  "huntGettingFix": "Getting a fix on your position…",
+  "huntTurnOnLocation": "Turn on location services to start the hunt.",
+  "huntNeedsLocation": "The hunt needs your location to guide you to the fennec.",
+  "huntLocationOffForApp": "Location is turned off for this app. Enable it in Settings to hunt.",
+  "huntTestingModeNote": "Testing mode — this fennec was spawned near you, not at the stop.",
+  "huntRightUnderYourNose": "Right under your nose",
+  "huntMetersAway": "{meters} m away",
+  "@huntMetersAway": {
+    "placeholders": { "meters": { "type": "int" } }
+  },
+  "huntKilometersAway": "{km} km away",
+  "@huntKilometersAway": {
+    "description": "The distance is already formatted to one decimal place.",
+    "placeholders": { "km": { "type": "String" } }
+  },
+  "huntAccuracyNote": " ±{meters} m",
+  "@huntAccuracyNote": {
+    "description": "Appended to a distance when the GPS fix is loose. Keeps its leading space.",
+    "placeholders": { "meters": { "type": "int" } }
+  },
+  "huntOpenCamera": "Open camera",
+  "huntGetCloser": "Get closer to unlock the camera",
+  "huntBandFrozen": "Ice cold",
+  "huntBandCold": "Cold",
+  "huntBandWarm": "Getting warmer",
+  "huntBandHot": "Hot!",
+  "huntBandBurning": "It's right here!",
+  "huntHintFrozen": "Somewhere out there — follow the arrow",
+  "huntHintCold": "Keep exploring in that direction",
+  "huntHintWarm": "You're on the right track",
+  "huntHintHot": "So close now — a few more steps",
+  "huntHintBurning": "Open the camera to catch it",
+
+  "arModeMedia": "Media",
+  "arModeScan": "3D Scan",
+  "arNoCamera": "No camera on this device",
+  "arCameraNeedsPermission": "The camera needs permission before it can open.",
+  "arCameraDidNotOpen": "The camera didn't open: {error}",
+  "@arCameraDidNotOpen": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "arCouldNotReadModel": "Could not read the mascot model.",
+  "arCouldNotPlaceFennec": "Could not place the fennec. Try again in a moment.",
+  "arHuntNeedsCamera": "The hunt needs the camera to see the room around you.",
+  "arPhotoNeedsCamera": "Taking a photo needs the camera.",
+  "arAllowCamera": "Allow camera",
+  "arKeepThisClip": "Keep this clip?",
+  "arScanThis": "Scan this?",
+  "arKeepThisPhoto": "Keep this photo?",
+  "arFindTheFennec": "Find the fennec",
+  "arScanAnObject": "Scan an object",
+  "arPhotoOrVideo": "Photo or video",
+  "arClipLooping": "It's looping — watch it before you decide",
+  "arCheckObjectSharp": "Check the object is sharp and whole",
+  "arCheckItCameOut": "Check it came out how you wanted",
+  "arSomewhereAroundYou": "Somewhere around you",
+  "arComesBackAs3d": "It comes back as a 3D model",
+  "arGoesToYourFolder": "It goes straight to your folder",
+  "arFillTheFrame": "Fill the frame with one object, then shoot",
+  "arTapToShootHoldToFilm": "Tap to shoot · hold to film",
+  "arStageReadingRoom": "Reading the room",
+  "arStageReadingRoomHint": "Hold the phone up and move it slowly",
+  "arStageLettingOut": "Letting the fennec out",
+  "arStageLettingOutHint": "Hold steady for a second",
+  "arStageThereItIs": "There it is — tap it",
+  "arStageItIsOutThere": "It is out there — follow the arrow",
+  "arStageWalkAround": "Walk around it to see it from any side",
+  "arStageFoundIt": "Found it",
+  "arStageFrameTheShot": "Frame the shot and take your photo",
+  "arDistanceAway": "{meters} m away",
+  "@arDistanceAway": {
+    "description": "The distance is already formatted to one decimal place.",
+    "placeholders": { "meters": { "type": "String" } }
+  },
+  "arFloorEstimated": "Floor estimated — it settles itself as the room is mapped",
+  "arQuestNeedsClip": "This one wants a clip — hold the shutter for {seconds} seconds or more",
+  "@arQuestNeedsClip": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "arClipTooShort": "That clip was {actual}s — this quest needs at least {required}. Hold for longer.",
+  "@arClipTooShort": {
+    "placeholders": { "actual": { "type": "int" }, "required": { "type": "int" } }
+  },
+  "arHoldToFilm": "Hold the shutter for a moment to film",
+  "arHoldToFilmMinimum": "Hold to film · {seconds}s minimum",
+  "@arHoldToFilmMinimum": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "arClipCapped": "Clip capped at {seconds}s",
+  "@arClipCapped": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "arKeepClip": "Keep {seconds}s clip",
+  "@arKeepClip": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "arScanIt": "Scan it",
+  "arUsePhoto": "Use photo",
+  "arSecondsLeft": "{seconds}s left",
+  "@arSecondsLeft": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "arTapToTakePhoto": "Tap to take the photo",
+  "arClipWontPlayBack": "That clip won't play back. Discard it and film again.",
+  "arCouldNotTakeShot": "Couldn't take that shot: {error}",
+  "@arCouldNotTakeShot": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "arCouldNotStartFilming": "Couldn't start filming: {error}",
+  "@arCouldNotStartFilming": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "arClipDidNotSave": "The clip didn't save: {error}",
+  "@arClipDidNotSave": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "arCouldNotSaveClip": "Couldn't save that clip: {error}",
+  "@arCouldNotSaveClip": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "arCouldNotSaveShot": "Couldn't save that shot: {error}",
+  "@arCouldNotSaveShot": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "arCouldNotScanShot": "Couldn't scan that shot: {error}",
+  "@arCouldNotScanShot": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "arClipSaved": "{seconds}s clip saved to your folder",
+  "@arClipSaved": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "arFennecCaught": "Fennec caught!",
+  "arPhotoSaved": "Photo saved to your folder",
+  "arNoClearObject": "No clear object in that shot — nothing scanned. Try filling more of the frame with the subject.",
+  "arGenerating3dModel": "Generating 3D model — check your folder in a moment",
+
+  "folderYourFolder": "YOUR FOLDER",
+  "folderTitle": "Saved & Scanned",
+  "folderSearchScans": "Search your scans",
+  "folderSearchSaved": "Search saved locations",
+  "folderNoScans": "No scans yet",
+  "folderNoScansBody": "Complete scan and video tasks on your route to fill this folder.",
+  "folderNoSavedLocations": "No saved locations",
+  "artifactGenerating3d": "Generating 3D…",
+  "artifact3dFailed": "3D Failed",
+  "artifact3dModel": "3D Model",
+  "artifactPhoto": "Photo",
+  "artifactVideo": "Video",
+  "artifactYourCapture": "Your capture",
+  "artifactGenerationFailed": "Generation failed",
+  "modelFailNoSubject": "No clear object found — try a different angle",
+  "modelFailTimeout": "Timed out — tap to retry",
+  "modelFailGpuOom": "Server busy — tap to retry",
+  "modelFailInternal": "Something went wrong — tap to retry",
+
+  "viewerCouldNotLoadFile": "Could not load 3D model file",
+  "viewerLoadingModel": "Loading 3D model…",
+  "viewerCouldNotDisplay": "Could not display 3D model",
+  "viewerCouldNotDisplayError": "Could not display 3D model — {error}",
+  "@viewerCouldNotDisplayError": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "viewerHintInteractive3d": "Interactive 3D model — touch to rotate",
+  "viewerHintVideo": "Tap the video to play or pause",
+  "viewerHintPinchZoom": "Pinch to zoom · drag to pan",
+  "viewerHintDragRotate": "Drag to rotate · pinch to zoom",
+  "viewerClipUnplayable": "This clip can't be played — the file may have been removed.",
+  "viewerPhotoUnloadable": "This photo couldn't be loaded.",
+
+  "rewardsTitle": "Rewards",
+  "rewardsOnlyOnRoute": "Available once you are walking a route.",
+  "rewardsNothingToSpendOn": "Nothing to spend on right now",
+  "rewardsPullDownToRetry": "Pull down to check again once you have a connection.",
+  "rewardsVoucherGranted": "Voucher {code} is in your rewards. Show it to collect.",
+  "@rewardsVoucherGranted": {
+    "placeholders": { "code": { "type": "String" } }
+  },
+  "rewardsCreditsGranted": "{count, plural, one{One scan credit added. It does not expire.} other{{count} scan credits added. They do not expire.}}",
+  "@rewardsCreditsGranted": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "rewardsRerollsGranted": "{count, plural, one{One more quest swap on this tour.} other{{count} more quest swaps on this tour.}}",
+  "@rewardsRerollsGranted": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "rewardsGranted": "{title} is yours.",
+  "@rewardsGranted": {
+    "placeholders": { "title": { "type": "String" } }
+  },
+  "balanceToSpend": "TO SPEND",
+  "balanceSyncing": "Syncing…",
+  "balancePoints": "{count} points",
+  "@balancePoints": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "rewardKindDigital": "For the app",
+  "rewardKindPartner": "Along the way",
+  "rewardKindPhysical": "Things to keep",
+  "rewardKindDigitalBlurb": "Spend points on what Massar itself can do.",
+  "rewardKindPartnerBlurb": "Redeemed at a place on one of your routes.",
+  "rewardKindPhysicalBlurb": "Collected in person. Needs an account.",
+  "rewardOwned": "Owned",
+  "rewardSoldOut": "Sold out",
+  "rewardStockLeft": "{count} left",
+  "@rewardStockLeft": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "rewardPointsUnit": "points",
+  "rewardFallbackTitle": "Reward",
+  "redeemCosts": "Costs",
+  "redeemYouAreShort": "You are short",
+  "redeemLeftAfterwards": "Left afterwards",
+  "redeemNoteInstant": "Bought once and kept. There is no way to sell it back.",
+  "redeemNoteVoucher": "A code to show in person. It lasts 14 days, then the points come back to you.",
+  "redeemNoteManual": "Needs an account — this is something we hand you.",
+  "redeemNotYet": "Not yet",
+  "redeemNotEnoughPoints": "Not enough points",
+  "redeemConfirm": "Redeem",
+  "redeemFailSignIn": "Sign in first so this stays with you.",
+  "redeemFailOffline": "You're offline. Redeeming needs a connection so your balance stays right.",
+  "redeemFailNotEnough": "Not enough points yet — finish another task or two.",
+  "redeemFailUnavailable": "This one is no longer available.",
+  "redeemFailOutOfStock": "The last one just went. More are on the way.",
+  "redeemFailAlreadyOwned": "You already have this one.",
+  "redeemFailNeedsAccount": "Create an account to claim something we have to hand you in person.",
+  "redeemFailRateLimited": "That is a lot of redeeming at once. Try again in a few minutes.",
+  "redeemFailGeneric": "That didn't go through. Your points are untouched — try again.",
+
+  "settingsTitle": "Settings",
+  "settingsSectionTour": "TOUR",
+  "settingsLeaveTour": "Leave Current Tour",
+  "settingsSectionArHunt": "AR HUNT",
+  "settingsTestingMode": "Testing mode",
+  "settingsTestingModeSubtitle": "Spawn the mascot near your current location",
+  "settingsSectionAccount": "ACCOUNT",
+  "settingsSectionNotifications": "NOTIFICATIONS",
+  "settingsSectionLanguage": "LANGUAGE",
+  "settingsLanguage": "Language",
+  "settingsLanguageSystem": "Follow device",
+  "settingsLanguageSystemSubtitle": "Use whatever language your phone is set to",
+  "settingsSectionAbout": "ABOUT",
+  "settingsReplayIntro": "Replay intro",
+  "settingsReplayIntroSubtitle": "The tour of what Massar does",
+  "settingsVersion": "Massar v{version}",
+  "@settingsVersion": {
+    "placeholders": { "version": { "type": "String" } }
+  },
+  "settingsTotalPoints": "Total points",
+  "settingsSyncing": "Syncing…",
+  "settingsEarnedAcrossTours": "Earned across every tour",
+  "settingsSignedIn": "Signed in",
+  "settingsCreateAccount": "Create an account",
+  "settingsAccountFollows": "Your points and souvenirs follow this account",
+  "settingsGuestOnDevice": "Guest — your progress lives only on this device",
+  "settingsSignOut": "Sign out",
+  "settingsNotifications": "Notifications",
+  "settingsNotificationsOn": "Routes, 3D models, and nearby fennecs",
+  "settingsNotificationsOff": "Off — you will not be told when anything is ready",
+  "settingsRouteReady": "Route ready",
+  "settingsRouteReadySubtitle": "When a route you asked for has finished generating",
+  "settings3dCaptures": "3D captures",
+  "settings3dCapturesSubtitle": "When a model you photographed is ready, or failed",
+  "settingsFennecNearby": "Fennec nearby",
+  "settingsFennecNearbySubtitle": "While a hunt is on, when you get close to one",
+  "settingsPushNotConfigured": "Push is not configured, so these arrive only while the app is open or in the background.",
+
+  "authWelcomeBack": "Welcome back",
+  "authCreateYourAccount": "Create your account",
+  "authLogIn": "Log in",
+  "authSignUp": "Sign up",
+  "authEmail": "Email",
+  "authEmailHint": "you@example.com",
+  "authPassword": "Password",
+  "authPasswordHintSignup": "At least 6 characters",
+  "authPasswordHintLogin": "••••••••",
+  "authForgotPassword": "Forgot password?",
+  "authCreateAccountButton": "Create account",
+  "authContinueAsGuest": "Continue as guest",
+  "authGuestKeepsProgress": "Everything you have already collected stays yours — signing up saves it to your account.",
+  "authCanSignUpLater": "You can create an account later from Settings.",
+  "authResetYourPassword": "Reset your password",
+  "authResetEmailBlurb": "We will email you a link to set a new one.",
+  "authSendLink": "Send link",
+  "authEnterEmail": "Enter your email address.",
+  "authInvalidEmail": "That does not look like a valid email address.",
+  "authEnterPassword": "Enter your password.",
+  "authPasswordTooShort": "Use at least 6 characters.",
+  "authUseDifferentEmail": "Use a different email",
+  "authCheckYourEmail": "Check your email",
+  "authCodeSentTo": "We sent a {length}-digit code to\n",
+  "@authCodeSentTo": {
+    "description": "Followed immediately by the email address in bold, so it keeps its trailing newline.",
+    "placeholders": { "length": { "type": "int" } }
+  },
+  "authConfirm": "Confirm",
+  "authResendIn": "Resend code in {seconds}s",
+  "@authResendIn": {
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+  "authSendNewCode": "Send a new code",
+  "authCodeExpiryNote": "The code expires after an hour. Check your spam folder if it has not arrived.",
+  "authChooseNewPassword": "Choose a new password",
+  "authNewPasswordBlurb": "This replaces the old one everywhere. You will stay signed in on this device.",
+  "authNewPassword": "New password",
+  "authConfirmPassword": "Confirm password",
+  "authTypeItAgain": "Type it again",
+  "authEnterNewPassword": "Enter a new password.",
+  "authPasswordsDoNotMatch": "These do not match.",
+  "authSavePassword": "Save password",
+  "authAccountCreatedWithProgress": "Account created. Everything you have collected is now saved to it.",
+  "authAccountCreated": "Account created.",
+  "authCodeAcceptedChoosePassword": "Code accepted. Choose a new password.",
+  "authEmailConfirmed": "Email confirmed. Your account is ready.",
+  "authNewCodeSent": "A new code is on its way to {email}.",
+  "@authNewCodeSent": {
+    "placeholders": { "email": { "type": "String" } }
+  },
+  "authWelcomeBackNotice": "Welcome back.",
+  "authPasswordUpdated": "Password updated. You are signed in.",
+  "authErrorNetwork": "Couldn't reach the server. Check your connection and try again.",
+  "authErrorEmailNotSending": "We couldn't send your code — email is not going out right now. This is on our side; try again in a few minutes.",
+  "authErrorBadCredentials": "That email and password do not match an account.",
+  "authErrorAlreadyRegistered": "That email already has an account. Try logging in instead.",
+  "authErrorPasswordTooShort": "Passwords need to be at least 6 characters.",
+  "authErrorTooManyAttempts": "Too many attempts. Wait a minute and try again.",
+  "authErrorCodeExpired": "That code has expired. Ask for a new one.",
+  "authErrorCodeInvalid": "That code isn't right. Check the email and try again.",
+  "authErrorGeneric": "Something went wrong. Try again.",
+  "authAnonymousSignInFailed": "Anonymous sign-in failed",
+
+  "onboardingGetStarted": "Get started",
+  "onboardingIllustration": "Illustration",
+  "onboardingPageOf": "Page {index} of {count}",
+  "@onboardingPageOf": {
+    "placeholders": { "index": { "type": "int" }, "count": { "type": "int" } }
+  },
+  "onboardingWelcomeTitle": "This is Massar",
+  "onboardingWelcomeBody": "Plan where you go, find something to do when you get there, and take a piece of it home.",
+  "onboardingRoutesTitle": "A route built around you",
+  "onboardingRoutesBody": "Pick a city, say what you are in the mood for, and get a plan that fits your day — with a small task waiting at every stop.",
+  "onboardingCaptureTitle": "Catch fennecs, keep souvenirs",
+  "onboardingCaptureBody": "Raise your camera to find the fennecs hiding at your stops — and to scan real objects into 3D souvenirs for your folder.",
+  "onboardingRewardsTitle": "Turn your points into something real",
+  "onboardingRewardsBody": "Spend what you earn on rewards from the places along the way.",
+
+  "detailAskTheAi": "ASK THE AI",
+  "detailBestTimeToVisit": "Best time to visit?",
+  "detailHowLongToExplore": "How long to explore?",
+  "detailAskAnything": "Ask anything about this spot...",
+  "detailSkipThisSpot": "Skip this spot",
+  "detailAddToRoute": "Add to route",
+  "detailGuideUnreachable": "Sorry, I couldn't reach the guide right now — try again.",
+
+  "offlineBackOnline": "Back online — syncing…",
+  "offlinePendingSync": "{count, plural, one{Offline — {count} item will sync when online} other{Offline — {count} items will sync when online}}",
+  "@offlinePendingSync": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "offlineProgressSaved": "Offline — your progress is saved",
+  "backendConnected": "Connected to the server",
+  "backendUnreachable": "Can't reach the server — showing demo data",
+
+  "routeErrorUnreachable": "Couldn't reach the route service.",
+  "routeErrorCityNotAvailable": "This city isn't open for routes yet.",
+  "routeErrorNoEligiblePois": "No published stops match that theme here yet.",
+  "routeErrorTimeBudgetTooShort": "That time budget is too short for any stop here.",
+  "routeErrorProviderUnavailable": "The routing service is unavailable right now.",
+  "routeErrorNotImplemented": "Route generation is not built yet on this server.",
+  "routeErrorGeneric": "Something went wrong generating your route.",
+  "routeErrorDropStopsFailed": "Couldn't drop those stops — showing the route as generated.",
+  "routeErrorBelowBudget": "Removing that would leave less than the time you asked for.",
+  "routeErrorRemoveStopFailed": "Couldn't remove that stop — try again.",
+
+  "notifChannelRoutesName": "Routes and models",
+  "notifChannelRoutesDescription": "When a route is ready, or a 3D capture has finished.",
+  "notifChannelHuntName": "Fennec hunt",
+  "notifChannelHuntDescription": "When you are getting close to a hidden fennec.",
+  "notifRouteReadyTitle": "Your route is ready",
+  "notifRouteReadyBody": "Tap to see where you are going.",
+  "notifRouteReadyBodyNamed": "{title} is planned and waiting for you.",
+  "@notifRouteReadyBodyNamed": {
+    "placeholders": { "title": { "type": "String" } }
+  },
+  "notifModelReadyTitle": "Your 3D model is ready",
+  "notifModelFailedTitle": "That capture didn't work out",
+  "notifModelReadyBody": "Tap to see it in your folder.",
+  "notifModelFailNoSubject": "We couldn't find a clear object — try filling more of the frame with it.",
+  "notifModelFailTimeout": "It took too long to build. Tap to try that photo again.",
+  "notifModelFailQuota": "You've used all your model credits for today.",
+  "notifModelFailGeneric": "Something went wrong building it. Tap to try again.",
+  "notifMascotHereTitle": "A fennec is right here!",
+  "notifMascotWarmTitle": "You're getting warm",
+  "notifMascotHereBody": "Tap to open the camera and catch it.",
+  "notifMascotNearbyBody": "A fennec is hiding somewhere close by.",
+  "notifMascotNearbyBodyNamed": "A fennec is hiding near {stopName}.",
+  "@notifMascotNearbyBodyNamed": {
+    "placeholders": { "stopName": { "type": "String" } }
+  },
+
+  "settingsSplatReady": "3D scenes from your footage",
+  "settingsSplatReadySubtitle": "When a clip you recorded is turned into a scene you can walk around",
+
+  "notifInboxTitle": "Notifications",
+  "notifInboxUnread": "{count, plural, =1{Notifications, 1 unread} other{Notifications, {count} unread}}",
+  "@notifInboxUnread": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "notifInboxEmptyTitle": "Nothing yet",
+  "notifInboxEmptyBody": "When a route is planned, a capture becomes a 3D model, or your footage helps build a scene, it will show up here.",
+  "notifInboxClearAll": "Clear all",
+  "notifInboxClearTitle": "Clear all notifications?",
+  "notifInboxClearBody": "They will be deleted for good. Anything they point to \u2014 a route, a model, a scene \u2014 stays where it is.",
+  "notifInboxClearConfirm": "Clear all",
+  "notifInboxDelete": "Delete",
+  "notifInboxDeleteFailed": "Couldn't delete that right now. Try again once you're back online.",
+  "notifInboxNothingToOpen": "There's nothing left to open for this one.",
+
+  "timeJustNow": "just now",
+  "timeMinutesAgo": "{count, plural, =1{1 min ago} other{{count} min ago}}",
+  "@timeMinutesAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "timeHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
+  "@timeHoursAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "timeDaysAgo": "{count, plural, =1{yesterday} other{{count} days ago}}",
+  "@timeDaysAgo": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "splatViewerSubtitle": "Built from your footage",
+  "splatViewerHint": "Drag to look around \u00b7 pinch to zoom \u00b7 double-tap to reset",
+  "splatViewerOpening": "Opening the scene\u2026",
+  "splatViewerDownloading": "Downloading the scene\u2026",
+  "splatViewerFailed": "Couldn't open the scene",
+  "splatViewerCounts": "{shown} of {trained} gaussians",
+  "@splatViewerCounts": {
+    "placeholders": {
+      "shown": { "type": "int", "format": "compact" },
+      "trained": { "type": "int", "format": "compact" }
+    }
+  },
+  "splatDetailLow": "Smooth",
+  "splatDetailMedium": "Balanced",
+  "splatDetailHigh": "Detailed",
+  "splatDetailSemantic": "Detail: {level}",
+  "@splatDetailSemantic": {
+    "placeholders": { "level": { "type": "String" } }
+  }
+}

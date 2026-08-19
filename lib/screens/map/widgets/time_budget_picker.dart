@@ -6,6 +6,7 @@ import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
 import '../../../blocs/app/app_state.dart';
 import '../../../models/route.dart' show formatMinutes;
+import '../../../l10n/app_localizations.dart';
 import '../../../theme.dart';
 
 /// How much time the traveller actually has, set the way an alarm is set.
@@ -41,7 +42,7 @@ class TimeBudgetPicker extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'HOW MUCH TIME DO YOU HAVE?',
+              AppLocalizations.of(context).timeBudgetHeading,
               style: TextStyle(
                 fontSize: 10,
                 letterSpacing: 0.8,
@@ -54,7 +55,7 @@ class TimeBudgetPicker extends StatelessWidget {
             // legible as eight hours of touring rather than something the
             // traveller has to work out.
             Text(
-              formatMinutes(state.timeBudgetMinutes),
+              formatMinutes(AppLocalizations.of(context), state.timeBudgetMinutes),
               style: const TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
@@ -85,8 +86,9 @@ class TimeBudgetPicker extends StatelessWidget {
                     child: WheelPicker(
                       values: AppState.tripDayOptions,
                       selected: state.tripDays,
-                      unit: (v) => v == 1 ? 'day' : 'days',
-                      semanticLabel: 'Trip length in days',
+                      unit: (v) => AppLocalizations.of(context).timeBudgetDays(v),
+                      semanticLabel:
+                          AppLocalizations.of(context).timeBudgetTripLength,
                       rowExtent: _rowExtent,
                       onChanged: (v) => bloc.add(SetTripDaysEvent(v)),
                     ),
@@ -95,8 +97,9 @@ class TimeBudgetPicker extends StatelessWidget {
                     child: WheelPicker(
                       values: AppState.hoursPerDayOptions,
                       selected: state.hoursPerDay,
-                      unit: (_) => 'hours',
-                      semanticLabel: 'Touring hours per day',
+                      unit: (v) => AppLocalizations.of(context).timeBudgetHours(v),
+                      semanticLabel:
+                          AppLocalizations.of(context).timeBudgetHoursPerDay,
                       rowExtent: _rowExtent,
                       onChanged: (v) => bloc.add(SetHoursPerDayEvent(v)),
                     ),
@@ -114,10 +117,14 @@ class TimeBudgetPicker extends StatelessWidget {
         // what the budget means, and nothing on the wheel said so. Captions
         // rather than a longer unit ("hours/day") because the unit sits inches
         // from the number and has to stay short enough not to crowd it.
-        const Row(
+        Row(
           children: [
-            Expanded(child: _WheelCaption('for the whole trip')),
-            Expanded(child: _WheelCaption('on each of those days')),
+            Expanded(
+                child: _WheelCaption(
+                    AppLocalizations.of(context).timeBudgetWholeTrip)),
+            Expanded(
+                child: _WheelCaption(
+                    AppLocalizations.of(context).timeBudgetEachDay)),
           ],
         ),
       ],
@@ -255,7 +262,7 @@ class _WheelPickerState extends State<WheelPicker> {
                 builder: (context, index) {
                   final isSelected = widget.values[index] == widget.selected;
                   return Align(
-                    alignment: Alignment.centerRight,
+                    alignment: AlignmentDirectional.centerEnd,
                     child: Text(
                       '${widget.values[index]}',
                       style: TextStyle(

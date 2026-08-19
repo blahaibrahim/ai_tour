@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../blocs/app/app_bloc.dart';
+import '../../../blocs/app/app_state.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../models/route.dart';
 import '../../../theme.dart';
 import '../../../widgets/route_map.dart';
@@ -24,6 +26,7 @@ class _RouteHeaderState extends State<RouteHeader> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppBloc>().state;
+    final l10n = AppLocalizations.of(context);
     final route = state.route;
     if (route == null) return const SizedBox.shrink();
 
@@ -47,14 +50,14 @@ class _RouteHeaderState extends State<RouteHeader> {
                 children: [
                   _TimeStat(
                     icon: Icons.schedule_rounded,
-                    value: formatMinutes(route.estimatedTotalDurationMinutes),
-                    label: 'total',
+                    value: formatMinutes(l10n, route.estimatedTotalDurationMinutes),
+                    label: l10n.routeHeaderTotal,
                     emphasised: true,
                   ),
                   _TimeStat(
                     icon: Icons.place_outlined,
                     value: '${route.stops.length}',
-                    label: route.stops.length == 1 ? 'stop' : 'stops',
+                    label: l10n.routeHeaderStops(route.stops.length),
                   ),
                 ],
               ),
@@ -82,24 +85,26 @@ class _RouteHeaderState extends State<RouteHeader> {
             // colour told travellers something had gone wrong.
             color: AppTheme.warning,
             background: AppTheme.warningSoft,
-            title: 'Longer than your ${formatMinutes(route.timeBudgetMinutes)}',
-            body: 'This route needs about '
-                '${formatMinutes(route.estimatedTotalDurationMinutes)}. '
-                'Plan on ${route.dayCountFlag} days, or remove a few stops below.',
+            title: l10n.routeHeaderOverBudgetTitle(
+                formatMinutes(l10n, route.timeBudgetMinutes)),
+            body: l10n.routeHeaderOverBudgetBody(
+              formatMinutes(l10n, route.estimatedTotalDurationMinutes),
+              route.dayCountFlag,
+            ),
           ),
         ],
 
         // A generation-time problem that didn't stop the route being shown —
         // a refine that failed, for instance. Distinct from the day-count
         // notice above, which is about the route rather than about the app.
-        if (state.routeError != null) ...[
+        if (state.routeErrorCode != null || state.routeError != null) ...[
           const SizedBox(height: AppTheme.space3),
           _Notice(
             icon: Icons.error_outline_rounded,
             color: AppTheme.error,
             background: AppTheme.errorSoft,
-            title: 'Something went wrong',
-            body: state.routeError!,
+            title: l10n.routeHeaderSomethingWrong,
+            body: routeErrorText(l10n, state.routeErrorCode, state.routeError),
           ),
         ],
 

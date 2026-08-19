@@ -6,6 +6,7 @@ import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
 import '../../blocs/app/app_state.dart';
 import '../../models/route.dart' show formatMinutes;
+import '../../l10n/app_localizations.dart';
 import '../../services/image_prefetch.dart';
 import '../../theme.dart';
 import '../../widgets/app_backdrop.dart';
@@ -216,12 +217,15 @@ class _SwipeScreenState extends State<SwipeScreen>
                               Text(
                                 canProceed
                                     ? (reviewed >= total
-                                        ? 'Done'
-                                        : 'Keep the rest ($reviewed/$total)')
+                                        ? AppLocalizations.of(context).actionDone
+                                        : AppLocalizations.of(context)
+                                            .swipeKeepTheRest(reviewed, total))
                                     // Names what is missing rather than just
                                     // greying out: a disabled button with no
                                     // reason reads as a bug.
-                                    : '${formatMinutes(short)} short',
+                                    : AppLocalizations.of(context).swipeShortBy(
+                                        formatMinutes(
+                                            AppLocalizations.of(context), short)),
                                 style: const TextStyle(
                                     fontSize: 13, fontWeight: FontWeight.w600),
                               ),
@@ -297,7 +301,7 @@ class _SwipeScreenState extends State<SwipeScreen>
                                         size: 30, color: AppTheme.textSecondary),
                                     const SizedBox(height: 12),
                                     Text(
-                                      "That's everything here",
+                                      AppLocalizations.of(context).swipeAllSeen,
                                       textAlign: TextAlign.center,
                                       style: Theme.of(context)
                                           .textTheme
@@ -307,14 +311,10 @@ class _SwipeScreenState extends State<SwipeScreen>
                                     const SizedBox(height: 8),
                                     Text(
                                       state.acceptedMinutes <= 0
-                                          ? 'You turned every stop down, and this '
-                                              'city has no others to suggest. Go '
-                                              'back to change the theme or give '
-                                              'yourself less time.'
-                                          : 'This city has no more stops to fill '
-                                              'the rest of your time. Carry on '
-                                              'with what you kept, or go back and '
-                                              'try a different theme.',
+                                          ? AppLocalizations.of(context)
+                                              .swipeEmptyAllRejected
+                                          : AppLocalizations.of(context)
+                                              .swipeEmptyNoMore,
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         fontSize: 13,

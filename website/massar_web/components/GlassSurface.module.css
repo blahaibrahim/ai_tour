@@ -1,0 +1,33 @@
+.glass {
+  position: relative;
+  border-radius: var(--radius-lg);
+  border: 1px solid transparent;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+
+/* The alpha is what makes it glass. Where `backdrop-filter` is unsupported the
+   pane still lands on a legible near-opaque white, which is the failure mode
+   worth having. */
+.light {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: var(--divider);
+  color: var(--text);
+}
+
+.dark {
+  background: rgba(20, 37, 74, 0.55);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .light {
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  .dark {
+    background: rgba(20, 37, 74, 0.82);
+  }
+}

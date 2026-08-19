@@ -1,0 +1,275 @@
+.stage {
+  position: relative;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.mapLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.back {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+}
+
+.back:hover {
+  background: var(--surface-alt);
+}
+
+/* --- the planner ----------------------------------------------------------
+   Docked to the bottom on a phone, a floating column on a wide screen: the
+   map has to stay the larger half either way, and a full-width sheet on a
+   desktop would be a metre of glass holding one button. */
+
+.panel {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--shadow-lg);
+  max-height: 76vh;
+  overflow-y: auto;
+}
+
+@media (min-width: 760px) {
+  .panel {
+    left: var(--space-5);
+    right: auto;
+    bottom: var(--space-5);
+    width: 380px;
+    border-radius: var(--radius-xl);
+    max-height: calc(100vh - var(--space-8) * 2);
+  }
+}
+
+.panelInner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+/* --- city search ---------------------------------------------------------- */
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+}
+
+.searchIcon {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  font-size: 13.5px;
+}
+
+.searchInput::placeholder {
+  color: rgba(20, 37, 74, 0.45);
+}
+
+.searchClear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(20, 37, 74, 0.1);
+  color: var(--text-secondary);
+}
+
+.results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--divider);
+}
+
+.result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+}
+
+.result:hover,
+.result[data-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+/* --- the selection readout ------------------------------------------------ */
+
+.hint,
+.selected {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  min-height: 26px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.selectedChip {
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  background: rgba(47, 84, 154, 0.1);
+  border: 1px solid rgba(47, 84, 154, 0.5);
+  color: var(--accent-dark);
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selectedHint {
+  font-size: 11.5px;
+}
+
+/* --- the drawer ----------------------------------------------------------- */
+
+.drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-base) var(--motion-curve);
+}
+
+.drawer[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+/* The row of a 0fr/1fr grid still has to be allowed to collapse, which is what
+   `min-height: 0` plus a clipped child buys. */
+.drawerInner {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.drawer[data-open="true"] .drawerInner {
+  padding: var(--space-2) 0;
+}
+
+.promptField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drawerToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  text-align: left;
+}
+
+.drawerSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(20, 37, 74, 0.62);
+}
+
+.drawerChevron {
+  flex: none;
+  color: var(--accent-dark);
+  transition: transform var(--motion-base) var(--motion-curve);
+}
+
+.drawerChevron[data-open="false"] {
+  transform: rotate(180deg);
+}
+
+/* --- the waiting screen --------------------------------------------------- */
+
+.thinking {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+}
+
+.cancel {
+  align-self: flex-start;
+}
+
+.thinkingBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding-bottom: 10vh;
+  text-align: center;
+}
+
+.thinkingTitle {
+  margin: var(--space-6) 0 0;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: #ffffff;
+}
+
+.thinkingCopy {
+  margin: 0;
+  max-width: 30ch;
+  font-size: 15px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.8);
+}

@@ -11,6 +11,7 @@ const logger = getLogger("ingestion.wikipedia");
 export const TIMEOUT_S = 15;
 
 interface SummaryResponse {
+  title?: string;
   extract?: string;
   thumbnail?: { source?: string };
   originalimage?: { source?: string };
@@ -60,6 +61,9 @@ export async function fetchSummary(
   }
 
   return {
+    // The endpoint always returns a title alongside an extract; the fallback
+    // only keeps the type honest.
+    title: data.title ?? title,
     extract,
     thumbnail_url: data.thumbnail?.source ?? null,
     original_url: data.originalimage?.source ?? null,

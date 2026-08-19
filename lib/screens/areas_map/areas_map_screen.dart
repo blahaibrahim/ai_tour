@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../blocs/app/app_bloc.dart';
 import '../../blocs/app/app_event.dart';
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/glass_surface.dart';
 import '../../widgets/route_map.dart';
 
@@ -18,7 +19,7 @@ class AreasMapScreen extends StatelessWidget {
       return Scaffold(
         body: Center(
           child: Text(
-            'No route generated yet.',
+            AppLocalizations.of(context).mapNoRouteYet,
             style: TextStyle(color: AppTheme.text.withValues(alpha: 0.7)),
           ),
         ),
@@ -35,7 +36,9 @@ class AreasMapScreen extends StatelessWidget {
               showNames: true,
               padding: const EdgeInsets.fromLTRB(40, 110, 40, 140),
               onStopTap: (stop) {
-                final regionLabel = state.selectedCity?.name ?? '';
+                final regionLabel = state.selectedCity
+                        ?.localizedName(Localizations.localeOf(context)) ??
+                    '';
                 context.read<AppBloc>().add(OpenDetailEvent(stop.toLocation(regionLabel: regionLabel)));
               },
             ),
@@ -52,7 +55,7 @@ class AreasMapScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 boxShadow: AppTheme.shadowSm,
                 child: Text(
-                  'Tap a pin to see more details',
+                  AppLocalizations.of(context).mapTapPinForDetails,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,

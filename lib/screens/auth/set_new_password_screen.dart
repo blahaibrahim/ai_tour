@@ -5,6 +5,7 @@ import '../../blocs/auth/auth_bloc.dart';
 import '../../blocs/auth/auth_event.dart';
 import '../../blocs/auth/auth_state.dart';
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/app_backdrop.dart';
 
 /// The last step of a password reset: choose the new one.
@@ -47,6 +48,7 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
 
     return BlocConsumer<AuthBloc, AuthState>(
       listenWhen: (previous, current) =>
@@ -58,7 +60,7 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
             ..showSnackBar(SnackBar(
-              content: Text(feedback.message),
+              content: Text(feedback.text(l10n)),
               backgroundColor: feedback.isError ? AppTheme.error : AppTheme.ink,
             ));
         }
@@ -91,14 +93,13 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
-                              'Choose a new password',
+                              l10n.authChooseNewPassword,
                               textAlign: TextAlign.center,
                               style: textTheme.headlineMedium?.copyWith(fontSize: 26),
                             ),
                             AppTheme.gap3,
                             Text(
-                              'This replaces the old one everywhere. You will stay '
-                              'signed in on this device.',
+                              l10n.authNewPasswordBlurb,
                               textAlign: TextAlign.center,
                               style: textTheme.bodyMedium?.copyWith(
                                 fontSize: 14,
@@ -110,22 +111,22 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
 
                             _PasswordField(
                               controller: _passwordController,
-                              label: 'New password',
-                              hint: 'At least 6 characters',
+                              label: l10n.authNewPassword,
+                              hint: l10n.authPasswordHintSignup,
                               obscure: _obscure,
                               enabled: !auth.isBusy,
                               onToggleObscure: () => setState(() => _obscure = !_obscure),
                               validator: (value) {
-                                if ((value ?? '').isEmpty) return 'Enter a new password.';
-                                if ((value ?? '').length < 6) return 'Use at least 6 characters.';
+                                if ((value ?? '').isEmpty) return l10n.authEnterNewPassword;
+                                if ((value ?? '').length < 6) return l10n.authPasswordTooShort;
                                 return null;
                               },
                             ),
                             AppTheme.gap3,
                             _PasswordField(
                               controller: _confirmController,
-                              label: 'Confirm password',
-                              hint: 'Type it again',
+                              label: l10n.authConfirmPassword,
+                              hint: l10n.authTypeItAgain,
                               obscure: _obscure,
                               enabled: !auth.isBusy,
                               onToggleObscure: () => setState(() => _obscure = !_obscure),
@@ -134,7 +135,7 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
                               // lock them out again the moment they sign out.
                               validator: (value) => value == _passwordController.text
                                   ? null
-                                  : 'These do not match.',
+                                  : l10n.authPasswordsDoNotMatch,
                             ),
                             AppTheme.gap5,
 
@@ -151,7 +152,7 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
                                           color: AppTheme.onAccent,
                                         ),
                                       )
-                                    : const Text('Save password'),
+                                    : Text(l10n.authSavePassword),
                               ),
                             ),
                           ],
@@ -196,7 +197,7 @@ class _PasswordField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          padding: const EdgeInsetsDirectional.only(start: 4, bottom: 6),
           child: Text(
             label,
             style: const TextStyle(

@@ -203,13 +203,55 @@ export interface RouteRequest {
   transportMode: TransportMode;
   /** NOT IN SPEC. §3 says the POI Selector filters "by theme, category, and
    * city", but §7's request carries only a theme — leaving no way to express
-   * the category filter. Optional, so a theme-only request is unchanged. */
+   * the category filter. Optional, so a theme-only request is unchanged.
+   *
+   * A hard filter: `selectPois` intersects this with the theme's own set and
+   * an empty intersection is `NoEligiblePoisError`. This is what the request
+   * builder's category chips send — an explicit tap is a narrowing the
+   * traveller chose to mean literally.
+   *
+   * Distinct from `preferredCategoryKeys` below, which is what an LLM-read
+   * prompt sends: "show me beaches" is a preference to rank up, not an
+   * instruction to hide the rest of the theme. */
   categoryKeys?: string[];
+  /** NOT IN SPEC. From `promptInterpreter` (see `domain/promptInterpreter.ts`)
+   * — categories the traveller's free text called out. Ranking-only: it
+   * boosts matching POIs in `budgetFitter` and the alternates ordering, and
+   * is never intersected against eligibility. A prompt naming a category the
+   * theme cannot answer therefore narrows nothing rather than producing a
+   * 422 the traveller's own words didn't ask for. */
+  preferredCategoryKeys?: string[];
   /** Which language the assembled names/descriptions come back in. */
   locale?: Locale;
   /** Nullable per the schema: supports anonymous demo usage. */
   userId?: string | null;
   sessionId?: string | null;
+}
+
+// --- prompt interpretation ---------------------------------------------------
+
+export interface PromptInterpretationRequest {
+  prompt: string;
+  cityId: string;
+  /** Narrows the vocabulary Groq is shown to one theme's categories when the
+   * traveller already has a theme selected — same city-override rule
+   * `theme_category_keys` already encodes. Omitted, the full city vocabulary
+   * is offered and the model may also propose the theme itself. */
+  theme?: string;
+  locale?: Locale;
+}
+
+export interface PromptInterpretation {
+  /** Null when nothing in the prompt pointed at a theme — the caller keeps
+   * whatever theme was already selected, or the server's own fallback. */
+  theme: string | null;
+  /** Real category keys the city can answer, ranking preferences only — see
+   * `RouteRequest.preferredCategoryKeys`. */
+  categoryKeys: string[];
+  /** True once at least one real category key or a real theme was found.
+   * False means the prompt was read but nothing in it matched, which the UI
+   * shows differently from "not read yet". */
+  understood: boolean;
 }
 
 /** One stop, as the client renders it. Flattens the POI fields the UI needs so

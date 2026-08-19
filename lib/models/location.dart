@@ -3,29 +3,52 @@
 /// Static seed data (allLocations, exampleArtifacts, regions) lives in
 /// location_data.dart to keep this file focused on type definitions.
 library;
+import '../l10n/app_localizations.dart';
+import 'quest_type.dart';
 
 class Task {
   final String type;
-  final String label;
+
+  /// Wording handed down by the server, which writes its own per-stop prompts.
+  /// Null for a quest the app generated itself — those carry [labelSeed]
+  /// instead and are worded from the ARBs, so they follow the traveller's
+  /// language rather than the language the route happened to be built in.
+  final String? label;
+
+  /// Which of the phrasings for [type] this stop drew. Varied per stop so a
+  /// route does not read as eleven copies of one instruction.
+  final int labelSeed;
+
   final String state; // 'pending' or 'done'
   final int points;
 
   const Task({
     required this.type,
-    required this.label,
+    this.label,
+    this.labelSeed = 0,
     this.state = 'pending',
     this.points = 30,
   });
 
+  /// What the traveller actually reads. Server wording wins when there is any;
+  /// otherwise the translated phrasing for this type and seed.
+  String text(AppLocalizations l10n) {
+    final serverLabel = label;
+    if (serverLabel != null && serverLabel.isNotEmpty) return serverLabel;
+    return questLabel(l10n, type, seed: labelSeed);
+  }
+
   Task copyWith({
     String? type,
     String? label,
+    int? labelSeed,
     String? state,
     int? points,
   }) {
     return Task(
       type: type ?? this.type,
       label: label ?? this.label,
+      labelSeed: labelSeed ?? this.labelSeed,
       state: state ?? this.state,
       points: points ?? this.points,
     );
@@ -34,7 +57,8 @@ class Task {
   factory Task.fromJson(Map<String, dynamic> json) {
     return Task(
       type: json['type'] as String? ?? 'photo',
-      label: json['label'] as String? ?? '',
+      label: json['label'] as String?,
+      labelSeed: (json['label_seed'] as num?)?.toInt() ?? 0,
       points: (json['points'] as num?)?.toInt() ?? 30,
     );
   }
@@ -42,7 +66,8 @@ class Task {
   Map<String, dynamic> toJson() {
     return {
       'type': type,
-      'label': label,
+      if (label != null) 'label': label,
+      'label_seed': labelSeed,
       'points': points,
     };
   }
@@ -160,13 +185,20 @@ class Location {
 /// Status of the 3D generation job associated with this artifact.
 enum ModelStatus { generating, succeeded, failed }
 
-/// Human-readable failure messages keyed by the backend's error_code.
-const modelFailureMessages = {
-  'no_subject': 'No clear object found — try a different angle',
-  'timeout': 'Timed out — tap to retry',
-  'gpu_oom': 'Server busy — tap to retry',
-  'internal': 'Something went wrong — tap to retry',
-};
+/// Human-readable failure message for the backend's error_code.
+///
+/// A function rather than the const map this replaces: the text is now
+/// translated, and a const map cannot hold a value that depends on the locale.
+/// An unrecognised code — a new one the server grew since this build — falls
+/// back to the generic line rather than to nothing.
+String modelFailureMessage(AppLocalizations l10n, String? errorCode) =>
+    switch (errorCode) {
+      'no_subject' => l10n.modelFailNoSubject,
+      'timeout' => l10n.modelFailTimeout,
+      'gpu_oom' => l10n.modelFailGpuOom,
+      'internal' => l10n.modelFailInternal,
+      _ => l10n.artifactGenerationFailed,
+    };
 
 class Artifact {
   final String id;

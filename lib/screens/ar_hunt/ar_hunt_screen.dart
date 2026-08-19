@@ -36,6 +36,7 @@ import '../../repositories/mascot_repository.dart';
 import '../../services/heading_service.dart';
 import '../../services/object_detector.dart';
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../utils/artifact_naming.dart';
 import '../../utils/uuid.dart';
 import '../../widgets/camera_mode_selector.dart';
@@ -65,13 +66,12 @@ enum CaptureMode {
   /// already own works this way, so the hold is discovered rather than taught,
   /// and a moment worth filming rarely announces itself far enough ahead to
   /// swipe modes first.
-  media('Media'),
-  scan('3D Scan');
-
-  const CaptureMode(this.label);
+  media,
+  scan;
 
   /// Name shown in the mode strip.
-  final String label;
+  String label(AppLocalizations l10n) =>
+      this == CaptureMode.media ? l10n.arModeMedia : l10n.arModeScan;
 }
 
 /// What the camera has been opened *for*.
@@ -190,6 +190,12 @@ enum _Stage {
 }
 
 class _ArHuntScreenState extends State<ArHuntScreen> {
+  /// The app's strings. A getter rather than a field so it re-resolves after a
+  /// language change, and so the many non-`build` methods on this State — the
+  /// camera and AR callbacks, which report through snackbars and `_error` —
+  /// can reach them without each taking a context.
+  AppLocalizations get _l10n => AppLocalizations.of(context);
+
   /// Asset the mascot is loaded from. Rendered natively by the AR engine.
   static const String _modelAsset = 'assets/3d/rigged_animated_fennec.glb';
 
@@ -407,7 +413,9 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   Future<void> _openCamera() async {
     try {
       final cameras = await availableCameras();
-      if (cameras.isEmpty) throw CameraException('no_camera', 'No camera on this device');
+      if (cameras.isEmpty) {
+        throw CameraException('no_camera', _l10n.arNoCamera);
+      }
 
       final back = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
@@ -433,9 +441,11 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
 
   String _cameraErrorText(Object error) {
     if (error is CameraException && error.code.toLowerCase().contains('permission')) {
-      return 'The camera needs permission before it can open.';
+      return _l10n.arCameraNeedsPermission;
     }
-    return "The camera didn't open: ${error is CameraException ? error.description ?? error.code : error}";
+    return _l10n.arCameraDidNotOpen(
+      error is CameraException ? error.description ?? error.code : '$error',
+    );
   }
 
   /// Takes an early GPS fix so the geographic offset to the spawn point is
@@ -487,7 +497,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       final bounds = await readGlbBounds(_modelAsset);
       if (mounted) setState(() => _bounds = bounds);
     } catch (_) {
-      if (mounted) setState(() => _error = 'Could not read the mascot model.');
+      if (mounted) setState(() => _error = _l10n.arCouldNotReadModel);
     }
   }
 
@@ -673,7 +683,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       setState(() {
         _busy = false;
         _stage = _Stage.scanning;
-        _error = 'Could not place the fennec. Try again in a moment.';
+        _error = _l10n.arCouldNotPlaceFennec;
       });
     }
   }
@@ -920,10 +930,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       HapticFeedback.selectionClick();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'This one wants a clip — hold the shutter for '
-            '${_kMinQuestClip.inSeconds} seconds or more',
-          ),
+          content: Text(_l10n.arQuestNeedsClip(_kMinQuestClip.inSeconds)),
         ),
       );
       return;
@@ -940,7 +947,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       if (!mounted) return;
       setState(() => _busy = false);
       messenger.showSnackBar(
-        SnackBar(content: Text("Couldn't take that shot: ${e.toString()}")),
+        SnackBar(content: Text(_l10n.arCouldNotTakeShot(e.toString()))),
       );
       return;
     }
@@ -997,7 +1004,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Couldn't start filming: ${_cameraErrorText(e)}")),
+        SnackBar(content: Text(_l10n.arCouldNotStartFilming(_cameraErrorText(e)))),
       );
       return;
     }
@@ -1054,7 +1061,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       if (!mounted) return;
       setState(() => _busy = false);
       messenger.showSnackBar(
-        SnackBar(content: Text("The clip didn't save: ${_cameraErrorText(e)}")),
+        SnackBar(content: Text(_l10n.arClipDidNotSave(_cameraErrorText(e)))),
       );
       return;
     }
@@ -1072,9 +1079,9 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
         SnackBar(
           content: Text(
             widget.intent == CaptureIntent.video
-                ? 'That clip was ${elapsed.inSeconds}s — this quest needs at '
-                    'least ${_kMinQuestClip.inSeconds}. Hold for longer.'
-                : 'Hold the shutter for a moment to film',
+                ? _l10n.arClipTooShort(
+                    elapsed.inSeconds, _kMinQuestClip.inSeconds)
+                : _l10n.arHoldToFilm,
           ),
         ),
       );
@@ -1085,7 +1092,8 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
     HapticFeedback.mediumImpact();
     if (hitLimit) {
       messenger.showSnackBar(
-        SnackBar(content: Text('Clip capped at ${_kMaxClipDuration.inSeconds}s')),
+        SnackBar(
+            content: Text(_l10n.arClipCapped(_kMaxClipDuration.inSeconds))),
       );
     }
 
@@ -1148,6 +1156,9 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   void _dispatchVideo(String path, Duration length) {
     final messenger = ScaffoldMessenger.of(context);
     final bloc = context.read<AppBloc>();
+    // Read while the context is still mounted: everything below runs after
+    // this screen has popped.
+    final l10n = _l10n;
 
     Navigator.of(context).pop();
 
@@ -1156,6 +1167,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
       length: length,
       bloc: bloc,
       messenger: messenger,
+      l10n: l10n,
     ));
   }
 
@@ -1171,6 +1183,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
   void _dispatch(Uint8List frame, {required bool scanning}) {
     final messenger = ScaffoldMessenger.of(context);
     final bloc = context.read<AppBloc>();
+    final l10n = _l10n;
 
     // Past this line the widget is on its way out, so the work below is
     // handed to functions that hold no reference to it — no setState, no
@@ -1182,12 +1195,14 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
         frame: frame,
         bloc: bloc,
         messenger: messenger,
+        l10n: l10n,
       ));
     } else {
       unawaited(_finishPhotoCapture(
         frame: frame,
         bloc: bloc,
         messenger: messenger,
+        l10n: l10n,
         caught: _hunting,
         spawnId: widget.spawnId,
         captureToken: widget.captureToken,
@@ -1334,15 +1349,15 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
               const SizedBox(height: 14),
               Text(
                 _hunting
-                    ? 'The hunt needs the camera to see the room around you.'
-                    : 'Taking a photo needs the camera.',
+                    ? _l10n.arHuntNeedsCamera
+                    : _l10n.arPhotoNeedsCamera,
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white, fontSize: 14),
               ),
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: retry,
-                child: const Text('Allow camera'),
+                child: Text(_l10n.arAllowCamera),
               ),
             ],
           ),
@@ -1383,15 +1398,15 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                         Text(
                           _reviewing
                               ? (_pendingVideoPath != null
-                                  ? 'Keep this clip?'
+                                  ? _l10n.arKeepThisClip
                                   : _pendingScan
-                                      ? 'Scan this?'
-                                      : 'Keep this photo?')
+                                      ? _l10n.arScanThis
+                                      : _l10n.arKeepThisPhoto)
                               : _hunting
-                                  ? 'Find the fennec'
+                                  ? _l10n.arFindTheFennec
                                   : _scanning
-                                      ? 'Scan an object'
-                                      : 'Photo or video',
+                                      ? _l10n.arScanAnObject
+                                      : _l10n.arPhotoOrVideo,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 14,
@@ -1401,16 +1416,16 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                         Text(
                           _reviewing
                               ? (_pendingVideoPath != null
-                                  ? "It's looping — watch it before you decide"
+                                  ? _l10n.arClipLooping
                                   : _pendingScan
-                                      ? 'Check the object is sharp and whole'
-                                      : 'Check it came out how you wanted')
+                                      ? _l10n.arCheckObjectSharp
+                                      : _l10n.arCheckItCameOut)
                               : widget.stopName ??
                                   (_hunting
-                                      ? 'Somewhere around you'
+                                      ? _l10n.arSomewhereAroundYou
                                       : _scanning
-                                          ? 'It comes back as a 3D model'
-                                          : 'It goes straight to your folder'),
+                                          ? _l10n.arComesBackAs3d
+                                          : _l10n.arGoesToYourFolder),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -1458,29 +1473,29 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
         ? (
             null,
             _scanning
-                ? 'Fill the frame with one object, then shoot'
+                ? _l10n.arFillTheFrame
                 // The hold is the only part of this screen that is not
                 // self-evident, so it is the part the hint spends its words on.
-                : 'Tap to shoot · hold to film',
+                : _l10n.arTapToShootHoldToFilm,
           )
         : switch (_stage) {
             _Stage.scanning => (
-                'Reading the room',
-                'Hold the phone up and move it slowly',
+                _l10n.arStageReadingRoom,
+                _l10n.arStageReadingRoomHint,
               ),
             _Stage.placing => (
-                'Letting the fennec out',
-                'Hold steady for a second',
+                _l10n.arStageLettingOut,
+                _l10n.arStageLettingOutHint,
               ),
             _Stage.placed => (
                 bearing?.onScreen ?? false
-                    ? 'There it is — tap it'
-                    : 'It is out there — follow the arrow',
-                'Walk around it to see it from any side',
+                    ? _l10n.arStageThereItIs
+                    : _l10n.arStageItIsOutThere,
+                _l10n.arStageWalkAround,
               ),
             _Stage.caught => (
-                'Found it',
-                'Frame the shot and take your photo',
+                _l10n.arStageFoundIt,
+                _l10n.arStageFrameTheShot,
               ),
           };
 
@@ -1515,7 +1530,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                 if (_hunting && bearing != null && _stage == _Stage.placed) ...[
                   const SizedBox(height: 4),
                   Text(
-                    '${bearing.distance.toStringAsFixed(1)} m away',
+                    _l10n.arDistanceAway(bearing.distance.toStringAsFixed(1)),
                     style: const TextStyle(
                       color: AppTheme.accentSoft,
                       fontSize: 11.5,
@@ -1525,10 +1540,10 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                 ],
                 if (_hunting && _stage == _Stage.placed && !_floorMeasured) ...[
                   const SizedBox(height: 4),
-                  const Text(
-                    'Floor estimated — it settles itself as the room is mapped',
+                  Text(
+                    _l10n.arFloorEstimated,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: AppTheme.accentSoft,
                       fontSize: 11,
                     ),
@@ -1550,7 +1565,9 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
               _IntentPill(intent: widget.intent)
             else
               CameraModeSelector(
-                labels: [for (final mode in CaptureMode.values) mode.label],
+                labels: [
+                  for (final mode in CaptureMode.values) mode.label(_l10n),
+                ],
                 index: _captureMode.index,
                 enabled: !_busy,
                 onChanged: (index) =>
@@ -1594,7 +1611,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
         children: [
           Expanded(
             child: _ReviewButton(
-              label: isClip ? 'Discard' : 'Retake',
+              label: isClip ? _l10n.actionDiscard : _l10n.actionRetake,
               icon: isClip ? Icons.delete_outline_rounded : Icons.refresh_rounded,
               onTap: isClip ? _discardClip : _retakeShot,
             ),
@@ -1603,10 +1620,10 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
           Expanded(
             child: _ReviewButton(
               label: isClip
-                  ? 'Keep ${_pendingVideoLength.inSeconds}s clip'
+                  ? _l10n.arKeepClip(_pendingVideoLength.inSeconds)
                   : _pendingScan
-                      ? 'Scan it'
-                      : 'Use photo',
+                      ? _l10n.arScanIt
+                      : _l10n.arUsePhoto,
               icon: isClip
                   ? Icons.check_rounded
                   : _pendingScan
@@ -1646,7 +1663,7 @@ class _ArHuntScreenState extends State<ArHuntScreen> {
                 foregroundColor: Colors.white,
                 side: const BorderSide(color: Colors.white38),
               ),
-              child: const Text('Dismiss'),
+              child: Text(_l10n.actionDismiss),
             ),
           ],
         ),
@@ -1679,6 +1696,7 @@ Future<void> _finishVideoCapture({
   required Duration length,
   required AppBloc bloc,
   required ScaffoldMessengerState messenger,
+  required AppLocalizations l10n,
 }) async {
   try {
     final directory = await getApplicationDocumentsDirectory();
@@ -1696,13 +1714,14 @@ Future<void> _finishVideoCapture({
       await source.delete().catchError((_) => source);
     }
 
-    bloc.add(AddCapturedArtifactEvent(destination, kindLabel: 'Video', kind: 'video'));
+    bloc.add(AddCapturedArtifactEvent(destination,
+        kindLabel: l10n.artifactVideo, kind: 'video'));
     messenger.showSnackBar(SnackBar(
-      content: Text('${length.inSeconds}s clip saved to your folder'),
+      content: Text(l10n.arClipSaved(length.inSeconds)),
     ));
   } catch (e) {
     messenger.showSnackBar(
-      SnackBar(content: Text("Couldn't save that clip: ${e.toString()}")),
+      SnackBar(content: Text(l10n.arCouldNotSaveClip(e.toString()))),
     );
   }
 }
@@ -1716,6 +1735,7 @@ Future<void> _finishPhotoCapture({
   required Uint8List frame,
   required AppBloc bloc,
   required ScaffoldMessengerState messenger,
+  required AppLocalizations l10n,
   required bool caught,
   String? spawnId,
   String? captureToken,
@@ -1734,21 +1754,22 @@ Future<void> _finishPhotoCapture({
       // the catch is reported, which is what finishes a mascot quest.
       bloc.add(const MascotCaughtEvent());
       messenger.showSnackBar(
-        const SnackBar(content: Text('Fennec caught!')),
+        SnackBar(content: Text(l10n.arFennecCaught)),
       );
       // Nothing refers to the snapshot any more — the server validates a catch
       // from the fix and the signed token, never the picture — so leaving it
       // in documents would be a file that accumulates and is never read.
       unawaited(File(path).delete().catchError((_) => File(path)));
     } else {
-      bloc.add(AddCapturedArtifactEvent(path, kindLabel: 'Photo', kind: 'photo'));
+      bloc.add(AddCapturedArtifactEvent(path,
+          kindLabel: l10n.artifactPhoto, kind: 'photo'));
       messenger.showSnackBar(
-        const SnackBar(content: Text('Photo saved to your folder')),
+        SnackBar(content: Text(l10n.arPhotoSaved)),
       );
     }
   } catch (e) {
     messenger.showSnackBar(
-      SnackBar(content: Text("Couldn't save that shot: ${e.toString()}")),
+      SnackBar(content: Text(l10n.arCouldNotSaveShot(e.toString()))),
     );
     return;
   }
@@ -1779,6 +1800,7 @@ Future<void> _finishScanCapture({
   required Uint8List frame,
   required AppBloc bloc,
   required ScaffoldMessengerState messenger,
+  required AppLocalizations l10n,
 }) async {
   try {
     // 1. Compress to JPEG + strip EXIF (privacy + bandwidth). Straight from
@@ -1808,11 +1830,9 @@ Future<void> _finishScanCapture({
       } catch (_) {
         // Nothing to clean up, then.
       }
-      messenger.showSnackBar(const SnackBar(
-        content: Text(
-          'No clear object in that shot — nothing scanned. Try filling more of the frame with the subject.',
-        ),
-        duration: Duration(seconds: 4),
+      messenger.showSnackBar(SnackBar(
+        content: Text(l10n.arNoClearObject),
+        duration: const Duration(seconds: 4),
       ));
       return;
     }
@@ -1869,13 +1889,13 @@ Future<void> _finishScanCapture({
       title: captureName,
     ));
 
-    messenger.showSnackBar(const SnackBar(
-      content: Text('Generating 3D model — check your folder in a moment'),
-      duration: Duration(seconds: 4),
+    messenger.showSnackBar(SnackBar(
+      content: Text(l10n.arGenerating3dModel),
+      duration: const Duration(seconds: 4),
     ));
   } catch (e) {
     messenger.showSnackBar(
-      SnackBar(content: Text("Couldn't scan that shot: ${e.toString()}")),
+      SnackBar(content: Text(l10n.arCouldNotScanShot(e.toString()))),
     );
   }
 }
@@ -2059,15 +2079,15 @@ class _ClipReviewState extends State<_ClipReview> {
     if (_failed) {
       // The clip exists but will not decode. Saying so beats a black rectangle
       // the traveller would read as a broken app rather than a broken file.
-      return const ColoredBox(
+      return ColoredBox(
         color: Colors.black,
         child: Center(
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
-              "That clip won't play back. Discard it and film again.",
+              AppLocalizations.of(context).arClipWontPlayBack,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 13),
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
           ),
         ),
@@ -2119,12 +2139,13 @@ class _IntentPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final (IconData icon, String text) = switch (intent) {
       CaptureIntent.video => (
           Icons.videocam_rounded,
-          'Hold to film · ${_kMinQuestClip.inSeconds}s minimum',
+          l10n.arHoldToFilmMinimum(_kMinQuestClip.inSeconds),
         ),
-      _ => (Icons.photo_camera_rounded, 'Tap to take the photo'),
+      _ => (Icons.photo_camera_rounded, l10n.arTapToTakePhoto),
     };
 
     return SizedBox(
@@ -2203,7 +2224,7 @@ class _RecordingPill extends StatelessWidget {
               if (remaining <= 10) ...[
                 const SizedBox(width: 8),
                 Text(
-                  '${remaining}s left',
+                  AppLocalizations.of(context).arSecondsLeft(remaining),
                   style: const TextStyle(color: Colors.white70, fontSize: 11),
                 ),
               ],

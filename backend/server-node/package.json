@@ -13,6 +13,7 @@
     "backfill:photos": "tsx src/scripts/backfillPhotos.ts",
     "backfill:poi-photos": "tsx src/scripts/backfillPoiPhotos.ts",
     "backfill:descriptions": "tsx src/scripts/backfillDescriptions.ts",
+    "backfill:scores": "tsx src/scripts/backfillInterestScores.ts",
     "translate:curated": "tsx src/scripts/translateCurated.ts",
     "ingest:pois": "tsx src/scripts/ingestCityPois.ts"
   },

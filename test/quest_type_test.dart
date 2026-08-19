@@ -1,9 +1,19 @@
 import 'dart:math';
+import 'package:flutter/widgets.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:massar/models/quest_type.dart';
+import 'package:massar/l10n/app_localizations.dart';
 
 void main() {
+  // The English strings, loaded once. These tests assert on wording, so they
+  // need the same lookup the app uses rather than the literals that used to be
+  // baked into the models.
+  late AppLocalizations l10n;
+  setUpAll(() async {
+    l10n = await AppLocalizations.delegate.load(const Locale('en'));
+  });
+
   group('quest types', () {
     test('the vocabulary is photo, video and the fennec hunt', () {
       // 3D scan is deliberately absent — it stays a capture mode people can
@@ -68,25 +78,27 @@ void main() {
   group('labels', () {
     test('every type has a label', () {
       for (final type in kQuestTypes) {
-        expect(questLabel(type), isNotEmpty);
+        expect(questLabel(l10n, type), isNotEmpty);
       }
     });
 
     test('the seed varies the wording across stops', () {
-      final wordings = {for (var i = 0; i < 6; i++) questLabel('photo', seed: i)};
+      final wordings = {
+        for (var i = 0; i < 6; i++) questLabel(l10n, 'photo', seed: i),
+      };
       expect(wordings.length, greaterThan(1));
     });
 
     test('a negative seed does not throw', () {
       // seed is a stop index plus an offered-count, but nothing guarantees the
       // caller passes a positive one.
-      expect(() => questLabel('photo', seed: -3), returnsNormally);
+      expect(() => questLabel(l10n, 'photo', seed: -3), returnsNormally);
     });
 
     test('an unknown type still yields a usable label', () {
       // A session restored from before this vocabulary existed can carry
       // 'scan'; it must render, not crash.
-      expect(questLabel('scan'), isNotEmpty);
+      expect(questLabel(l10n, 'scan'), isNotEmpty);
     });
   });
 }

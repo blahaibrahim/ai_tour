@@ -1,11 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 import 'package:massar/models/reward.dart';
+import 'package:massar/l10n/app_localizations.dart';
 
 /// The reward model is where the server's answers become something the screen
 /// can act on, and both directions are easy to get quietly wrong: a mistyped
 /// SQLSTATE turns "you need 300 more points" into "something went wrong", and a
 /// missing field in a catalogue row turns a free reward into a crash.
 void main() {
+  // The English strings, loaded once. These tests assert on wording, so they
+  // need the same lookup the app uses rather than the literals that used to be
+  // baked into the models.
+  late AppLocalizations l10n;
+  setUpAll(() async {
+    l10n = await AppLocalizations.delegate.load(const Locale('en'));
+  });
+
   group('parsing a catalogue row', () {
     test('reads every field the migration writes', () {
       final reward = Reward.fromJson(const {
@@ -109,9 +119,9 @@ void main() {
 
     test('every failure says something a traveller can act on', () {
       for (final failure in RedeemFailure.values) {
-        expect(failure.message, isNotEmpty);
+        expect(failure.message(l10n), isNotEmpty);
         expect(
-          failure.message.toLowerCase(),
+          failure.message(l10n).toLowerCase(),
           isNot(contains('error')),
           reason: '${failure.name} should say what happened, not that it failed',
         );
@@ -123,7 +133,7 @@ void main() {
       // debit or rolls it back, so a rejection never costs anything. Worth
       // asserting because it is the sentence that stops a traveller redeeming
       // twice after one confusing failure.
-      expect(RedeemFailure.unknown.message, contains('untouched'));
+      expect(RedeemFailure.unknown.message(l10n), contains('untouched'));
     });
   });
 

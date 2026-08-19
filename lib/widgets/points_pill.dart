@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/rewards/rewards_screen.dart';
 import '../theme.dart';
+import '../l10n/app_localizations.dart';
 import 'glass_surface.dart';
 import 'pressable_scale.dart';
 
@@ -83,11 +84,11 @@ class ShopButton extends StatelessWidget {
         child: SizedBox(
           width: size,
           height: size,
-          child: const Icon(
+          child: Icon(
             Icons.redeem_rounded,
             color: AppTheme.sand,
             size: 20,
-            semanticLabel: 'Rewards',
+            semanticLabel: AppLocalizations.of(context).rewardsTitle,
           ),
         ),
       ),

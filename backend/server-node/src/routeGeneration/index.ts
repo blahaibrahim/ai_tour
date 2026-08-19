@@ -16,11 +16,14 @@ import { unwrap } from "../supabase";
 import { getCityConfigRepository } from "./data/cityConfigRepository";
 import { getPoiRepository } from "./data/poiRepository";
 import { getProgressRepository, getRouteRepository } from "./data/routeRepository";
+import { interpret as interpretPromptDomain } from "./domain/promptInterpreter";
+import { categoriesForTheme } from "./domain/poiSelector";
 import { CityNotAvailableError, CityNotFoundError, RouteNotFoundError } from "./errors";
 import {
   FIXTURE_CATEGORIES,
   FIXTURE_CITIES,
   FIXTURE_THEMES,
+  fixturePromptInterpretation,
   fixtureRefinedRoute,
   fixtureRoute,
 } from "./fixtures";
@@ -30,6 +33,8 @@ import {
   CityConfig,
   Locale,
   Progress,
+  PromptInterpretation,
+  PromptInterpretationRequest,
   RouteRequest,
   RouteResponse,
   RouteSummary,
@@ -85,6 +90,39 @@ export async function listThemes(cityId?: string): Promise<Theme[]> {
     labelFr: r.label_fr,
     labelAr: r.label_ar,
   }));
+}
+
+/**
+ * Turns free text into a theme plus preferred categories, grounded against
+ * `cityId`'s real vocabulary (see `domain/promptInterpreter.ts` for the
+ * enforcement and `POST /api/routes/interpret` in `routes/routes.ts` for the
+ * request shape).
+ *
+ * Never throws for "the model got it wrong" or "Groq is down" — both surface
+ * as `understood: false`, and the caller falls back to whatever theme is
+ * already selected with no preferred categories, exactly as if the
+ * traveller had typed nothing. Themes are optional end to end; a failed
+ * interpretation is not a failure of the request.
+ */
+export async function interpretPrompt(
+  request: PromptInterpretationRequest,
+): Promise<PromptInterpretation> {
+  if (MODE === "fixture") return fixturePromptInterpretation(request.prompt);
+
+  const [themes, categories] = await Promise.all([
+    listThemes(request.cityId),
+    getPoiRepository().listAvailableCategories(request.cityId, request.theme),
+  ]);
+
+  return interpretPromptDomain(
+    {
+      prompt: request.prompt,
+      locale: request.locale ?? "en",
+      themes: themes.map((t) => ({ key: t.key, labelEn: t.labelEn })),
+      categories: categories.map((c) => ({ key: c.key, labelEn: c.labelEn, poiCount: c.poiCount })),
+    },
+    { categoriesForTheme: (themeKey) => categoriesForTheme(request.cityId, themeKey) },
+  );
 }
 
 /** Shared by both modes, so the rollout gate is enforced identically. */

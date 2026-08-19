@@ -6,6 +6,7 @@ import '../../blocs/app/app_event.dart';
 import '../../repositories/notification_repository.dart';
 import '../../services/notification_service.dart';
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/app_backdrop.dart';
 import '../../widgets/compass_spinner.dart';
 
@@ -33,14 +34,15 @@ class ThinkingScreen extends StatelessWidget {
           child: Column(
             children: [
               Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 child: Padding(
                   padding: const EdgeInsets.all(AppTheme.space3),
                   child: TextButton.icon(
                     onPressed: () =>
                         context.read<AppBloc>().add(const BackToMapEvent()),
                     icon: const Icon(Icons.close_rounded, size: 18, color: AppTheme.deepNavy),
-                    label: const Text('Cancel', style: TextStyle(color: AppTheme.deepNavy, fontWeight: FontWeight.w600)),
+                    label: Text(AppLocalizations.of(context).actionCancel,
+                        style: const TextStyle(color: AppTheme.deepNavy, fontWeight: FontWeight.w600)),
                     style: TextButton.styleFrom(
                       backgroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -61,9 +63,9 @@ class ThinkingScreen extends StatelessWidget {
                       children: [
                         const CompassSpinner(size: 96),
                         const SizedBox(height: 48),
-                        const Text(
-                          'Almost there...',
-                          style: TextStyle(
+                        Text(
+                          AppLocalizations.of(context).thinkingAlmostThere,
+                          style: const TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
@@ -110,18 +112,15 @@ class _NotifyMeState extends State<_NotifyMe> {
     if (!mounted) return;
     setState(() => _busy = false);
 
+    final l10n = AppLocalizations.of(context);
     final message = switch (outcome) {
-      EnableOutcome.enabled =>
-        "We'll let you know the moment it's ready.",
+      EnableOutcome.enabled => l10n.notifyEnabled,
       // Worth distinguishing: the traveller did everything right and most of
       // the feature works, but a notification cannot reach a fully closed app
       // on this build. Saying "enabled" flatly would be a promise it can't keep.
-      EnableOutcome.enabledLocalOnly =>
-        "Notifications are on while the app is open in the background.",
-      EnableOutcome.permissionDenied =>
-        'Notifications are turned off for this app — enable them in Settings.',
-      EnableOutcome.backendUnreachable =>
-        "Couldn't save that right now. Try again once you're back online.",
+      EnableOutcome.enabledLocalOnly => l10n.notifyLocalOnly,
+      EnableOutcome.permissionDenied => l10n.notifyDenied,
+      EnableOutcome.backendUnreachable => l10n.notifyOffline,
     };
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
@@ -140,7 +139,7 @@ class _NotifyMeState extends State<_NotifyMe> {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  "We'll let you know when it's ready",
+                  AppLocalizations.of(context).thinkingWillLetYouKnow,
                   style: TextStyle(
                     fontSize: 15,
                     color: Colors.white.withValues(alpha: 0.8),
@@ -155,7 +154,7 @@ class _NotifyMeState extends State<_NotifyMe> {
         return Column(
           children: [
             Text(
-              "Turn on Notifications to find out\nwhen it's ready",
+              AppLocalizations.of(context).thinkingTurnOnNotifications,
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w400,
@@ -178,9 +177,9 @@ class _NotifyMeState extends State<_NotifyMe> {
                     )
                   : const Icon(Icons.notifications_active_outlined,
                       color: AppTheme.deepNavy),
-              label: const Text(
-                'Notify me',
-                style: TextStyle(
+              label: Text(
+                AppLocalizations.of(context).thinkingNotifyMe,
+                style: const TextStyle(
                   color: AppTheme.deepNavy,
                   fontWeight: FontWeight.w600,
                   fontSize: 16,

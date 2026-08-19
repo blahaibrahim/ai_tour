@@ -1,14 +1,14 @@
 flutter app:
-I will integrate an LLM to infer preferences, remove gemini as the llm used and use only open source models
-I will implement offline support for after the route generation (assume GPS coverage)
-I will implement localization
+ 2- done - integrate an LLM to infer preferences, remove gemini as the llm used and use only open source models
+ 2- done - implement offline support for after the route generation (assume GPS coverage and validate task completions offline and online after regaining connection)
+ 3- done - implement localization (en/fr/ar, ARB + gen-l10n, RTL, language picker in Settings)
 
 web stuff:
-I will have a web dashboard that mirrors the app (only route generations and info, no AR or quests)
-I will be notifying users with some of the renders their submissions helped make (triggered from the gaussian splatting dashboard)
-I will deploy the backend and submit the apk for the app
+ 6- done - have a web dashboard that mirrors the app (only route generations and info, no AR or quests)
+ 5- done - notify users with some of the renders their submissions helped make (triggered from the gaussian splatting dashboard)
 
-docs and submission
-I will prepare the submission files as requested
-I will provide a decent privacy policy
-I will seed the db with more POIs
+docs and submission - final day
+ deploy the backend and submit the apk for the app
+ prepare the submission files as requested
+ provide a decent privacy policy
+ seed the db with more POIs

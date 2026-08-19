@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../models/reward.dart';
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../widgets/glass_surface.dart';
 
 /// One row of the catalogue.
@@ -75,14 +76,19 @@ class RewardCard extends StatelessWidget {
                             ),
                             if (owned) ...[
                               const SizedBox(width: 6),
-                              const _Tag(label: 'Owned', color: AppTheme.success),
+                              _Tag(
+                                  label: AppLocalizations.of(context).rewardOwned,
+                                  color: AppTheme.success),
                             ] else if (reward.soldOut) ...[
                               const SizedBox(width: 6),
-                              const _Tag(label: 'Sold out', color: AppTheme.warning),
+                              _Tag(
+                                  label: AppLocalizations.of(context).rewardSoldOut,
+                                  color: AppTheme.warning),
                             ] else if (_lowStock) ...[
                               const SizedBox(width: 6),
                               _Tag(
-                                label: '${reward.stock} left',
+                                label: AppLocalizations.of(context)
+                                    .rewardStockLeft(reward.stock ?? 0),
                                 color: AppTheme.warning,
                               ),
                             ],
@@ -184,7 +190,7 @@ class _Price extends StatelessWidget {
           ),
         ),
         Text(
-          'points',
+          AppLocalizations.of(context).rewardPointsUnit,
           style: TextStyle(
             fontSize: 10.5,
             color: AppTheme.text.withValues(alpha: 0.5),

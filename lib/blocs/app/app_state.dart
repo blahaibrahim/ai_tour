@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:equatable/equatable.dart';
 import 'package:latlong2/latlong.dart';
 import '../../models/location.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/location_data.dart';
 import '../../models/quest_type.dart';
 import '../../models/route.dart';
@@ -11,7 +12,11 @@ import '../../models/route.dart';
 class ChatMessage extends Equatable {
   const ChatMessage(this.role, this.text);
 
+  /// `user`, `ai`, or `error` — the last being a message the app wrote about
+  /// its own failure to reach the guide. It carries no [text]; the overlay
+  /// supplies the translated wording.
   final String role;
+
   final String text;
 
   @override
@@ -33,6 +38,7 @@ class AppState extends Equatable {
     this.selectedCityId,
     this.selectedTheme,
     Set<String>? selectedCategoryKeys,
+    Set<String>? promptCategoryKeys,
     this.selectedWilayas = const {},
     this.prompt = '',
     this.isInterpretingPrompt = false,
@@ -58,6 +64,7 @@ class AppState extends Equatable {
     this.points = 0,
     this.lifetimePoints,
     this.pointsBalance,
+    this.unreadNotifications = 0,
     this.routeHistory = const [],
     this.isLoadingRouteHistory = false,
     this.taskRegenerationsLeft = 3,
@@ -76,8 +83,11 @@ class AppState extends Equatable {
     this.testMascotSpawn,
     this.reviewExhausted = false,
     this.isRestoringSession = true,
+    this.isOffline = false,
+    this.pendingSyncCount = 0,
   })  : selectedRegions = selectedRegions ?? regions,
         selectedCategoryKeys = selectedCategoryKeys ?? const {},
+        promptCategoryKeys = promptCategoryKeys ?? const {},
         savedLocationIds = savedLocationIds ?? const {};
 
   /// How much of a day a traveller actually spends touring.
@@ -122,8 +132,20 @@ class AppState extends Equatable {
   final String? selectedCityId;
   final String? selectedTheme;
 
-  /// Optional narrowing within a theme. Empty means "the whole theme".
+  /// Manually-selected category filter — reserved for a chip picker the UI
+  /// does not render yet. Unlike [promptCategoryKeys] this is a hard filter:
+  /// the request builder's own choice to exclude everything else, not a
+  /// preference read out of a sentence. Sent as `RouteRequest.categoryKeys`.
   final Set<String> selectedCategoryKeys;
+
+  /// Categories the last-interpreted prompt called out — see
+  /// `PromptInterpretationRepository`. A ranking preference, never a filter:
+  /// "beaches" nudges beach-like stops to the top of a tight budget without
+  /// hiding anything else the theme has to offer. Sent as
+  /// `RouteRequest.preferredCategoryKeys`, kept separate from
+  /// [selectedCategoryKeys] so an LLM read of one sentence can never narrow
+  /// the catalogue the way an explicit chip tap is meant to.
+  final Set<String> promptCategoryKeys;
 
   /// Radius of the region circle drawn around [mapCenter], in km.
   ///
@@ -211,6 +233,15 @@ class AppState extends Equatable {
   /// [lifetimePoints]: an unsynced device showing a balance of 0 would tell a
   /// traveller they cannot afford something they can.
   final int? pointsBalance;
+
+  /// Unread rows in `user_notifications` — the number on the home header's bell.
+  ///
+  /// Zero, not null, when unknown. The distinction [pointsBalance] draws does
+  /// not apply here: a badge that is absent because the count has not loaded and
+  /// a badge that is absent because there is nothing to read look identical and
+  /// mean the same thing to the traveller, so there is nothing for a third state
+  /// to express.
+  final int unreadNotifications;
 
   /// Past routes, newest first, for the home screen's history.
   ///
@@ -348,6 +379,15 @@ class AppState extends Equatable {
   /// ever read.
   final bool isRestoringSession;
 
+  /// Whether the backend is currently unreachable. Drives the offline banner
+  /// on the overview screen. Updated by [ConnectivityChangedEvent].
+  final bool isOffline;
+
+  /// Number of outbox entries (checkpoints + task completions) awaiting sync.
+  /// Shown in the offline banner so the traveller knows their progress is
+  /// queued, not lost.
+  final int pendingSyncCount;
+
   /// The location currently being reviewed, or null if the queue is exhausted.
   Location? get currentLoc {
     if (currentIndex >= 0 && currentIndex < queue.length) {
@@ -444,14 +484,24 @@ class AppState extends Equatable {
   /// The route stops still in the itinerary after the review step, in order.
   List<RouteStop> get routeStops => route?.stops ?? const [];
 
-  static const List<String> thinkingMessages = [
-    "Reading your time budget…",
-    "Picking published stops for your theme…",
-    "Grouping them into walkable clusters…",
-    "Ordering the drive between clusters…",
-    "Ordering the walk inside each one…",
-    "Checking it all fits your day…",
-  ];
+  /// How many steps [thinkingMessages] has.
+  ///
+  /// Separate from the list because the bloc only ever needs the count, and it
+  /// has no `BuildContext` to resolve the wording against.
+  static const int thinkingStepCount = 6;
+
+  /// The steps the thinking screen walks through while a route generates.
+  ///
+  /// A function of the localizations rather than a const list, and still
+  /// ordered: [thinkIdx] indexes into it, so the order here is the order shown.
+  static List<String> thinkingMessages(AppLocalizations l10n) => [
+        l10n.thinkingStepBudget,
+        l10n.thinkingStepStops,
+        l10n.thinkingStepClusters,
+        l10n.thinkingStepDrive,
+        l10n.thinkingStepWalk,
+        l10n.thinkingStepFit,
+      ];
 
   AppState copyWith({
     String? screen,
@@ -463,6 +513,7 @@ class AppState extends Equatable {
     Object? selectedCityId = _sentinel,
     Object? selectedTheme = _sentinel,
     Set<String>? selectedCategoryKeys,
+    Set<String>? promptCategoryKeys,
     Set<String>? selectedWilayas,
     String? prompt,
     bool? isInterpretingPrompt,
@@ -487,6 +538,7 @@ class AppState extends Equatable {
     int? points,
     Object? lifetimePoints = _sentinel,
     Object? pointsBalance = _sentinel,
+    int? unreadNotifications,
     List<RouteSummary>? routeHistory,
     bool? isLoadingRouteHistory,
     bool? reviewExhausted,
@@ -505,6 +557,8 @@ class AppState extends Equatable {
     bool? arTestingMode,
     Object? testMascotSpawn = _sentinel,
     bool? isRestoringSession,
+    bool? isOffline,
+    int? pendingSyncCount,
   }) {
     return AppState(
       screen: screen ?? this.screen,
@@ -517,6 +571,7 @@ class AppState extends Equatable {
           selectedCityId == _sentinel ? this.selectedCityId : selectedCityId as String?,
       selectedTheme: selectedTheme == _sentinel ? this.selectedTheme : selectedTheme as String?,
       selectedCategoryKeys: selectedCategoryKeys ?? this.selectedCategoryKeys,
+      promptCategoryKeys: promptCategoryKeys ?? this.promptCategoryKeys,
       selectedWilayas: selectedWilayas ?? this.selectedWilayas,
       prompt: prompt ?? this.prompt,
       isInterpretingPrompt: isInterpretingPrompt ?? this.isInterpretingPrompt,
@@ -543,6 +598,7 @@ class AppState extends Equatable {
           lifetimePoints == _sentinel ? this.lifetimePoints : lifetimePoints as int?,
       pointsBalance:
           pointsBalance == _sentinel ? this.pointsBalance : pointsBalance as int?,
+      unreadNotifications: unreadNotifications ?? this.unreadNotifications,
       routeHistory: routeHistory ?? this.routeHistory,
       isLoadingRouteHistory: isLoadingRouteHistory ?? this.isLoadingRouteHistory,
       reviewExhausted: reviewExhausted ?? this.reviewExhausted,
@@ -563,6 +619,8 @@ class AppState extends Equatable {
       testMascotSpawn:
           testMascotSpawn == _sentinel ? this.testMascotSpawn : testMascotSpawn as LatLng?,
       isRestoringSession: isRestoringSession ?? this.isRestoringSession,
+      isOffline: isOffline ?? this.isOffline,
+      pendingSyncCount: pendingSyncCount ?? this.pendingSyncCount,
     );
   }
 
@@ -577,6 +635,7 @@ class AppState extends Equatable {
         selectedCityId,
         selectedTheme,
         selectedCategoryKeys,
+        promptCategoryKeys,
         selectedWilayas,
         prompt,
         isInterpretingPrompt,
@@ -601,6 +660,7 @@ class AppState extends Equatable {
         points,
         lifetimePoints,
         pointsBalance,
+        unreadNotifications,
         routeHistory,
         isLoadingRouteHistory,
         reviewExhausted,
@@ -619,6 +679,8 @@ class AppState extends Equatable {
         arTestingMode,
         testMascotSpawn,
         isRestoringSession,
+        isOffline,
+        pendingSyncCount,
       ];
 }
 
@@ -686,3 +748,30 @@ double _haversineKm(LatLng a, LatLng b) {
 }
 
 double _radians(double degrees) => degrees * math.pi / 180;
+
+
+/// Turns [AppState.routeErrorCode] into something to show the traveller.
+///
+/// The code is what the bloc stores, not the sentence: a message baked in when
+/// the request failed would still be in the old language after the traveller
+/// switched, and the same failure would read differently depending on whether
+/// the server or the app noticed it. [serverMessage] is the fallback for a
+/// code this build has never heard of — untranslated, but better than a blank
+/// notice.
+String routeErrorText(
+  AppLocalizations l10n,
+  String? code,
+  String? serverMessage,
+) =>
+    switch (code) {
+      'network_error' => l10n.routeErrorUnreachable,
+      'city_not_available' => l10n.routeErrorCityNotAvailable,
+      'no_eligible_pois' => l10n.routeErrorNoEligiblePois,
+      'time_budget_too_short' => l10n.routeErrorTimeBudgetTooShort,
+      'routing_provider_unavailable' => l10n.routeErrorProviderUnavailable,
+      'not_implemented' => l10n.routeErrorNotImplemented,
+      'drop_stops_failed' => l10n.routeErrorDropStopsFailed,
+      'below_budget' => l10n.routeErrorBelowBudget,
+      'remove_stop_failed' => l10n.routeErrorRemoveStopFailed,
+      _ => serverMessage ?? l10n.routeErrorGeneric,
+    };

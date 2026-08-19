@@ -4,6 +4,7 @@ import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
 import '../../../services/image_prefetch.dart';
 import '../../../theme.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/pressable_scale.dart';
 import '../../../widgets/staggered_entrance.dart';
@@ -51,9 +52,9 @@ class UpcomingStopsRow extends StatelessWidget {
         // ("YOUR ROUTE", "STOP n OF m"), which are all white70 on the same
         // ground. It had drifted to the grey secondary colour, which is a card
         // colour and disappears out here.
-        const Text(
-          'UPCOMING',
-          style: TextStyle(
+        Text(
+          AppLocalizations.of(context).overviewUpcoming,
+          style: const TextStyle(
             fontSize: 11,
             letterSpacing: 0.8,
             color: Colors.white70,

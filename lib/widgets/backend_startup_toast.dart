@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/backend_monitor.dart';
 
 /// A native-toast-style [SnackBar]: dark grey pill, centred low on the
@@ -10,7 +11,7 @@ import '../services/backend_monitor.dart';
 /// launch, so there's a single honest answer to "is this app talking to a
 /// server or showing me demo data" without a persistent badge nagging about
 /// it on every screen afterward.
-SnackBar buildBackendStartupToast(BackendStatus status) {
+SnackBar buildBackendStartupToast(BackendStatus status, AppLocalizations l10n) {
   final connected = status == BackendStatus.connected;
   return SnackBar(
     behavior: SnackBarBehavior.floating,
@@ -30,7 +31,7 @@ SnackBar buildBackendStartupToast(BackendStatus status) {
         const SizedBox(width: 10),
         Flexible(
           child: Text(
-            connected ? 'Connected to the server' : "Can't reach the server — showing demo data",
+            connected ? l10n.backendConnected : l10n.backendUnreachable,
             style: const TextStyle(color: Colors.white, fontSize: 13),
           ),
         ),

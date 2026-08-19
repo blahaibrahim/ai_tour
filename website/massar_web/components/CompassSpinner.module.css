@@ -1,0 +1,29 @@
+.spinner {
+  display: block;
+  flex: none;
+}
+
+.needle {
+  /* The pivot, not the centre of the box: the bail sits above the housing, so
+     the case is nudged down to keep the compass optically centred. */
+  transform-box: view-box;
+  transform-origin: 50px 55px;
+  animation: sweep 1600ms cubic-bezier(0.645, 0.045, 0.355, 1) infinite;
+}
+
+@keyframes sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* With motion suppressed the needle simply points north — a compass at rest,
+   rather than a spinner frozen at a random heading. */
+@media (prefers-reduced-motion: reduce) {
+  .needle {
+    animation: none;
+  }
+}

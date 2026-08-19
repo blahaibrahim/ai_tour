@@ -5,6 +5,7 @@ import '../../blocs/auth/auth_bloc.dart';
 import '../../blocs/auth/auth_event.dart';
 import '../../blocs/auth/auth_state.dart';
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/app_backdrop.dart';
 import '../../widgets/segmented_control.dart';
 import 'otp_verification_screen.dart';
@@ -133,18 +134,19 @@ class _AuthScreenState extends State<AuthScreen> {
   /// asking.
   Future<void> _forgotPassword() async {
     final controller = TextEditingController(text: _emailController.text.trim());
+    final l10n = AppLocalizations.of(context);
     final email = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: AppTheme.brLg),
-        title: const Text('Reset your password'),
+        title: Text(l10n.authResetYourPassword),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'We will email you a link to set a new one.',
+              l10n.authResetEmailBlurb,
               style: TextStyle(fontSize: 13, color: AppTheme.ink.withValues(alpha: 0.7)),
             ),
             AppTheme.gap4,
@@ -152,7 +154,7 @@ class _AuthScreenState extends State<AuthScreen> {
               controller: controller,
               keyboardType: TextInputType.emailAddress,
               autofocus: true,
-              decoration: const InputDecoration(hintText: 'you@example.com'),
+              decoration: InputDecoration(hintText: l10n.authEmailHint),
               onSubmitted: (value) => Navigator.of(dialogContext).pop(value.trim()),
             ),
           ],
@@ -160,11 +162,11 @@ class _AuthScreenState extends State<AuthScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n.actionCancel),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(dialogContext).pop(controller.text.trim()),
-            child: const Text('Send link'),
+            child: Text(l10n.authSendLink),
           ),
         ],
       ),
@@ -172,9 +174,9 @@ class _AuthScreenState extends State<AuthScreen> {
     controller.dispose();
 
     if (!mounted || email == null || email.isEmpty) return;
-    if (_emailError(email) != null) {
+    if (_emailError(l10n, email) != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('That does not look like a valid email address.')),
+        SnackBar(content: Text(l10n.authInvalidEmail)),
       );
       return;
     }
@@ -184,6 +186,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final l10n = AppLocalizations.of(context);
 
     return BlocConsumer<AuthBloc, AuthState>(
       listenWhen: (previous, current) =>
@@ -207,7 +210,7 @@ class _AuthScreenState extends State<AuthScreen> {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
             ..showSnackBar(SnackBar(
-              content: Text(feedback.message),
+              content: Text(feedback.text(l10n)),
               backgroundColor: feedback.isError ? AppTheme.error : AppTheme.ink,
             ));
         }
@@ -250,7 +253,9 @@ class _AuthScreenState extends State<AuthScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            _isSignup ? 'Create your account' : 'Welcome back',
+                            _isSignup
+                                ? l10n.authCreateYourAccount
+                                : l10n.authWelcomeBack,
                             textAlign: TextAlign.center,
                             style: textTheme.headlineMedium?.copyWith(fontSize: 26),
                           ),
@@ -264,9 +269,9 @@ class _AuthScreenState extends State<AuthScreen> {
                             child: SegmentedControl<AuthMode>(
                               value: _mode,
                               onChanged: (mode) => setState(() => _mode = mode),
-                              options: const [
-                                SegmentOption(value: AuthMode.login, label: 'Log in'),
-                                SegmentOption(value: AuthMode.signup, label: 'Sign up'),
+                              options: [
+                                SegmentOption(value: AuthMode.login, label: l10n.authLogIn),
+                                SegmentOption(value: AuthMode.signup, label: l10n.authSignUp),
                               ],
                             ),
                           ),
@@ -274,19 +279,21 @@ class _AuthScreenState extends State<AuthScreen> {
 
                           _Field(
                             controller: _emailController,
-                            label: 'Email',
-                            hint: 'you@example.com',
+                            label: l10n.authEmail,
+                            hint: l10n.authEmailHint,
                             icon: Icons.alternate_email_rounded,
                             keyboardType: TextInputType.emailAddress,
                             enabled: !auth.isBusy,
                             autofillHints: const [AutofillHints.email],
-                            validator: (value) => _emailError(value?.trim() ?? ''),
+                            validator: (value) => _emailError(l10n, value?.trim() ?? ''),
                           ),
                           AppTheme.gap3,
                           _Field(
                             controller: _passwordController,
-                            label: 'Password',
-                            hint: _isSignup ? 'At least 6 characters' : '••••••••',
+                            label: l10n.authPassword,
+                            hint: _isSignup
+                                ? l10n.authPasswordHintSignup
+                                : l10n.authPasswordHintLogin,
                             icon: Icons.lock_outline_rounded,
                             obscure: _obscurePassword,
                             enabled: !auth.isBusy,
@@ -294,7 +301,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               _isSignup ? AutofillHints.newPassword : AutofillHints.password,
                             ],
                             onSubmitted: (_) => _submit(),
-                            validator: (value) => _passwordError(value ?? '', _isSignup),
+                            validator: (value) => _passwordError(l10n, value ?? '', _isSignup),
                             trailing: IconButton(
                               icon: Icon(
                                 _obscurePassword
@@ -310,10 +317,10 @@ class _AuthScreenState extends State<AuthScreen> {
 
                           if (!_isSignup)
                             Align(
-                              alignment: Alignment.centerRight,
+                              alignment: AlignmentDirectional.centerEnd,
                               child: TextButton(
                                 onPressed: auth.isBusy ? null : _forgotPassword,
-                                child: const Text('Forgot password?'),
+                                child: Text(l10n.authForgotPassword),
                               ),
                             )
                           else
@@ -332,7 +339,9 @@ class _AuthScreenState extends State<AuthScreen> {
                                         color: AppTheme.onAccent,
                                       ),
                                     )
-                                  : Text(_isSignup ? 'Create account' : 'Log in'),
+                                  : Text(_isSignup
+                                      ? l10n.authCreateAccountButton
+                                      : l10n.authLogIn),
                             ),
                           ),
                           AppTheme.gap5,
@@ -340,15 +349,14 @@ class _AuthScreenState extends State<AuthScreen> {
                           Center(
                             child: TextButton(
                               onPressed: auth.isBusy ? null : _continue,
-                              child: const Text('Continue as guest'),
+                              child: Text(l10n.authContinueAsGuest),
                             ),
                           ),
                           AppTheme.gap2,
                           Text(
                             _isSignup
-                                ? 'Everything you have already collected stays yours — '
-                                    'signing up saves it to your account.'
-                                : 'You can create an account later from Settings.',
+                                ? l10n.authGuestKeepsProgress
+                                : l10n.authCanSignUpLater,
                             textAlign: TextAlign.center,
                             style: textTheme.bodySmall?.copyWith(
                               fontSize: 11.5,
@@ -376,21 +384,21 @@ class _AuthScreenState extends State<AuthScreen> {
 /// confirmation email; a stricter pattern here would reject valid addresses
 /// (long TLDs, plus-addressing, unicode domains) to catch typos it cannot
 /// actually detect.
-String? _emailError(String value) {
-  if (value.isEmpty) return 'Enter your email address.';
+String? _emailError(AppLocalizations l10n, String value) {
+  if (value.isEmpty) return l10n.authEnterEmail;
   final at = value.indexOf('@');
   final dot = value.lastIndexOf('.');
   if (at <= 0 || dot < at + 2 || dot == value.length - 1 || value.contains(' ')) {
-    return 'That does not look like a valid email address.';
+    return l10n.authInvalidEmail;
   }
   return null;
 }
 
 /// Six characters is Supabase's own default minimum. Checking it here turns a
 /// round trip and a server error message into an instant inline one.
-String? _passwordError(String value, bool isSignup) {
-  if (value.isEmpty) return 'Enter your password.';
-  if (isSignup && value.length < 6) return 'Use at least 6 characters.';
+String? _passwordError(AppLocalizations l10n, String value, bool isSignup) {
+  if (value.isEmpty) return l10n.authEnterPassword;
+  if (isSignup && value.length < 6) return l10n.authPasswordTooShort;
   return null;
 }
 
@@ -427,7 +435,7 @@ class _Field extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          padding: const EdgeInsetsDirectional.only(start: 4, bottom: 6),
           child: Text(
             label,
             style: const TextStyle(

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../blocs/app/app_bloc.dart';
 import '../../../blocs/app/app_event.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../models/route.dart';
 import '../../../theme.dart';
 import '../../../widgets/glass_surface.dart';
@@ -24,9 +25,9 @@ class RouteHistoryList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'YOUR ROUTES',
-          style: TextStyle(
+        Text(
+          AppLocalizations.of(context).homeYourRoutes,
+          style: const TextStyle(
             fontSize: 11,
             letterSpacing: 1.2,
             color: Colors.white70,
@@ -60,6 +61,7 @@ class _RouteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return GlassSurface(
       borderRadius: AppTheme.brMd,
       child: Material(
@@ -98,7 +100,7 @@ class _RouteCard extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              route.title,
+                              route.title(l10n),
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: 15,
@@ -110,7 +112,7 @@ class _RouteCard extends StatelessWidget {
                           if (route.generatedAt != null) ...[
                             const SizedBox(width: 6),
                             Text(
-                              _relative(route.generatedAt!),
+                              _relative(l10n, route.generatedAt!),
                               style: TextStyle(
                                 fontSize: 11.5,
                                 color: AppTheme.text.withValues(alpha: 0.45),
@@ -121,7 +123,7 @@ class _RouteCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        route.subtitle,
+                        route.subtitle(l10n),
                         style: TextStyle(
                           fontSize: 12.5,
                           color: AppTheme.text.withValues(alpha: 0.6),
@@ -140,15 +142,16 @@ class _RouteCard extends StatelessWidget {
     );
   }
 
-  /// "today", "3d", "2w" — enough to place a route in time without a date
-  /// format that would need locale rules the app does not have yet.
-  static String _relative(DateTime when) {
+  /// "today", "3d", "2w" — enough to place a route in time. Still deliberately
+  /// not a real date format: this sits in a tight row beside the title, and a
+  /// spelled-out date would push the name it belongs to out of the card.
+  static String _relative(AppLocalizations l10n, DateTime when) {
     final days = DateTime.now().difference(when).inDays;
-    if (days <= 0) return 'today';
-    if (days == 1) return 'yesterday';
-    if (days < 7) return '${days}d';
-    if (days < 365) return '${days ~/ 7}w';
-    return '${days ~/ 365}y';
+    if (days <= 0) return l10n.relativeToday;
+    if (days == 1) return l10n.relativeYesterday;
+    if (days < 7) return l10n.relativeDays(days);
+    if (days < 365) return l10n.relativeWeeks(days ~/ 7);
+    return l10n.relativeYears(days ~/ 365);
   }
 }
 
@@ -168,7 +171,7 @@ class _NoRoutesYet extends StatelessWidget {
           const SizedBox(width: AppTheme.space3),
           Expanded(
             child: Text(
-              'Routes you generate will collect here, ready to pick up again.',
+              AppLocalizations.of(context).homeRoutesEmpty,
               style: TextStyle(
                 fontSize: 13,
                 height: 1.35,

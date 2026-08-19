@@ -7,6 +7,7 @@ import '../../models/reward.dart';
 import '../../repositories/rewards_repository.dart';
 import '../../services/backend_monitor.dart';
 import '../../theme.dart';
+import '../../l10n/app_localizations.dart';
 import '../../widgets/app_backdrop.dart';
 import 'widgets/balance_header.dart';
 import 'widgets/redeem_sheet.dart';
@@ -68,7 +69,7 @@ class _RewardsScreenState extends State<RewardsScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Rewards'),
+        title: Text(AppLocalizations.of(context).rewardsTitle),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: AppTheme.ink),
@@ -130,7 +131,7 @@ class _RewardsScreenState extends State<RewardsScreen> {
             // A reroll spends into a counter that only exists during a tour.
             // Selling one now would take the points and give nothing back.
             blockedNote: reward.needsActiveTour && !onTour
-                ? 'Available once you are walking a route.'
+                ? AppLocalizations.of(context).rewardsOnlyOnRoute
                 : null,
             onTap: () => _confirm(reward, balance),
           ),
@@ -154,7 +155,7 @@ class _RewardsScreenState extends State<RewardsScreen> {
     // true one. Without this, an offline tap surfaces as a generic failure
     // several seconds later.
     if (BackendMonitor.instance.isOffline) {
-      _report(RedeemFailure.offline.message);
+      _report(RedeemFailure.offline.message(AppLocalizations.of(context)));
       return;
     }
 
@@ -176,12 +177,13 @@ class _RewardsScreenState extends State<RewardsScreen> {
           bloc.add(GrantQuestRerollsEvent(reward.grantQuestRerolls));
         }
         setState(() => _owned = {..._owned, reward.id});
-        _report(_successMessage(reward, redemption));
+        _report(_successMessage(
+            AppLocalizations.of(context), reward, redemption));
       case RedeemRejected(:final reason):
         // A rejection means nothing was charged — every failure path in
         // `spend_points` raises before or instead of the debit, and a raise
         // rolls the whole function back.
-        _report(reason.message);
+        _report(reason.message(AppLocalizations.of(context)));
         if (reason == RedeemFailure.insufficientPoints ||
             reason == RedeemFailure.alreadyOwned) {
           context.read<AppBloc>().add(const LoadPointsEvent());
@@ -189,23 +191,17 @@ class _RewardsScreenState extends State<RewardsScreen> {
     }
   }
 
-  String _successMessage(Reward reward, Redemption redemption) {
-    if (redemption.code != null) {
-      return 'Voucher ${redemption.code} is in your rewards. Show it to collect.';
-    }
+  String _successMessage(
+      AppLocalizations l10n, Reward reward, Redemption redemption) {
+    final code = redemption.code;
+    if (code != null) return l10n.rewardsVoucherGranted(code);
     if (reward.grantModelCredits > 0) {
-      final n = reward.grantModelCredits;
-      return n == 1
-          ? 'One scan credit added. It does not expire.'
-          : '$n scan credits added. They do not expire.';
+      return l10n.rewardsCreditsGranted(reward.grantModelCredits);
     }
     if (reward.grantQuestRerolls > 0) {
-      final n = reward.grantQuestRerolls;
-      return n == 1
-          ? 'One more quest swap on this tour.'
-          : '$n more quest swaps on this tour.';
+      return l10n.rewardsRerollsGranted(reward.grantQuestRerolls);
     }
-    return '${reward.title} is yours.';
+    return l10n.rewardsGranted(reward.title);
   }
 
   void _report(String message) {
@@ -226,7 +222,7 @@ class _SectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          kind.sectionTitle.toUpperCase(),
+          kind.sectionTitle(AppLocalizations.of(context)).toUpperCase(),
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.bold,
@@ -236,7 +232,7 @@ class _SectionHeader extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          kind.sectionBlurb,
+          kind.sectionBlurb(AppLocalizations.of(context)),
           style: TextStyle(
             fontSize: 12.5,
             color: AppTheme.text.withValues(alpha: 0.6),
@@ -263,7 +259,7 @@ class _EmptyCatalogue extends StatelessWidget {
               size: 40, color: AppTheme.text.withValues(alpha: 0.3)),
           AppTheme.gap4,
           Text(
-            'Nothing to spend on right now',
+            AppLocalizations.of(context).rewardsNothingToSpendOn,
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
@@ -272,7 +268,7 @@ class _EmptyCatalogue extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Pull down to check again once you have a connection.',
+            AppLocalizations.of(context).rewardsPullDownToRetry,
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,

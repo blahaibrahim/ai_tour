@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_localizations.dart';
 
 import '../../../theme.dart';
 
@@ -23,7 +24,7 @@ class PageDots extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Page ${index + 1} of $count',
+      label: AppLocalizations.of(context).onboardingPageOf(index + 1, count),
       excludeSemantics: true,
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -32,7 +33,7 @@ class PageDots extends StatelessWidget {
             AnimatedContainer(
               duration: AppTheme.motionBase,
               curve: AppTheme.motionCurve,
-              margin: EdgeInsets.only(right: i == count - 1 ? 0 : 6),
+              margin: EdgeInsetsDirectional.only(end: i == count - 1 ? 0 : 6),
               height: 7,
               width: i == index ? 22 : 7,
               decoration: BoxDecoration(

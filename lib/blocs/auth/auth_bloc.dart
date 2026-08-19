@@ -55,11 +55,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     return super.close();
   }
 
-  AuthFeedback _error(String message) =>
+  AuthFeedback _error(AuthMessage message) =>
       AuthFeedback(id: ++_feedbackSeq, message: message, isError: true);
 
-  AuthFeedback _notice(String message) =>
-      AuthFeedback(id: ++_feedbackSeq, message: message, isError: false);
+  AuthFeedback _notice(AuthMessage message, {String? argument}) => AuthFeedback(
+        id: ++_feedbackSeq,
+        message: message,
+        isError: false,
+        argument: argument,
+      );
 
   void _onAuthUpdated(AuthUpdatedEvent event, Emitter<AuthState> emit) {
     final session = event.session as Session?;
@@ -155,7 +159,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             userId: user.id,
             email: user.email,
             isAnonymous: false,
-            feedback: _notice('Account created. Everything you have collected is now saved to it.'),
+            feedback: _notice(AuthMessage.accountCreatedWithProgress),
           ));
         } else {
           emit(state.copyWith(
@@ -175,7 +179,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           .signUp(email: event.email, password: event.password)
           .timeout(_requestTimeout);
       if (response.session != null) {
-        emit(state.copyWith(isBusy: false, feedback: _notice('Account created.')));
+        emit(state.copyWith(
+            isBusy: false, feedback: _notice(AuthMessage.accountCreated)));
       } else {
         emit(state.copyWith(
           isBusy: false,
@@ -186,10 +191,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         ));
       }
     } on AuthException catch (error) {
-      emit(state.copyWith(isBusy: false, feedback: _error(_readable(error))));
+      emit(state.copyWith(isBusy: false, feedback: _error(_messageFor(error))));
     } catch (error, stack) {
       developer.log('Sign-up failed', name: 'AuthBloc', error: error, stackTrace: stack);
-      emit(state.copyWith(isBusy: false, feedback: _error(_offlineMessage)));
+      emit(state.copyWith(isBusy: false, feedback: _error(AuthMessage.errorNetwork)));
     }
   }
 
@@ -222,17 +227,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         // set-password step rather than into the app.
         awaitingNewPassword: isRecovery,
         feedback: isRecovery
-            ? _notice('Code accepted. Choose a new password.')
-            : _notice('Email confirmed. Your account is ready.'),
+            ? _notice(AuthMessage.codeAcceptedChoosePassword)
+            : _notice(AuthMessage.emailConfirmed),
       ));
     } on AuthException catch (error) {
       // Deliberately stays on the verification screen: a wrong code is worth
       // another try, and throwing the traveller back to the form would make
       // them retype everything.
-      emit(state.copyWith(isBusy: false, feedback: _error(_readable(error))));
+      emit(state.copyWith(isBusy: false, feedback: _error(_messageFor(error))));
     } catch (error, stack) {
       developer.log('OTP verification failed', name: 'AuthBloc', error: error, stackTrace: stack);
-      emit(state.copyWith(isBusy: false, feedback: _error(_offlineMessage)));
+      emit(state.copyWith(isBusy: false, feedback: _error(AuthMessage.errorNetwork)));
     }
   }
 
@@ -256,13 +261,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       }
       emit(state.copyWith(
         isBusy: false,
-        feedback: _notice('A new code is on its way to ${pending.email}.'),
+        feedback: _notice(AuthMessage.newCodeSent, argument: pending.email),
       ));
     } on AuthException catch (error) {
-      emit(state.copyWith(isBusy: false, feedback: _error(_readable(error))));
+      emit(state.copyWith(isBusy: false, feedback: _error(_messageFor(error))));
     } catch (error, stack) {
       developer.log('OTP resend failed', name: 'AuthBloc', error: error, stackTrace: stack);
-      emit(state.copyWith(isBusy: false, feedback: _error(_offlineMessage)));
+      emit(state.copyWith(isBusy: false, feedback: _error(AuthMessage.errorNetwork)));
     }
   }
 
@@ -279,12 +284,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           .timeout(_requestTimeout);
       // The auth stream emits the authenticated state; this only clears the
       // spinner and confirms.
-      emit(state.copyWith(isBusy: false, feedback: _notice('Welcome back.')));
+      emit(state.copyWith(
+          isBusy: false, feedback: _notice(AuthMessage.welcomeBack)));
     } on AuthException catch (error) {
-      emit(state.copyWith(isBusy: false, feedback: _error(_readable(error))));
+      emit(state.copyWith(isBusy: false, feedback: _error(_messageFor(error))));
     } catch (error, stack) {
       developer.log('Sign-in failed', name: 'AuthBloc', error: error, stackTrace: stack);
-      emit(state.copyWith(isBusy: false, feedback: _error(_offlineMessage)));
+      emit(state.copyWith(isBusy: false, feedback: _error(AuthMessage.errorNetwork)));
     }
   }
 
@@ -310,10 +316,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         ),
       ));
     } on AuthException catch (error) {
-      emit(state.copyWith(isBusy: false, feedback: _error(_readable(error))));
+      emit(state.copyWith(isBusy: false, feedback: _error(_messageFor(error))));
     } catch (error, stack) {
       developer.log('Password reset failed', name: 'AuthBloc', error: error, stackTrace: stack);
-      emit(state.copyWith(isBusy: false, feedback: _error(_offlineMessage)));
+      emit(state.copyWith(isBusy: false, feedback: _error(AuthMessage.errorNetwork)));
     }
   }
 
@@ -332,15 +338,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(state.copyWith(
         isBusy: false,
         awaitingNewPassword: false,
-        feedback: _notice('Password updated. You are signed in.'),
+        feedback: _notice(AuthMessage.passwordUpdated),
       ));
     } on AuthException catch (error) {
       // Stays on the step: the session is still valid, so another attempt at a
       // password Supabase will accept is all that is needed.
-      emit(state.copyWith(isBusy: false, feedback: _error(_readable(error))));
+      emit(state.copyWith(isBusy: false, feedback: _error(_messageFor(error))));
     } catch (error, stack) {
       developer.log('Password update failed', name: 'AuthBloc', error: error, stackTrace: stack);
-      emit(state.copyWith(isBusy: false, feedback: _error(_offlineMessage)));
+      emit(state.copyWith(isBusy: false, feedback: _error(AuthMessage.errorNetwork)));
     }
   }
 
@@ -375,16 +381,14 @@ OtpType _otpTypeFor(VerificationPurpose purpose) => switch (purpose) {
       VerificationPurpose.passwordRecovery => OtpType.recovery,
     };
 
-const _offlineMessage =
-    "Couldn't reach the server. Check your connection and try again.";
-
-/// Turns Supabase's wire messages into something worth showing a traveller.
+/// Turns Supabase's wire messages into one of the app's own, translated ones.
 ///
-/// Only the cases that are actually reachable from this form are rewritten;
-/// anything else falls through to Supabase's own text, which is usually
-/// serviceable and is better than a generic "something went wrong" that hides
-/// what happened.
-String _readable(AuthException error) {
+/// Only the cases actually reachable from these forms are recognised; anything
+/// else falls through to [AuthMessage.errorGeneric], which carries Supabase's
+/// own text. That is the one string in the auth flow that stays untranslated,
+/// and deliberately so: the alternative is throwing away the only description
+/// of a failure nobody anticipated.
+AuthMessage _messageFor(AuthException error) {
   final message = error.message.toLowerCase();
 
   // The account is fine and the password was accepted — the mail simply could
@@ -393,31 +397,30 @@ String _readable(AuthException error) {
   // underlying SMTP rejection ("525 Unauthorized IP address" and friends) is
   // not something to put in front of anyone.
   if (error.code == 'unexpected_failure' || message.contains('error sending')) {
-    return "We couldn't send your code — email is not going out right now. "
-        'This is on our side; try again in a few minutes.';
+    return AuthMessage.errorEmailNotSending;
   }
   if (message.contains('invalid login credentials')) {
-    return 'That email and password do not match an account.';
+    return AuthMessage.errorBadCredentials;
   }
   if (message.contains('already registered') || message.contains('already been registered')) {
-    return 'That email already has an account. Try logging in instead.';
+    return AuthMessage.errorAlreadyRegistered;
   }
   if (message.contains('email address') && message.contains('invalid')) {
-    return 'That does not look like a valid email address.';
+    return AuthMessage.errorInvalidEmail;
   }
   if (message.contains('password should be at least')) {
-    return 'Passwords need to be at least 6 characters.';
+    return AuthMessage.errorPasswordTooShort;
   }
   if (message.contains('rate limit') ||
       message.contains('too many') ||
       message.contains('security purposes')) {
-    return 'Too many attempts. Wait a minute and try again.';
+    return AuthMessage.errorTooManyAttempts;
   }
   if (message.contains('token has expired') || message.contains('expired')) {
-    return 'That code has expired. Ask for a new one.';
+    return AuthMessage.errorCodeExpired;
   }
   if (message.contains('invalid') && message.contains('token')) {
-    return "That code isn't right. Check the email and try again.";
+    return AuthMessage.errorCodeInvalid;
   }
-  return error.message;
+  return AuthMessage.errorGeneric;
 }
